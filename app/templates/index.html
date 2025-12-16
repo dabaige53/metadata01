@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="app-container">
+    <!-- 顶部导航栏 -->
+    <header class="top-nav">
+        <div class="logo-area">
+            <i data-lucide="database" class="logo-icon"></i>
+            <span class="logo-text">DataMap</span>
+        </div>
+        <div class="search-bar-container">
+            <div class="search-input-wrapper">
+                <i data-lucide="search" class="search-icon"></i>
+                <input type="text" id="global-search" placeholder="搜索表、字段、仪表板..." onkeyup="handleSearch(event)">
+            </div>
+        </div>
+        <div class="user-profile">
+            <span class="user-avatar">W</span>
+        </div>
+    </header>
+
+    <div class="main-layout">
+        <!-- 左侧筛选/导航栏 -->
+        <aside class="sidebar" id="sidebar">
+            <div class="nav-section">
+                <div class="nav-title">资源类型</div>
+                <ul class="nav-list" id="module-nav">
+                    <li class="nav-item active" onclick="switchModule('overview')">
+                        <i data-lucide="layout-dashboard"></i> 概览
+                    </li>
+                    <li class="nav-item" onclick="switchModule('databases')">
+                        <i data-lucide="database"></i> 数据库
+                        <span class="count-badge" id="count-databases">0</span>
+                    </li>
+                    <li class="nav-item" onclick="switchModule('tables')">
+                        <i data-lucide="table-2"></i> 数据表
+                        <span class="count-badge" id="count-tables">0</span>
+                    </li>
+                    <li class="nav-item" onclick="switchModule('fields')">
+                        <i data-lucide="columns"></i> 字段
+                        <span class="count-badge" id="count-fields">0</span>
+                    </li>
+                    <li class="nav-item" onclick="switchModule('metrics')">
+                        <i data-lucide="function-square"></i> 指标
+                        <span class="count-badge" id="count-metrics">0</span>
+                    </li>
+                    <li class="nav-item" onclick="switchModule('datasources')">
+                        <i data-lucide="layers"></i> 数据源
+                        <span class="count-badge" id="count-datasources">0</span>
+                    </li>
+                    <li class="nav-item" onclick="switchModule('workbooks')">
+                        <i data-lucide="book-open"></i> 工作簿
+                        <span class="count-badge" id="count-workbooks">0</span>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="nav-section" id="filter-section">
+                <!-- 动态筛选器将渲染在这里 -->
+                <div class="nav-title">筛选</div>
+                <div id="dynamic-filters">
+                    <!-- Javascript Will Populate This -->
+                </div>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="content-area" id="main-content">
+            <!-- 列表视图或概览视图将渲染在这里 -->
+            <div class="loading-spinner">
+                <i data-lucide="loader-2" class="spin"></i> 加载中...
+            </div>
+        </main>
+    </div>
+</div>
+
+<!-- 详情抽屉 (右侧滑出) -->
+<div class="drawer-overlay" id="overlay" onclick="closeDrawer()"></div>
+<div class="detail-drawer" id="detail-drawer">
+    <div class="drawer-header">
+        <h2 id="drawer-title">详情</h2>
+        <button class="close-btn" onclick="closeDrawer()">
+            <i data-lucide="x"></i>
+        </button>
+    </div>
+    <div class="drawer-content" id="drawer-content">
+        <!-- 详情内容将通过 JS 渲染 -->
+    </div>
+</div>
+{% endblock %}
