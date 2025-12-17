@@ -1,6 +1,6 @@
 """
 SQLAlchemy ORM 模型
-基于数据库设计文档创建
+基于数据库设计文档创建 - 增强版（补全 Tableau Metadata API 字段）
 """
 from datetime import datetime
 from sqlalchemy import (
@@ -39,16 +39,69 @@ field_to_view = Table(
 )
 
 
+# ==================== 辅助实体表 ====================
+
+class TableauUser(Base):
+    """Tableau 用户"""
+    __tablename__ = 'tableau_users'
+    
+    id = Column(String(255), primary_key=True)
+    luid = Column(String(255))  # REST API 标识符
+    name = Column(String(255), nullable=False)  # 用户名
+    display_name = Column(String(255))  # 显示名称
+    email = Column(String(255))
+    domain = Column(String(255))
+    site_role = Column(String(100))
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'displayName': self.display_name,
+            'email': self.email,
+            'siteRole': self.site_role
+        }
+
+
+class Project(Base):
+    """Tableau 项目"""
+    __tablename__ = 'projects'
+    
+    id = Column(String(255), primary_key=True)
+    luid = Column(String(255))
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    parent_project_id = Column(String(255), ForeignKey('projects.id'))
+    vizportal_url_id = Column(String(255))
+    
+    # 关系
+    parent_project = relationship('Project', remote_side=[id], backref='child_projects')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'description': self.description,
+            'parentProjectId': self.parent_project_id
+        }
+
+
 # ==================== 核心实体表 ====================
 
 class Database(Base):
-    """数据库连接"""
+    """数据库连接（增强版）"""
     __tablename__ = 'databases'
     
     id = Column(String(255), primary_key=True)
+    luid = Column(String(255))  # REST API 标识符
     name = Column(String(255), nullable=False)
     connection_type = Column(String(100))  # snowflake, sqlserver, excel-direct
     host_name = Column(String(500))
+    port = Column(Integer)  # 端口号
+    service = Column(String(255))  # 服务名（Oracle等）
+    description = Column(Text)  # 描述
+    is_certified = Column(Boolean, default=False)  # 是否认证
+    certification_note = Column(Text)  # 认证说明
     platform = Column(String(50))  # cloud/on-prem
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -59,9 +112,15 @@ class Database(Base):
     def to_dict(self):
         return {
             'id': self.id,
+            'luid': self.luid,
             'name': self.name,
             'type': self.connection_type,
             'host': self.host_name,
+            'port': self.port,
+            'service': self.service,
+            'description': self.description,
+            'isCertified': self.is_certified,
+            'certificationNote': self.certification_note,
             'platform': self.platform,
             'tables': len(self.tables) if self.tables else 0,
             'status': 'active',
@@ -71,38 +130,86 @@ class Database(Base):
 
 
 class DBTable(Base):
-    """数据表"""
+    """数据表（增强版）"""
     __tablename__ = 'tables'
     
     id = Column(String(255), primary_key=True)
+    luid = Column(String(255))  # REST API 标识符
     name = Column(String(255), nullable=False)
     full_name = Column(String(500))
     schema = Column(String(255))
     database_id = Column(String(255), ForeignKey('databases.id'))
     connection_type = Column(String(100))
+    table_type = Column(String(50))  # 表类型
+    description = Column(Text)  # 描述
     is_embedded = Column(Boolean, default=False)
+    is_certified = Column(Boolean, default=False)  # 是否认证
+    certification_note = Column(Text)  # 认证说明
+    project_name = Column(String(255))  # 项目名称
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
     
     # 关系
     database = relationship('Database', back_populates='tables')
+    columns = relationship('DBColumn', back_populates='table')
     fields = relationship('Field', back_populates='table')
     datasources = relationship('Datasource', secondary=table_to_datasource, back_populates='tables')
     
     def to_dict(self):
         return {
             'id': self.id,
+            'luid': self.luid,
             'name': self.name,
             'fullName': self.full_name,
             'schema': self.schema,
             'databaseId': self.database_id,
             'databaseName': self.database.name if self.database else None,
             'connectionType': self.connection_type,
+            'tableType': self.table_type,
+            'description': self.description,
             'isEmbedded': self.is_embedded,
-            'fieldCount': len(self.fields) if self.fields else 0
+            'isCertified': self.is_certified,
+            'projectName': self.project_name,
+            'columnCount': len(self.columns) if self.columns else 0,
+            'fieldCount': len(self.fields) if self.fields else 0,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+class DBColumn(Base):
+    """数据库原生列（新增）"""
+    __tablename__ = 'db_columns'
+    
+    id = Column(String(255), primary_key=True)
+    luid = Column(String(255))  # REST API 标识符
+    name = Column(String(255), nullable=False)
+    remote_type = Column(String(100))  # 数据库原生数据类型
+    description = Column(Text)
+    is_nullable = Column(Boolean)
+    is_certified = Column(Boolean, default=False)
+    certification_note = Column(Text)
+    table_id = Column(String(255), ForeignKey('tables.id'))
+    
+    # 关系
+    table = relationship('DBTable', back_populates='columns')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'luid': self.luid,
+            'name': self.name,
+            'remoteType': self.remote_type,
+            'description': self.description,
+            'isNullable': self.is_nullable,
+            'isCertified': self.is_certified,
+            'tableId': self.table_id,
+            'tableName': self.table.name if self.table else None
         }
 
 
 class Field(Base):
-    """字段"""
+    """字段（增强版）"""
     __tablename__ = 'fields'
     
     id = Column(String(255), primary_key=True)
@@ -116,6 +223,9 @@ class Field(Base):
     is_calculated = Column(Boolean, default=False)
     formula = Column(Text)
     role = Column(String(50))  # measure/dimension
+    aggregation = Column(String(50))  # 默认聚合方式（SUM/AVG/COUNT等）
+    is_hidden = Column(Boolean, default=False)  # 是否隐藏
+    folder_name = Column(String(255))  # 所属文件夹
     
     # 关系
     table = relationship('DBTable', back_populates='fields')
@@ -135,22 +245,36 @@ class Field(Base):
             'isCalculated': self.is_calculated,
             'formula': self.formula,
             'role': self.role,
+            'aggregation': self.aggregation,
+            'isHidden': self.is_hidden,
+            'folderName': self.folder_name,
             'usageCount': len(self.views) if self.views else 0
         }
 
 
 class Datasource(Base):
-    """数据源"""
+    """数据源（增强版）"""
     __tablename__ = 'datasources'
     
     id = Column(String(255), primary_key=True)
+    luid = Column(String(255))  # REST API 标识符
     name = Column(String(255), nullable=False)
+    description = Column(Text)  # 描述
+    uri = Column(String(500))  # 数据源 URI
     project_name = Column(String(255))
     owner = Column(String(255))
+    owner_id = Column(String(255))  # 所有者ID
     has_extract = Column(Boolean, default=False)
     extract_last_refresh_time = Column(DateTime)
+    extract_last_incremental_update_time = Column(DateTime)  # 增量更新时间
+    extract_last_update_time = Column(DateTime)  # 最后更新时间
     is_certified = Column(Boolean, default=False)
     certification_note = Column(Text)
+    certifier_display_name = Column(String(255))  # 认证者名称
+    contains_unsupported_custom_sql = Column(Boolean, default=False)  # 不支持的SQL
+    has_active_warning = Column(Boolean, default=False)  # 活动警告
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
     
     # 关系
     tables = relationship('DBTable', secondary=table_to_datasource, back_populates='datasources')
@@ -160,25 +284,42 @@ class Datasource(Base):
     def to_dict(self):
         return {
             'id': self.id,
+            'luid': self.luid,
             'name': self.name,
+            'description': self.description,
+            'uri': self.uri,
             'projectName': self.project_name,
             'owner': self.owner,
             'hasExtract': self.has_extract,
             'lastRefresh': self.extract_last_refresh_time.isoformat() if self.extract_last_refresh_time else None,
+            'lastIncrementalUpdate': self.extract_last_incremental_update_time.isoformat() if self.extract_last_incremental_update_time else None,
             'isCertified': self.is_certified,
             'certificationNote': self.certification_note,
-            'tableCount': len(self.tables) if self.tables else 0
+            'certifierDisplayName': self.certifier_display_name,
+            'containsUnsupportedCustomSql': self.contains_unsupported_custom_sql,
+            'hasActiveWarning': self.has_active_warning,
+            'tableCount': len(self.tables) if self.tables else 0,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }
 
 
 class Workbook(Base):
-    """工作簿"""
+    """工作簿（增强版）"""
     __tablename__ = 'workbooks'
     
     id = Column(String(255), primary_key=True)
+    luid = Column(String(255))  # REST API 标识符
     name = Column(String(255), nullable=False)
+    description = Column(Text)  # 描述
+    uri = Column(String(500))  # 工作簿 URI
     project_name = Column(String(255))
     owner = Column(String(255))
+    owner_id = Column(String(255))  # 所有者ID
+    contains_unsupported_custom_sql = Column(Boolean, default=False)  # 不支持的SQL
+    has_active_warning = Column(Boolean, default=False)  # 活动警告
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
     
     # 关系
     views = relationship('View', back_populates='workbook')
@@ -188,21 +329,35 @@ class Workbook(Base):
     def to_dict(self):
         return {
             'id': self.id,
+            'luid': self.luid,
             'name': self.name,
+            'description': self.description,
+            'uri': self.uri,
             'projectName': self.project_name,
             'owner': self.owner,
+            'containsUnsupportedCustomSql': self.contains_unsupported_custom_sql,
+            'hasActiveWarning': self.has_active_warning,
             'viewCount': len(self.views) if self.views else 0,
-            'datasourceCount': len(self.datasources) if self.datasources else 0
+            'datasourceCount': len(self.datasources) if self.datasources else 0,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }
 
 
 class View(Base):
-    """视图/仪表板"""
+    """视图/仪表板（增强版）"""
     __tablename__ = 'views'
     
     id = Column(String(255), primary_key=True)
+    luid = Column(String(255))  # REST API 标识符
+    document_view_id = Column(String(255))  # 工作簿内唯一ID
     name = Column(String(255), nullable=False)
+    path = Column(String(500))  # 服务器路径
+    view_type = Column(String(50))  # 视图类型 (sheet/dashboard)
+    index = Column(Integer)  # 在工作簿中的顺序
     workbook_id = Column(String(255), ForeignKey('workbooks.id'))
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
     
     # 关系
     workbook = relationship('Workbook', back_populates='views')
@@ -211,9 +366,16 @@ class View(Base):
     def to_dict(self):
         return {
             'id': self.id,
+            'luid': self.luid,
+            'documentViewId': self.document_view_id,
             'name': self.name,
+            'path': self.path,
+            'viewType': self.view_type,
+            'index': self.index,
             'workbookId': self.workbook_id,
-            'workbookName': self.workbook.name if self.workbook else None
+            'workbookName': self.workbook.name if self.workbook else None,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }
 
 

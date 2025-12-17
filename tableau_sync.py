@@ -16,7 +16,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from app.config import Config
 from app.models import (
     get_engine, get_session,
-    Database, DBTable, Field, Datasource, Workbook, View,
+    Database, DBTable, DBColumn, Field, Datasource, Workbook, View,
+    TableauUser, Project,
     table_to_datasource, datasource_to_workbook, field_to_view, CalculatedField, SyncLog
 )
 
@@ -103,7 +104,34 @@ class TableauMetadataClient:
             raise RuntimeError(f"GraphQL 查询失败: {response.status_code} - {response.text}")
     
     def fetch_databases(self) -> List[Dict]:
-        """获取所有数据库"""
+        """获取所有数据库（增强版）"""
+        query = """
+        {
+            databaseServers {
+                id
+                luid
+                name
+                connectionType
+                hostName
+                port
+                service
+                description
+                isCertified
+                certificationNote
+            }
+        }
+        """
+        result = self.execute_query(query)
+        # 兼容处理：先尝试 databaseServers，失败则回退到 databases
+        data = result.get("data", {})
+        servers = data.get("databaseServers")
+        if servers is not None:
+            return servers
+        # 回退到旧查询
+        return self._fetch_databases_fallback()
+    
+    def _fetch_databases_fallback(self) -> List[Dict]:
+        """回退：使用旧版查询获取数据库"""
         query = """
         {
             databases {
@@ -117,7 +145,48 @@ class TableauMetadataClient:
         return result.get("data", {}).get("databases", [])
     
     def fetch_tables(self) -> List[Dict]:
-        """获取所有数据表"""
+        """获取所有数据表（增强版）"""
+        query = """
+        {
+            databaseTables {
+                id
+                luid
+                name
+                schema
+                fullName
+                tableType
+                description
+                isEmbedded
+                isCertified
+                certificationNote
+                projectName
+                database {
+                    id
+                    name
+                    connectionType
+                }
+                columns {
+                    id
+                    name
+                    remoteType
+                    description
+                    isNullable
+                }
+            }
+        }
+        """
+        result = self.execute_query(query)
+        
+        # 检查是否有错误（某些字段可能不被支持）
+        if "errors" in result:
+            print(f"  ⚠️ GraphQL 警告: {result['errors']}")
+            # 尝试简化查询
+            return self._fetch_tables_fallback()
+        
+        return result.get("data", {}).get("databaseTables", [])
+    
+    def _fetch_tables_fallback(self) -> List[Dict]:
+        """回退：使用简化查询获取表"""
         query = """
         {
             databaseTables {
@@ -125,6 +194,7 @@ class TableauMetadataClient:
                 name
                 schema
                 fullName
+                isEmbedded
                 database {
                     id
                     name
@@ -137,7 +207,50 @@ class TableauMetadataClient:
         return result.get("data", {}).get("databaseTables", [])
     
     def fetch_datasources(self) -> List[Dict]:
-        """获取所有已发布数据源"""
+        """获取所有已发布数据源（增强版）"""
+        query = """
+        {
+            publishedDatasources {
+                id
+                luid
+                name
+                description
+                uri
+                projectName
+                hasExtracts
+                extractLastRefreshTime
+                extractLastIncrementalUpdateTime
+                extractLastUpdateTime
+                isCertified
+                certificationNote
+                certifierDisplayName
+                containsUnsupportedCustomSql
+                hasActiveWarning
+                createdAt
+                updatedAt
+                owner {
+                    id
+                    username
+                    name
+                }
+                upstreamTables {
+                    id
+                    name
+                }
+            }
+        }
+        """
+        result = self.execute_query(query)
+        
+        # 检查错误并回退
+        if "errors" in result:
+            print(f"  ⚠️ GraphQL 警告: {result['errors']}")
+            return self._fetch_datasources_fallback()
+        
+        return result.get("data", {}).get("publishedDatasources", [])
+    
+    def _fetch_datasources_fallback(self) -> List[Dict]:
+        """回退：使用简化查询获取数据源"""
         query = """
         {
             publishedDatasources {
@@ -146,6 +259,7 @@ class TableauMetadataClient:
                 projectName
                 hasExtracts
                 extractLastRefreshTime
+                isCertified
                 owner {
                     username
                 }
@@ -160,7 +274,61 @@ class TableauMetadataClient:
         return result.get("data", {}).get("publishedDatasources", [])
     
     def fetch_workbooks(self) -> List[Dict]:
-        """获取所有工作簿"""
+        """获取所有工作簿（增强版）"""
+        query = """
+        {
+            workbooks {
+                id
+                luid
+                name
+                description
+                uri
+                projectName
+                createdAt
+                updatedAt
+                containsUnsupportedCustomSql
+                hasActiveWarning
+                owner {
+                    id
+                    username
+                    name
+                }
+                upstreamDatasources {
+                    id
+                    name
+                }
+                sheets {
+                    id
+                    luid
+                    name
+                    path
+                    index
+                    createdAt
+                    updatedAt
+                }
+                dashboards {
+                    id
+                    luid
+                    name
+                    path
+                    index
+                    createdAt
+                    updatedAt
+                }
+            }
+        }
+        """
+        result = self.execute_query(query)
+        
+        # 检查错误并回退
+        if "errors" in result:
+            print(f"  ⚠️ GraphQL 警告: {result['errors']}")
+            return self._fetch_workbooks_fallback()
+        
+        return result.get("data", {}).get("workbooks", [])
+    
+    def _fetch_workbooks_fallback(self) -> List[Dict]:
+        """回退：使用简化查询获取工作簿"""
         query = """
         {
             workbooks {
@@ -406,6 +574,140 @@ class TableauMetadataClient:
         return view_fields
 
 
+    def fetch_users(self) -> List[Dict]:
+        """获取所有 Tableau 用户"""
+        query = """
+        {
+            tableauUsers {
+                id
+                luid
+                name
+                username
+                email
+                domain
+                siteRole
+            }
+        }
+        """
+        result = self.execute_query(query)
+        
+        # 检查错误
+        if "errors" in result:
+            print(f"  ⚠️ GraphQL 警告 (users): {result['errors']}")
+            # 尝试简化查询
+            return self._fetch_users_fallback()
+        
+        return result.get("data", {}).get("tableauUsers", [])
+    
+    def _fetch_users_fallback(self) -> List[Dict]:
+        """回退：通过 owner 关系收集用户"""
+        users_dict = {}
+        
+        # 从数据源收集用户
+        ds_query = """
+        {
+            publishedDatasources {
+                owner {
+                    id
+                    username
+                    name
+                }
+            }
+        }
+        """
+        ds_result = self.execute_query(ds_query)
+        if "data" in ds_result and ds_result["data"]:
+            for ds in (ds_result["data"].get("publishedDatasources") or []):
+                if ds and ds.get("owner"):
+                    owner = ds["owner"]
+                    if owner.get("id"):
+                        users_dict[owner["id"]] = {
+                            "id": owner.get("id"),
+                            "name": owner.get("name"),
+                            "username": owner.get("username")
+                        }
+        
+        # 从工作簿收集用户
+        wb_query = """
+        {
+            workbooks {
+                owner {
+                    id
+                    username
+                    name
+                }
+            }
+        }
+        """
+        wb_result = self.execute_query(wb_query)
+        if "data" in wb_result and wb_result["data"]:
+            for wb in (wb_result["data"].get("workbooks") or []):
+                if wb and wb.get("owner"):
+                    owner = wb["owner"]
+                    if owner.get("id"):
+                        users_dict[owner["id"]] = {
+                            "id": owner.get("id"),
+                            "name": owner.get("name"),
+                            "username": owner.get("username")
+                        }
+        
+        return list(users_dict.values())
+    
+    def fetch_projects(self) -> List[Dict]:
+        """获取所有 Tableau 项目"""
+        # 通过数据源和工作簿的 projectName 收集项目信息
+        # 注意：Tableau Metadata API 没有直接的 projects 查询，需要间接收集
+        projects_dict = {}
+        
+        # 从数据源收集项目
+        ds_query = """
+        {
+            publishedDatasources {
+                projectName
+                projectVizportalUrlId
+            }
+        }
+        """
+        ds_result = self.execute_query(ds_query)
+        if "data" in ds_result and ds_result["data"]:
+            for ds in (ds_result["data"].get("publishedDatasources") or []):
+                if ds and ds.get("projectName"):
+                    project_name = ds["projectName"]
+                    if project_name and project_name not in projects_dict:
+                        projects_dict[project_name] = {
+                            "name": project_name,
+                            "vizportalUrlId": ds.get("projectVizportalUrlId")
+                        }
+        
+        # 从工作簿收集项目
+        wb_query = """
+        {
+            workbooks {
+                projectName
+                projectVizportalUrlId
+            }
+        }
+        """
+        wb_result = self.execute_query(wb_query)
+        if "data" in wb_result and wb_result["data"]:
+            for wb in (wb_result["data"].get("workbooks") or []):
+                if wb and wb.get("projectName"):
+                    project_name = wb["projectName"]
+                    if project_name and project_name not in projects_dict:
+                        projects_dict[project_name] = {
+                            "name": project_name,
+                            "vizportalUrlId": wb.get("projectVizportalUrlId")
+                        }
+        
+        # 生成唯一 ID
+        result = []
+        for name, proj in projects_dict.items():
+            proj["id"] = f"project_{hash(name) & 0xffffffff:08x}"
+            result.append(proj)
+        
+        return result
+
+
 class MetadataSync:
     """元数据同步管理器"""
     
@@ -437,7 +739,7 @@ class MetadataSync:
             self.session.commit()
     
     def sync_databases(self) -> int:
-        """同步数据库"""
+        """同步数据库（增强版）"""
         print("\n📦 同步数据库...")
         self._start_sync_log("databases")
         
@@ -452,7 +754,14 @@ class MetadataSync:
                     self.session.add(db)
                 
                 db.name = db_data.get("name", "")
+                db.luid = db_data.get("luid")
                 db.connection_type = db_data.get("connectionType", "")
+                db.host_name = db_data.get("hostName")
+                db.port = db_data.get("port")
+                db.service = db_data.get("service")
+                db.description = db_data.get("description")
+                db.is_certified = db_data.get("isCertified", False)
+                db.certification_note = db_data.get("certificationNote")
                 db.updated_at = datetime.now()
                 count += 1
             
@@ -468,13 +777,14 @@ class MetadataSync:
             return 0
     
     def sync_tables(self) -> int:
-        """同步数据表"""
+        """同步数据表（增强版）"""
         print("\n📋 同步数据表...")
         self._start_sync_log("tables")
         
         try:
             tables = self.client.fetch_tables()
-            count = 0
+            table_count = 0
+            column_count = 0
             
             for t_data in tables:
                 table = self.session.query(DBTable).filter_by(id=t_data["id"]).first()
@@ -483,8 +793,15 @@ class MetadataSync:
                     self.session.add(table)
                 
                 table.name = t_data.get("name", "")
+                table.luid = t_data.get("luid")
                 table.schema = t_data.get("schema", "")
                 table.full_name = t_data.get("fullName", "")
+                table.table_type = t_data.get("tableType")
+                table.description = t_data.get("description")
+                table.is_embedded = t_data.get("isEmbedded", False)
+                table.is_certified = t_data.get("isCertified", False)
+                table.certification_note = t_data.get("certificationNote")
+                table.project_name = t_data.get("projectName")
                 
                 # 关联数据库
                 db_info = t_data.get("database", {})
@@ -492,12 +809,30 @@ class MetadataSync:
                     table.database_id = db_info.get("id")
                     table.connection_type = db_info.get("connectionType", "")
                 
-                count += 1
+                table_count += 1
+                
+                # 同步列信息
+                columns = t_data.get("columns", [])
+                for col_data in columns:
+                    if not col_data or not col_data.get("id"):
+                        continue
+                    
+                    col = self.session.query(DBColumn).filter_by(id=col_data["id"]).first()
+                    if not col:
+                        col = DBColumn(id=col_data["id"])
+                        self.session.add(col)
+                    
+                    col.name = col_data.get("name", "")
+                    col.remote_type = col_data.get("remoteType")
+                    col.description = col_data.get("description")
+                    col.is_nullable = col_data.get("isNullable")
+                    col.table_id = t_data["id"]
+                    column_count += 1
             
             self.session.commit()
-            self._complete_sync_log(count)
-            print(f"  ✅ 同步 {count} 个数据表")
-            return count
+            self._complete_sync_log(table_count)
+            print(f"  ✅ 同步 {table_count} 个数据表, {column_count} 个列")
+            return table_count
             
         except Exception as e:
             self.session.rollback()
@@ -506,7 +841,7 @@ class MetadataSync:
             return 0
     
     def sync_datasources(self) -> int:
-        """同步数据源"""
+        """同步数据源（增强版）"""
         print("\n🔗 同步数据源...")
         self._start_sync_log("datasources")
         
@@ -521,28 +856,46 @@ class MetadataSync:
                     self.session.add(ds)
                 
                 ds.name = ds_data.get("name", "")
+                ds.luid = ds_data.get("luid")
+                ds.description = ds_data.get("description")
+                ds.uri = ds_data.get("uri")
                 ds.project_name = ds_data.get("projectName", "")
                 ds.has_extract = ds_data.get("hasExtracts", False)
+                ds.is_certified = ds_data.get("isCertified", False)
+                ds.certification_note = ds_data.get("certificationNote")
+                ds.certifier_display_name = ds_data.get("certifierDisplayName")
+                ds.contains_unsupported_custom_sql = ds_data.get("containsUnsupportedCustomSql", False)
+                ds.has_active_warning = ds_data.get("hasActiveWarning", False)
                 
                 owner = ds_data.get("owner", {})
                 if owner:
                     ds.owner = owner.get("username", "")
+                    ds.owner_id = owner.get("id")
                 
-                # 解析刷新时间
-                refresh_time = ds_data.get("extractLastRefreshTime")
-                if refresh_time:
-                    try:
-                        ds.extract_last_refresh_time = datetime.fromisoformat(
-                            refresh_time.replace("Z", "+00:00")
-                        )
-                    except:
-                        pass
+                # 解析时间字段
+                for time_field, attr_name in [
+                    ("extractLastRefreshTime", "extract_last_refresh_time"),
+                    ("extractLastIncrementalUpdateTime", "extract_last_incremental_update_time"),
+                    ("extractLastUpdateTime", "extract_last_update_time"),
+                    ("createdAt", "created_at"),
+                    ("updatedAt", "updated_at")
+                ]:
+                    time_val = ds_data.get(time_field)
+                    if time_val:
+                        try:
+                            setattr(ds, attr_name, datetime.fromisoformat(
+                                time_val.replace("Z", "+00:00")
+                            ))
+                        except:
+                            pass
                 
                 count += 1
                 
                 # 同步表到数据源的关系
                 upstream_tables = ds_data.get("upstreamTables", [])
                 for tbl in upstream_tables:
+                    if not tbl or not tbl.get("id"):
+                        continue
                     rel = self.session.execute(
                         select(table_to_datasource).where(
                             table_to_datasource.c.table_id == tbl["id"],
@@ -550,13 +903,16 @@ class MetadataSync:
                         )
                     ).first()
                     if not rel:
-                        self.session.execute(
-                            table_to_datasource.insert().values(
-                                table_id=tbl["id"],
-                                datasource_id=ds_data["id"],
-                                relationship_type="upstream"
+                        try:
+                            self.session.execute(
+                                table_to_datasource.insert().values(
+                                    table_id=tbl["id"],
+                                    datasource_id=ds_data["id"],
+                                    relationship_type="upstream"
+                                )
                             )
-                        )
+                        except:
+                            pass
             
             self.session.commit()
             self._complete_sync_log(count)
@@ -570,7 +926,7 @@ class MetadataSync:
             return 0
     
     def sync_workbooks(self) -> int:
-        """同步工作簿和视图"""
+        """同步工作簿和视图（增强版）"""
         print("\n📊 同步工作簿...")
         self._start_sync_log("workbooks")
         
@@ -586,17 +942,36 @@ class MetadataSync:
                     self.session.add(wb)
                 
                 wb.name = wb_data.get("name", "")
+                wb.luid = wb_data.get("luid")
+                wb.description = wb_data.get("description")
+                wb.uri = wb_data.get("uri")
                 wb.project_name = wb_data.get("projectName", "")
+                wb.contains_unsupported_custom_sql = wb_data.get("containsUnsupportedCustomSql", False)
+                wb.has_active_warning = wb_data.get("hasActiveWarning", False)
                 
                 owner = wb_data.get("owner", {})
                 if owner:
                     wb.owner = owner.get("username", "")
+                    wb.owner_id = owner.get("id")
+                
+                # 解析时间字段
+                for time_field, attr_name in [("createdAt", "created_at"), ("updatedAt", "updated_at")]:
+                    time_val = wb_data.get(time_field)
+                    if time_val:
+                        try:
+                            setattr(wb, attr_name, datetime.fromisoformat(
+                                time_val.replace("Z", "+00:00")
+                            ))
+                        except:
+                            pass
                 
                 wb_count += 1
                 
                 # 同步数据源到工作簿的关系
                 upstream_ds = wb_data.get("upstreamDatasources", [])
                 for ds in upstream_ds:
+                    if not ds or not ds.get("id"):
+                        continue
                     rel = self.session.execute(
                         select(datasource_to_workbook).where(
                             datasource_to_workbook.c.datasource_id == ds["id"],
@@ -604,23 +979,73 @@ class MetadataSync:
                         )
                     ).first()
                     if not rel:
-                        self.session.execute(
-                            datasource_to_workbook.insert().values(
-                                datasource_id=ds["id"],
-                                workbook_id=wb_data["id"]
+                        try:
+                            self.session.execute(
+                                datasource_to_workbook.insert().values(
+                                    datasource_id=ds["id"],
+                                    workbook_id=wb_data["id"]
+                                )
                             )
-                        )
+                        except:
+                            pass
                 
-                # 同步视图 (sheets)
-                sheets = wb_data.get("sheets", [])
-                for sheet in sheets:
+                # 同步视图 (sheets + dashboards)
+                all_views = wb_data.get("sheets", []) + wb_data.get("dashboards", [])
+                for idx, sheet in enumerate(wb_data.get("sheets", [])):
+                    if not sheet or not sheet.get("id"):
+                        continue
                     view = self.session.query(View).filter_by(id=sheet["id"]).first()
                     if not view:
                         view = View(id=sheet["id"])
                         self.session.add(view)
                     
                     view.name = sheet.get("name", "")
+                    view.luid = sheet.get("luid")
+                    view.path = sheet.get("path")
+                    view.index = sheet.get("index", idx)
+                    view.view_type = "sheet"
                     view.workbook_id = wb_data["id"]
+                    
+                    # 解析时间
+                    for time_field, attr_name in [("createdAt", "created_at"), ("updatedAt", "updated_at")]:
+                        time_val = sheet.get(time_field)
+                        if time_val:
+                            try:
+                                setattr(view, attr_name, datetime.fromisoformat(
+                                    time_val.replace("Z", "+00:00")
+                                ))
+                            except:
+                                pass
+                    
+                    view_count += 1
+                
+                # 同步仪表板 (dashboards)
+                for idx, dashboard in enumerate(wb_data.get("dashboards", [])):
+                    if not dashboard or not dashboard.get("id"):
+                        continue
+                    view = self.session.query(View).filter_by(id=dashboard["id"]).first()
+                    if not view:
+                        view = View(id=dashboard["id"])
+                        self.session.add(view)
+                    
+                    view.name = dashboard.get("name", "")
+                    view.luid = dashboard.get("luid")
+                    view.path = dashboard.get("path")
+                    view.index = dashboard.get("index", idx)
+                    view.view_type = "dashboard"
+                    view.workbook_id = wb_data["id"]
+                    
+                    # 解析时间
+                    for time_field, attr_name in [("createdAt", "created_at"), ("updatedAt", "updated_at")]:
+                        time_val = dashboard.get(time_field)
+                        if time_val:
+                            try:
+                                setattr(view, attr_name, datetime.fromisoformat(
+                                    time_val.replace("Z", "+00:00")
+                                ))
+                            except:
+                                pass
+                    
                     view_count += 1
             
             self.session.commit()
@@ -632,6 +1057,9 @@ class MetadataSync:
             self.session.rollback()
             self._complete_sync_log(0, str(e))
             print(f"  ❌ 同步失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return 0
             return 0
     
     def sync_fields(self) -> int:
@@ -804,6 +1232,82 @@ class MetadataSync:
             traceback.print_exc()
             return 0
     
+    def sync_users(self) -> int:
+        """同步 Tableau 用户"""
+        print("\n👥 同步用户...")
+        self._start_sync_log("users")
+        
+        try:
+            users = self.client.fetch_users()
+            count = 0
+            
+            for u_data in users:
+                if not u_data or not u_data.get("id"):
+                    continue
+                    
+                user = self.session.query(TableauUser).filter_by(id=u_data["id"]).first()
+                if not user:
+                    user = TableauUser(id=u_data["id"])
+                    self.session.add(user)
+                
+                user.luid = u_data.get("luid")
+                user.name = u_data.get("username") or u_data.get("name") or ""
+                user.display_name = u_data.get("name")
+                user.email = u_data.get("email")
+                user.domain = u_data.get("domain")
+                user.site_role = u_data.get("siteRole")
+                count += 1
+            
+            self.session.commit()
+            self._complete_sync_log(count)
+            print(f"  ✅ 同步 {count} 个用户")
+            return count
+            
+        except Exception as e:
+            self.session.rollback()
+            self._complete_sync_log(0, str(e))
+            print(f"  ❌ 同步失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return 0
+    
+    def sync_projects(self) -> int:
+        """同步 Tableau 项目"""
+        print("\n📁 同步项目...")
+        self._start_sync_log("projects")
+        
+        try:
+            projects = self.client.fetch_projects()
+            count = 0
+            
+            for p_data in projects:
+                if not p_data or not p_data.get("name"):
+                    continue
+                
+                project_id = p_data.get("id")
+                
+                project = self.session.query(Project).filter_by(id=project_id).first()
+                if not project:
+                    project = Project(id=project_id)
+                    self.session.add(project)
+                
+                project.name = p_data.get("name") or ""
+                project.vizportal_url_id = p_data.get("vizportalUrlId")
+                count += 1
+            
+            self.session.commit()
+            self._complete_sync_log(count)
+            print(f"  ✅ 同步 {count} 个项目")
+            return count
+            
+        except Exception as e:
+            self.session.rollback()
+            self._complete_sync_log(0, str(e))
+            print(f"  ❌ 同步失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return 0
+    
     def sync_all(self):
         """全量同步所有实体"""
         print("=" * 60)
@@ -813,19 +1317,23 @@ class MetadataSync:
         start_time = datetime.now()
         
         # 按依赖顺序同步
+        user_count = self.sync_users()  # 先同步用户
+        project_count = self.sync_projects()  # 同步项目
         db_count = self.sync_databases()
         table_count = self.sync_tables()
         ds_count = self.sync_datasources()
         wb_count = self.sync_workbooks()
         field_count = self.sync_fields()
         calc_count = self.sync_calculated_fields()
-        ftv_count = self.sync_field_to_view()  # 新增: 同步字段→视图关联
+        ftv_count = self.sync_field_to_view()
         
         duration = (datetime.now() - start_time).total_seconds()
         
         print("\n" + "=" * 60)
         print("📈 同步完成统计")
         print("=" * 60)
+        print(f"  用户:   {user_count}")
+        print(f"  项目:   {project_count}")
         print(f"  数据库: {db_count}")
         print(f"  数据表: {table_count}")
         print(f"  数据源: {ds_count}")
