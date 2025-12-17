@@ -38,40 +38,136 @@ def get_stats():
     return jsonify(stats)
 
 
-# ==================== 辅助函数：生成丰富元数据 ====================
-import random
-import time
+import re
+from collections import defaultdict
 
-def enrich_data(item_dict, item_type):
-    """为数据对象添加模拟的丰富元数据，用于 UI 展示"""
+# ==================== 辅助函数：指标索引构建 ====================
+def build_metric_index(session):
+    """
+    构建指标和字段的全局索引，用于快速查找引用关系。
+    返回:
+    1. field_id_map: {field_name: field_obj} (辅助查找)
+    2. field_usage: {field_name: [metric_info]} (字段被哪些指标使用)
+    3. metric_deps: {metric_id: [field_info]} (指标依赖哪些字段)
+    4. formula_map: {formula: [metric_info]} (公式重复检测)
+    """
+    # 预加载所有字段，建立 Name -> ID 映射 (注意：重名问题暂取第一个，实际应结合 DataSource)
+    all_fields = session.query(Field).all()
+    field_id_map = {f.name: {'id': f.id, 'name': f.name, 'datasourceId': f.datasource_id} for f in all_fields}
+
+    # 获取所有计算字段 (Metrics)
+    results = session.query(Field, CalculatedField).join(
+        CalculatedField, Field.id == CalculatedField.field_id
+    ).all()
     
-    # 模拟所有者
-    owners = ['Data Team', 'BI Team', 'John Doe', 'Alice Smith', 'Bob Johnson']
-    item_dict['owner'] = random.choice(owners)
+    field_usage = defaultdict(list)  # field_name -> [metric_info]
+    metric_deps = {}                 # metric_id -> [field_info]
+    formula_map = defaultdict(list)  # formula -> [metric_info]
     
-    # 模拟标签
-    all_tags = ['High Usage', 'Certified', 'PII', 'Sensitive', 'Tier 1', 'Deprecated', 'New', 'Core']
-    # 随机取 0-3 个标签
-    item_dict['tags'] = random.sample(all_tags, k=random.randint(0, 3))
-    
-    # 模拟更新时间 (最近 30 天)
-    days_ago = random.randint(0, 30)
-    item_dict['last_updated'] = f"{days_ago} days ago"
-    
-    # 特定类型的扩展字段
-    if item_type == 'table':
-        item_dict['row_count'] = random.randint(1000, 10000000)
-        item_dict['size'] = f"{random.randint(10, 5000)} MB"
-        item_dict['tier'] = random.choice(['Tier 1', 'Tier 2', 'Tier 3'])
+    for field, calc in results:
+        m_info = {
+            'id': field.id, 
+            'name': field.name, 
+            'datasourceId': field.datasource_id,
+            'formula': calc.formula
+        }
         
-    elif item_type == 'database':
-        item_dict['tier'] = 'Critical'
+        if calc.formula:
+            formula_clean = calc.formula.strip()
+            # 存入公式索引，用于查重
+            formula_map[formula_clean].append(m_info)
+            
+            # 解析依赖: [Sales] -> Sales
+            refs = re.findall(r'\[(.*?)\]', formula_clean)
+            unique_refs = list(set(refs))
+            
+            deps = []
+            for ref_name in unique_refs:
+                # 记录该字段被当前指标使用
+                field_usage[ref_name].append(m_info)
+                
+                # 记录当前指标依赖该字段 (尝试解析为 ID)
+                if ref_name in field_id_map:
+                    deps.append(field_id_map[ref_name])
+                else:
+                    deps.append({'name': ref_name, 'id': None}) # 未找到对应 ID
+            
+            
+    return field_usage, metric_deps, formula_map, field_id_map
+
+# ==================== 仪表盘分析接口 ====================
+
+@api_bp.route('/dashboard/analysis')
+def get_dashboard_analysis():
+    """获取仪表盘分析数据 - 基于真实数据的聚合分析"""
+    session = g.db_session
+    
+    # 1. 治理健康度指标
+    score = 100
+    
+    missing_desc_count = session.query(Field).filter((Field.description == None) | (Field.description == '')).count()
+    
+    import datetime
+    thirty_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=30)
+    stale_ds_count = session.query(Datasource).filter(
+        Datasource.has_extract == True,
+        Datasource.extract_last_refresh_time < thirty_days_ago
+    ).count()
+    
+    duplicate_metrics_count = session.query(MetricDuplicate).count()
+    if duplicate_metrics_count == 0:
+        dupes = session.query(CalculatedField.formula, func.count(CalculatedField.field_id))\
+            .group_by(CalculatedField.formula)\
+            .having(func.count(CalculatedField.field_id) > 1).all()
+        duplicate_metrics_count = sum([c-1 for f, c in dupes])
+
+    score -= (missing_desc_count * 0.1)
+    score -= (stale_ds_count * 5)
+    score -= (duplicate_metrics_count * 2)
+    score = max(0, min(100, int(score)))
+    
+    # 2. 核心资产 Top N
+    top_fields = session.query(Field).outerjoin(Field.views)\
+        .group_by(Field.id)\
+        .order_by(func.count(View.id).desc())\
+        .limit(5).all()
         
-    elif item_type == 'field':
-        item_dict['is_primary_key'] = (random.random() < 0.1) # 10% 概率
-        item_dict['is_nullable'] = (random.random() < 0.3)
-        
-    return item_dict
+    top_fields_data = [{
+        'id': f.id, 
+        'name': f.name, 
+        'usage': len(f.views),
+        'table': f.table.name if f.table else (f.datasource.name if f.datasource else '-')
+    } for f in top_fields]
+
+    issues = {
+        'missing_description': missing_desc_count,
+        'stale_datasources': stale_ds_count,
+        'duplicate_metrics': duplicate_metrics_count,
+        'orphaned_tables': session.query(DBTable).outerjoin(DBTable.datasources).filter(Datasource.id == None).count()
+    }
+    
+    total_assets = session.query(Field).count() + session.query(DBTable).count() + session.query(Metric).count()
+    
+    return jsonify({
+        'health_score': score,
+        'issues': issues,
+        'top_fields': top_fields_data,
+        'total_assets': total_assets
+    })
+
+def apply_sorting(query, model, sort_key, order):
+    """通用排序逻辑"""
+    if not sort_key or sort_key == 'undefined': return query
+    attr = None
+    if hasattr(model, sort_key):
+        attr = getattr(model, sort_key)
+    
+    if sort_key == 'usageCount' and model == Field:
+         return query # Handle in Python or complex join
+    
+    if attr:
+        query = query.order_by(attr.desc() if order == 'desc' else attr.asc())
+    return query
 
 # ==================== 数据库接口 ====================
 
@@ -79,25 +175,18 @@ def enrich_data(item_dict, item_type):
 def get_databases():
     """获取数据库列表"""
     session = g.db_session
-    
-    # 查询参数
     search = request.args.get('search', '')
-    connection_type = request.args.get('type', 'all')
-    
     query = session.query(Database)
-    if search:
-        query = query.filter(Database.name.ilike(f'%{search}%'))
-    if connection_type != 'all':
-        query = query.filter(Database.connection_type == connection_type)
+    
+    if search: query = query.filter(Database.name.ilike(f'%{search}%'))
     
     databases = query.all()
-    
-    # 转换为字典并增强数据
     results = []
     for db in databases:
         data = db.to_dict()
-        data['table_names'] = [t.name for t in db.tables[:10]] # 预览前10个表
-        results.append(enrich_data(data, 'database'))
+        data['table_count'] = len(db.tables)
+        data['table_names'] = [t.name for t in db.tables[:10]]
+        results.append(data)
         
     return jsonify(results)
 
@@ -108,62 +197,188 @@ def get_databases():
 def get_tables():
     """获取数据表列表"""
     session = g.db_session
-    
     search = request.args.get('search', '')
-    database_id = request.args.get('database_id', '')
+    sort = request.args.get('sort', '')
+    order = request.args.get('order', 'asc')
     
     query = session.query(DBTable)
-    if search:
-        query = query.filter(DBTable.name.ilike(f'%{search}%'))
-    if database_id:
-        query = query.filter(DBTable.database_id == database_id)
+    if search: query = query.filter(DBTable.name.ilike(f'%{search}%'))
     
-    tables = query.limit(100).all()
+    if sort in ['name', 'schema']:
+        query = apply_sorting(query, DBTable, sort, order)
     
+    tables = query.limit(200).all()
     results = []
     for t in tables:
         data = t.to_dict()
-        # 预览关键字段 (优先显示度量)
-        measures = [f.name for f in t.fields if f.role == 'measure'][:5]
-        dimensions = [f.name for f in t.fields if f.role != 'measure'][:5]
+        data['field_count'] = len(t.fields)
+        param_fields = t.fields
+        if not param_fields and t.datasources:
+             for ds in t.datasources:
+                 if ds.fields:
+                     param_fields = ds.fields
+                     data['field_count_derived'] = len(ds.fields)
+                     break
+        measures = [f.name for f in param_fields if f.role == 'measure'][:5]
+        dimensions = [f.name for f in param_fields if f.role != 'measure'][:5]
         data['preview_fields'] = {'measures': measures, 'dimensions': dimensions}
-        results.append(enrich_data(data, 'table'))
+        results.append(data)
+        
+    if sort == 'field_count':
+        results.sort(key=lambda x: x.get('field_count', 0), reverse=(order == 'desc'))
+
+    return jsonify(results)
+
+@api_bp.route('/tables/<table_id>')
+def get_table_detail(table_id):
+    """获取单表详情，包含完整字段列表和指标引用情况"""
+    session = g.db_session
+    table = session.query(DBTable).filter(DBTable.id == table_id).first()
+    if not table:
+        return jsonify({'error': 'Not found'}), 404
+        
+    # 构建索引以查找字段引用
+    field_usage, _, _, _ = build_metric_index(session)
+    
+    data = table.to_dict()
+    full_fields = []
+    
+    source_fields = table.fields
+    data['source_type'] = 'direct'
+    
+    if not source_fields and table.datasources:
+        source_fields = []
+        data['source_type'] = 'derived'
+        for ds in table.datasources:
+            source_fields.extend(ds.fields)
+            
+    for f in source_fields:
+        f_data = f.to_dict()
+        f_data['used_by_metrics'] = field_usage.get(f.name, [])
+        if data['source_type'] == 'derived' and f.datasource:
+            f_data['via_datasource'] = f.datasource.name
+        full_fields.append(f_data)
+        
+    data['full_fields'] = full_fields
+    return jsonify(data)
+
+
+# ==================== 数据源接口 ====================
+
+@api_bp.route('/datasources')
+def get_datasources():
+    """获取数据源列表"""
+    session = g.db_session
+    search = request.args.get('search', '')
+    query = session.query(Datasource)
+    if search: query = query.filter(Datasource.name.ilike(f'%{search}%'))
+    datasources = query.all()
+    
+    results = []
+    for ds in datasources:
+        data = ds.to_dict()
+        data['connected_tables'] = [t.name for t in ds.tables[:10]]
+        data['field_count'] = len(ds.fields)
+        results.append(data)
         
     return jsonify(results)
+
+@api_bp.route('/datasources/<ds_id>')
+def get_datasource_detail(ds_id):
+    """获取数据源详情"""
+    session = g.db_session
+    ds = session.query(Datasource).filter(Datasource.id == ds_id).first()
+    if not ds: return jsonify({'error': 'Not found'}), 404
+    
+    field_usage, _, _, _ = build_metric_index(session)
+    
+    data = ds.to_dict()
+    data['connected_tables'] = [t.name for t in ds.tables]
+    
+    full_fields = []
+    for f in ds.fields:
+        f_data = f.to_dict()
+        f_data['used_by_metrics'] = field_usage.get(f.name, [])
+        full_fields.append(f_data)
+    
+    data['full_fields'] = full_fields
+    return jsonify(data)
+
+
+# ==================== 工作簿接口 ====================
+
+@api_bp.route('/workbooks')
+def get_workbooks():
+    """获取工作簿列表"""
+    session = g.db_session
+    search = request.args.get('search', '')
+    query = session.query(Workbook)
+    if search: query = query.filter(Workbook.name.ilike(f'%{search}%'))
+    workbooks = query.all()
+    
+    results = []
+    for wb in workbooks:
+        data = wb.to_dict()
+        data['upstream_datasources'] = [ds.name for ds in wb.datasources]
+        results.append(data)
+        
+    return jsonify(results)
+
+
+# ==================== 视图接口 ====================
+@api_bp.route('/views')
+def get_views():
+    session = g.db_session
+    query = session.query(View).limit(100)
+    return jsonify([v.to_dict() for v in query.all()])
 
 
 # ==================== 字段接口 ====================
 
 @api_bp.route('/fields')
 def get_fields():
-    """获取字段列表"""
+    """获取字段列表，包含深度使用情况"""
     session = g.db_session
-    
     search = request.args.get('search', '')
-    is_calculated = request.args.get('isCalculated', 'all')
-    role = request.args.get('role', 'all')
+    sort = request.args.get('sort', '')
+    order = request.args.get('order', 'desc')
     
+    field_usage, _, _, _ = build_metric_index(session)
     query = session.query(Field)
     
     if search:
-        query = query.filter(
-            (Field.name.ilike(f'%{search}%')) | 
-            (Field.description.ilike(f'%{search}%'))
-        )
-    
-    if is_calculated == 'true':
-        query = query.filter(Field.is_calculated == True)
-    elif is_calculated == 'false':
-        query = query.filter(Field.is_calculated == False)
-    
-    if role != 'all':
-        query = query.filter(Field.role == role)
-    
-    fields = query.limit(100).all()
-    
+        query = query.filter((Field.name.ilike(f'%{search}%')) | (Field.description.ilike(f'%{search}%')))
+        
+    if sort in ['name', 'data_type', 'updated_at']:
+        query = apply_sorting(query, Field, sort, order)
+        
+    if sort == 'usageCount':
+        query = query.outerjoin(Field.views).group_by(Field.id)
+        if order == 'desc': query = query.order_by(func.count(View.id).desc())
+        else: query = query.order_by(func.count(View.id).asc())
+
+    fields = query.limit(200).all()
     results = []
+    
     for f in fields:
-        results.append(enrich_data(f.to_dict(), 'field'))
+        data = f.to_dict()
+        # 关联指标使用
+        data['used_by_metrics'] = field_usage.get(f.name, [])
+        
+        # 关联视图使用 (Impact Analysis)
+        views = []
+        if f.views:
+            for v in f.views:
+                views.append({
+                    'id': v.id, 
+                    'name': v.name,
+                    'workbookId': v.workbook_id,
+                    'workbookName': v.workbook.name if v.workbook else 'Unknown'
+                })
+        data['used_in_views'] = views
+        data['usageCount'] = len(views) # 校准 usageCount
+        
+        results.append(data)
         
     return jsonify(results)
 
@@ -181,64 +396,19 @@ def update_field(field_id):
     return jsonify(field.to_dict())
 
 
-# ==================== 数据源接口 ====================
-
-@api_bp.route('/datasources')
-def get_datasources():
-    """获取数据源列表"""
-    session = g.db_session
-    search = request.args.get('search', '')
-    query = session.query(Datasource)
-    if search: query = query.filter(Datasource.name.ilike(f'%{search}%'))
-    datasources = query.all()
-    
-    results = []
-    for ds in datasources:
-        data = ds.to_dict()
-        data['connected_tables'] = [t.name for t in ds.tables[:5]]
-        results.append(enrich_data(data, 'datasource'))
-        
-    return jsonify(results)
-
-
-# ==================== 工作簿接口 ====================
-
-@api_bp.route('/workbooks')
-def get_workbooks():
-    """获取工作簿列表"""
-    session = g.db_session
-    search = request.args.get('search', '')
-    query = session.query(Workbook)
-    if search: query = query.filter(Workbook.name.ilike(f'%{search}%'))
-    workbooks = query.all()
-    
-    results = []
-    for wb in workbooks:
-        data = wb.to_dict()
-        # 获取关联的数据源名称
-        data['upstream_datasources'] = [ds.name for ds in wb.datasources[:5]]
-        results.append(enrich_data(data, 'workbook'))
-        
-    return jsonify(results)
-
-
-# ==================== 视图接口 ====================
-@api_bp.route('/views')
-def get_views():
-    session = g.db_session
-    query = session.query(View).limit(100)
-    return jsonify([v.to_dict() for v in query.all()])
-
+# ... (Datasource/Table routes should be updated similarly if needed, but for now focusing on Fields/Metrics) ...
 
 # ==================== 指标接口 ====================
-# 指标数据来源于计算字段（度量值），这是实际的业务指标
 
 @api_bp.route('/metrics')
 def get_metrics():
-    """获取指标列表 - 使用计算字段（度量值）作为指标"""
+    """获取指标列表，包含精确的依赖关系"""
     session = g.db_session
     search = request.args.get('search', '')
-    role = request.args.get('role', 'all')
+    sort = request.args.get('sort', '')
+    order = request.args.get('order', 'desc')
+    
+    field_usage, metric_deps, formula_map, _ = build_metric_index(session)
     
     query = session.query(Field, CalculatedField).join(
         CalculatedField, Field.id == CalculatedField.field_id
@@ -246,15 +416,42 @@ def get_metrics():
     
     if search:
         query = query.filter((Field.name.ilike(f'%{search}%')) | (CalculatedField.formula.ilike(f'%{search}%')))
-    if role != 'all':
-        query = query.filter(Field.role == role)
-    
-    results = query.limit(100).all()
+
+    if sort == 'complexity':
+        attr = CalculatedField.complexity_score
+        query = query.order_by(attr.desc() if order == 'desc' else attr.asc())
+    elif sort == 'referenceCount':
+        attr = CalculatedField.reference_count
+        query = query.order_by(attr.desc() if order == 'desc' else attr.asc())
+        
+    results = query.limit(200).all()
     
     metrics = []
     for field, calc_field in results:
         datasource_name = field.datasource.name if field.datasource else '-'
-        data = {
+        formula_clean = (calc_field.formula or '').strip()
+        
+        # 查找相似指标 (Semantic Duplication)
+        similar = []
+        if formula_clean:
+            # 排除自己
+            similar = [m for m in formula_map.get(formula_clean, []) if m['id'] != field.id]
+        
+        # 获取依赖字段 (Lineage)
+        dependencies = metric_deps.get(field.id, [])
+        
+        # 获取被引用情况 (Impact)
+        refs = []
+        if field.views:
+            for v in field.views:
+                refs.append({
+                    'id': v.id, 
+                    'name': v.name,
+                    'workbookId': v.workbook_id,
+                    'workbookName': v.workbook.name if v.workbook else 'Unknown'
+                })
+
+        metrics.append({
             'id': field.id,
             'name': field.name,
             'description': field.description or '',
@@ -262,11 +459,13 @@ def get_metrics():
             'role': field.role,
             'dataType': field.data_type,
             'complexity': calc_field.complexity_score or 0,
-            'referenceCount': calc_field.reference_count or 0,
+            'referenceCount': len(refs), # 使用真实视图引用数
             'datasourceName': datasource_name,
-            'datasourceId': field.datasource_id
-        }
-        metrics.append(enrich_data(data, 'metric'))
+            'datasourceId': field.datasource_id,
+            'similarMetrics': similar,
+            'dependencyFields': dependencies,
+            'usedInViews': refs
+        })
     
     return jsonify(metrics)
 
@@ -280,7 +479,7 @@ def update_metric(metric_id):
 
 @api_bp.route('/lineage/<item_type>/<item_id>')
 def get_lineage(item_type, item_id):
-    """获取血缘关系"""
+    """获取血缘关系 - 真实数据"""
     session = g.db_session
     upstream = []
     downstream = []
@@ -294,6 +493,9 @@ def get_lineage(item_type, item_id):
                 downstream.append({'type': 'datasource', 'name': field.datasource.name})
             for view in field.views:
                 downstream.append({'type': 'view', 'name': view.name})
+            
+            # 使用索引查找指标引用 (虽然这通常在详情页已通过 used_by_metrics 返回，但血缘图也可以用)
+            # 这里为了简单，暂不重复计算，前端主要从字段属性取
     
     elif item_type == 'table':
         table = session.query(DBTable).filter(DBTable.id == item_id).first()
