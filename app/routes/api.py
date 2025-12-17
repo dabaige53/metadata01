@@ -312,22 +312,75 @@ def apply_sorting(query, model, sort_key, order):
 
 @api_bp.route('/databases')
 def get_databases():
-    """获取数据库列表"""
+    """获取数据库列表 - 增强版"""
     session = g.db_session
     search = request.args.get('search', '')
     query = session.query(Database)
-    
+
     if search: query = query.filter(Database.name.ilike(f'%{search}%'))
-    
+
     databases = query.all()
     results = []
     for db in databases:
         data = db.to_dict()
         data['table_count'] = len(db.tables)
         data['table_names'] = [t.name for t in db.tables[:10]]
+        # 统计关联的数据源数量
+        connected_ds = set()
+        total_fields = 0
+        for t in db.tables:
+            total_fields += len(t.fields) if t.fields else 0
+            for ds in t.datasources:
+                connected_ds.add(ds.id)
+        data['datasource_count'] = len(connected_ds)
+        data['total_field_count'] = total_fields
         results.append(data)
-        
+
     return jsonify(results)
+
+
+@api_bp.route('/databases/<db_id>')
+def get_database_detail(db_id):
+    """获取数据库详情 - 完整上下文"""
+    session = g.db_session
+
+    db = session.query(Database).filter(Database.id == db_id).first()
+    if not db:
+        return jsonify({'error': 'Not found'}), 404
+
+    data = db.to_dict()
+
+    # 包含的表列表（完整信息）
+    tables_data = []
+    for t in db.tables:
+        tables_data.append({
+            'id': t.id,
+            'name': t.name,
+            'schema': t.schema,
+            'full_name': t.full_name,
+            'field_count': len(t.fields) if t.fields else 0,
+            'column_count': len(t.columns) if t.columns else 0,
+            'is_embedded': t.is_embedded,
+            'datasource_count': len(t.datasources) if t.datasources else 0
+        })
+    data['tables'] = tables_data
+
+    # 统计信息
+    total_fields = sum(len(t.fields) for t in db.tables)
+    total_columns = sum(len(t.columns) for t in db.tables)
+    connected_datasources = set()
+    for t in db.tables:
+        for ds in t.datasources:
+            connected_datasources.add(ds.id)
+
+    data['stats'] = {
+        'table_count': len(db.tables),
+        'total_fields': total_fields,
+        'total_columns': total_columns,
+        'connected_datasource_count': len(connected_datasources)
+    }
+
+    return jsonify(data)
 
 
 # ==================== 数据表接口 ====================
@@ -351,18 +404,27 @@ def get_tables():
     for t in tables:
         data = t.to_dict()
         data['field_count'] = len(t.fields)
+        data['column_count'] = len(t.columns) if t.columns else 0
+        data['datasource_count'] = len(t.datasources) if t.datasources else 0
+        # 统计使用此表的工作簿数量
+        workbook_ids = set()
+        for ds in t.datasources:
+            for wb in ds.workbooks:
+                workbook_ids.add(wb.id)
+        data['workbook_count'] = len(workbook_ids)
+        # 字段预览
         param_fields = t.fields
         if not param_fields and t.datasources:
-             for ds in t.datasources:
-                 if ds.fields:
-                     param_fields = ds.fields
-                     data['field_count_derived'] = len(ds.fields)
-                     break
+            for ds in t.datasources:
+                if ds.fields:
+                    param_fields = ds.fields
+                    data['field_count_derived'] = len(ds.fields)
+                    break
         measures = [f.name for f in param_fields if f.role == 'measure'][:5]
         dimensions = [f.name for f in param_fields if f.role != 'measure'][:5]
         data['preview_fields'] = {'measures': measures, 'dimensions': dimensions}
         results.append(data)
-        
+
     if sort == 'field_count':
         results.sort(key=lambda x: x.get('field_count', 0), reverse=(order == 'desc'))
 
@@ -370,35 +432,79 @@ def get_tables():
 
 @api_bp.route('/tables/<table_id>')
 def get_table_detail(table_id):
-    """获取单表详情，包含完整字段列表和指标引用情况"""
+    """获取单表详情 - 完整上下文（含原始列、字段、数据源关联）"""
     session = g.db_session
     table = session.query(DBTable).filter(DBTable.id == table_id).first()
     if not table:
         return jsonify({'error': 'Not found'}), 404
-        
+
     # 构建索引以查找字段引用
     field_usage, _, _, _ = build_metric_index(session)
-    
+
     data = table.to_dict()
+
+    # 所属数据库信息
+    if table.database:
+        data['database_info'] = {
+            'id': table.database.id,
+            'name': table.database.name,
+            'connection_type': table.database.connection_type,
+            'host_name': table.database.host_name
+        }
+
+    # 原始数据库列（DBColumn）- 未经Tableau改写的原始字段
+    columns_data = []
+    for col in table.columns:
+        columns_data.append({
+            'id': col.id,
+            'name': col.name,
+            'remote_type': col.remote_type,
+            'description': col.description,
+            'is_nullable': col.is_nullable,
+            'is_certified': col.is_certified
+        })
+    data['columns'] = columns_data
+
+    # Tableau字段（可能经过重命名/计算）
     full_fields = []
-    
     source_fields = table.fields
     data['source_type'] = 'direct'
-    
+
     if not source_fields and table.datasources:
         source_fields = []
         data['source_type'] = 'derived'
         for ds in table.datasources:
             source_fields.extend(ds.fields)
-            
+
     for f in source_fields:
         f_data = f.to_dict()
         f_data['used_by_metrics'] = field_usage.get(f.name, [])
         if data['source_type'] == 'derived' and f.datasource:
             f_data['via_datasource'] = f.datasource.name
         full_fields.append(f_data)
-        
+
     data['full_fields'] = full_fields
+
+    # 关联的数据源列表
+    datasources_data = []
+    for ds in table.datasources:
+        datasources_data.append({
+            'id': ds.id,
+            'name': ds.name,
+            'project_name': ds.project_name,
+            'owner': ds.owner,
+            'is_certified': ds.is_certified,
+            'has_extract': ds.has_extract
+        })
+    data['datasources'] = datasources_data
+
+    # 统计信息
+    data['stats'] = {
+        'column_count': len(table.columns),
+        'field_count': len(full_fields),
+        'datasource_count': len(table.datasources)
+    }
+
     return jsonify(data)
 
 
@@ -406,41 +512,91 @@ def get_table_detail(table_id):
 
 @api_bp.route('/datasources')
 def get_datasources():
-    """获取数据源列表"""
+    """获取数据源列表 - 增强版"""
     session = g.db_session
     search = request.args.get('search', '')
     query = session.query(Datasource)
     if search: query = query.filter(Datasource.name.ilike(f'%{search}%'))
     datasources = query.all()
-    
+
     results = []
     for ds in datasources:
         data = ds.to_dict()
         data['connected_tables'] = [t.name for t in ds.tables[:10]]
+        data['table_count'] = len(ds.tables)
         data['field_count'] = len(ds.fields)
+        data['workbook_count'] = len(ds.workbooks)
+        # 统计指标数量
+        metric_count = sum(1 for f in ds.fields if f.is_calculated)
+        data['metric_count'] = metric_count
+        # 统计视图数量
+        view_count = 0
+        for wb in ds.workbooks:
+            view_count += len(wb.views) if wb.views else 0
+        data['view_count'] = view_count
         results.append(data)
-        
+
     return jsonify(results)
 
 @api_bp.route('/datasources/<ds_id>')
 def get_datasource_detail(ds_id):
-    """获取数据源详情"""
+    """获取数据源详情 - 完整上下文（含上游表、下游工作簿）"""
     session = g.db_session
     ds = session.query(Datasource).filter(Datasource.id == ds_id).first()
     if not ds: return jsonify({'error': 'Not found'}), 404
-    
+
     field_usage, _, _, _ = build_metric_index(session)
-    
+
     data = ds.to_dict()
-    data['connected_tables'] = [t.name for t in ds.tables]
-    
+
+    # 上游：连接的数据表（完整信息）
+    tables_data = []
+    for t in ds.tables:
+        tables_data.append({
+            'id': t.id,
+            'name': t.name,
+            'schema': t.schema,
+            'full_name': t.full_name,
+            'database_id': t.database_id,
+            'database_name': t.database.name if t.database else None,
+            'column_count': len(t.columns) if t.columns else 0
+        })
+    data['tables'] = tables_data
+
+    # 下游：使用此数据源的工作簿
+    workbooks_data = []
+    for wb in ds.workbooks:
+        workbooks_data.append({
+            'id': wb.id,
+            'name': wb.name,
+            'project_name': wb.project_name,
+            'owner': wb.owner,
+            'view_count': len(wb.views) if wb.views else 0
+        })
+    data['workbooks'] = workbooks_data
+
+    # 字段列表（含指标引用）
     full_fields = []
+    metrics_list = []
     for f in ds.fields:
         f_data = f.to_dict()
         f_data['used_by_metrics'] = field_usage.get(f.name, [])
-        full_fields.append(f_data)
-    
+        if f.is_calculated:
+            metrics_list.append(f_data)
+        else:
+            full_fields.append(f_data)
+
     data['full_fields'] = full_fields
+    data['metrics'] = metrics_list
+
+    # 统计信息
+    data['stats'] = {
+        'table_count': len(ds.tables),
+        'workbook_count': len(ds.workbooks),
+        'field_count': len(full_fields),
+        'metric_count': len(metrics_list)
+    }
+
     return jsonify(data)
 
 
@@ -464,12 +620,117 @@ def get_workbooks():
     return jsonify(results)
 
 
+@api_bp.route('/workbooks/<wb_id>')
+def get_workbook_detail(wb_id):
+    """获取工作簿详情 - 完整上下文"""
+    session = g.db_session
+    field_usage, _, _, _ = build_metric_index(session)
+    
+    wb = session.query(Workbook).filter(Workbook.id == wb_id).first()
+    if not wb:
+        return jsonify({'error': 'Not found'}), 404
+    
+    data = wb.to_dict()
+    
+    # 关联视图列表
+    views_data = []
+    for v in wb.views:
+        views_data.append({
+            'id': v.id,
+            'name': v.name,
+            'view_type': v.view_type,
+            'path': v.path,
+            'field_count': len(v.fields) if v.fields else 0
+        })
+    data['views'] = views_data
+    
+    # 上游数据源列表
+    datasources_data = []
+    for ds in wb.datasources:
+        datasources_data.append({
+            'id': ds.id,
+            'name': ds.name,
+            'project_name': ds.project_name,
+            'owner': ds.owner,
+            'is_certified': ds.is_certified,
+            'has_extract': ds.has_extract
+        })
+    data['datasources'] = datasources_data
+    
+    # 收集所有视图中使用的字段
+    fields_set = {}
+    metrics_set = {}
+    for v in wb.views:
+        for f in v.fields:
+            if f.id not in fields_set:
+                f_data = {
+                    'id': f.id,
+                    'name': f.name,
+                    'data_type': f.data_type,
+                    'role': f.role,
+                    'is_calculated': f.is_calculated
+                }
+                if f.is_calculated:
+                    metrics_set[f.id] = f_data
+                else:
+                    fields_set[f.id] = f_data
+    
+    data['used_fields'] = list(fields_set.values())
+    data['used_metrics'] = list(metrics_set.values())
+    
+    return jsonify(data)
+
+
 # ==================== 视图接口 ====================
 @api_bp.route('/views')
 def get_views():
     session = g.db_session
     query = session.query(View).limit(100)
     return jsonify([v.to_dict() for v in query.all()])
+
+
+@api_bp.route('/views/<view_id>')
+def get_view_detail(view_id):
+    """获取视图详情 - 完整上下文"""
+    session = g.db_session
+    field_usage, _, _, _ = build_metric_index(session)
+    
+    view = session.query(View).filter(View.id == view_id).first()
+    if not view:
+        return jsonify({'error': 'Not found'}), 404
+    
+    data = view.to_dict()
+    
+    # 所属工作簿信息
+    if view.workbook:
+        data['workbook_info'] = {
+            'id': view.workbook.id,
+            'name': view.workbook.name,
+            'project_name': view.workbook.project_name,
+            'owner': view.workbook.owner
+        }
+    
+    # 视图中使用的字段
+    fields_data = []
+    metrics_data = []
+    for f in view.fields:
+        f_info = {
+            'id': f.id,
+            'name': f.name,
+            'data_type': f.data_type,
+            'role': f.role,
+            'is_calculated': f.is_calculated,
+            'formula': f.formula if f.is_calculated else None
+        }
+        if f.is_calculated:
+            metrics_data.append(f_info)
+        else:
+            fields_data.append(f_info)
+    
+    data['used_fields'] = fields_data
+    data['used_metrics'] = metrics_data
+    
+    return jsonify(data)
 
 
 # ==================== 字段接口 ====================
@@ -540,7 +801,121 @@ def get_fields():
     })
 
 
+@api_bp.route('/fields/<field_id>')
+def get_field_detail(field_id):
+    """获取单个字段详情 - 完整上下文（含上游表追溯）"""
+    session = g.db_session
+    field_usage, _, _, _ = build_metric_index(session)
 
+    field = session.query(Field).filter(Field.id == field_id).first()
+    if not field:
+        return jsonify({'error': 'Not found'}), 404
+
+    data = field.to_dict()
+
+    # 所属表信息（直接关联）
+    if field.table:
+        data['table_info'] = {
+            'id': field.table.id,
+            'name': field.table.name,
+            'schema': field.table.schema,
+            'database_name': field.table.database.name if field.table.database else None,
+            'database_id': field.table.database_id
+        }
+
+    # 所属数据源信息
+    if field.datasource:
+        data['datasource_info'] = {
+            'id': field.datasource.id,
+            'name': field.datasource.name,
+            'project_name': field.datasource.project_name,
+            'owner': field.datasource.owner,
+            'is_certified': field.datasource.is_certified
+        }
+        # 通过数据源追溯上游表（当字段没有直接table_id时）
+        if not field.table and field.datasource.tables:
+            upstream_tables = []
+            for t in field.datasource.tables:
+                upstream_tables.append({
+                    'id': t.id,
+                    'name': t.name,
+                    'schema': t.schema,
+                    'database_name': t.database.name if t.database else None,
+                    'database_id': t.database_id
+                })
+            data['upstream_tables'] = upstream_tables
+
+    # 所属工作簿信息
+    if field.workbook:
+        data['workbook_info'] = {
+            'id': field.workbook.id,
+            'name': field.workbook.name,
+            'project_name': field.workbook.project_name,
+            'owner': field.workbook.owner
+        }
+
+    # 使用该字���的指标
+    data['used_by_metrics'] = field_usage.get(field.name, [])
+
+    # 使用该字段的视图（含工作簿信息）
+    views_data = []
+    workbooks_set = {}
+    for v in field.views:
+        views_data.append({
+            'id': v.id,
+            'name': v.name,
+            'view_type': v.view_type,
+            'workbook_id': v.workbook_id,
+            'workbook_name': v.workbook.name if v.workbook else None
+        })
+        # 收集工作簿
+        if v.workbook and v.workbook_id not in workbooks_set:
+            workbooks_set[v.workbook_id] = {
+                'id': v.workbook.id,
+                'name': v.workbook.name,
+                'project_name': v.workbook.project_name,
+                'owner': v.workbook.owner
+            }
+    data['used_in_views'] = views_data
+    data['used_in_workbooks'] = list(workbooks_set.values())
+
+    # 计算字段额外信息
+    calc_field = session.query(CalculatedField).filter(
+        CalculatedField.field_id == field_id
+    ).first()
+    if calc_field:
+        data['calculated_field_info'] = {
+            'formula': calc_field.formula,
+            'complexity_score': calc_field.complexity_score,
+            'reference_count': calc_field.reference_count
+        }
+        # 解析公式中引用的字段
+        if calc_field.formula:
+            refs = re.findall(r'\[(.*?)\]', calc_field.formula)
+            unique_refs = list(set(refs))
+            ref_fields = []
+            for ref_name in unique_refs:
+                ref_field = session.query(Field).filter(Field.name == ref_name).first()
+                if ref_field:
+                    ref_fields.append({
+                        'id': ref_field.id,
+                        'name': ref_field.name,
+                        'data_type': ref_field.data_type,
+                        'role': ref_field.role,
+                        'is_calculated': ref_field.is_calculated
+                    })
+                else:
+                    ref_fields.append({'name': ref_name, 'id': None})
+            data['formula_references'] = ref_fields
+
+    # 统计信息
+    data['stats'] = {
+        'view_count': len(views_data),
+        'workbook_count': len(workbooks_set),
+        'metric_count': len(data.get('used_by_metrics', []))
+    }
+
+    return jsonify(data)
 
 
 @api_bp.route('/fields/<field_id>', methods=['PUT'])
@@ -643,39 +1018,111 @@ def get_metrics():
 
 @api_bp.route('/metrics/<metric_id>')
 def get_metric_detail(metric_id):
-    """获取单条指标详情"""
+    """获取单条指标详情 - 完整上下文（含原始表追溯、重复指标使用情况）"""
     session = g.db_session
     field_usage, metric_deps, formula_map, _ = build_metric_index(session)
-    
+
     result = session.query(Field, CalculatedField).join(
         CalculatedField, Field.id == CalculatedField.field_id
     ).filter(Field.id == metric_id).first()
-    
+
     if not result:
         return jsonify({'error': 'Not found'}), 404
-    
+
     field, calc_field = result
-    datasource_name = field.datasource.name if field.datasource else '-'
     formula_clean = (calc_field.formula or '').strip()
-    
-    # 查找相似指标
+
+    # 数据源信息
+    datasource_info = None
+    upstream_tables = []
+    if field.datasource:
+        datasource_info = {
+            'id': field.datasource.id,
+            'name': field.datasource.name,
+            'project_name': field.datasource.project_name,
+            'owner': field.datasource.owner,
+            'is_certified': field.datasource.is_certified
+        }
+        # 通过数据源追溯上游表
+        for t in field.datasource.tables:
+            upstream_tables.append({
+                'id': t.id,
+                'name': t.name,
+                'schema': t.schema,
+                'database_name': t.database.name if t.database else None,
+                'database_id': t.database_id
+            })
+
+    # 查找相似指标（增强：含使用情况）
     similar = []
     if formula_clean:
-        similar = [m for m in formula_map.get(formula_clean, []) if m['id'] != field.id]
-    
-    # 获取依赖字段
-    dependencies = metric_deps.get(field.id, [])
-    
-    # 获取被引用情况
-    refs = []
+        for m in formula_map.get(formula_clean, []):
+            if m['id'] != field.id:
+                # 查询该重复指标的使用情况
+                dup_field = session.query(Field).filter(Field.id == m['id']).first()
+                dup_views = []
+                dup_workbooks = {}
+                if dup_field and dup_field.views:
+                    for v in dup_field.views[:5]:
+                        dup_views.append({'id': v.id, 'name': v.name})
+                        if v.workbook and v.workbook_id not in dup_workbooks:
+                            dup_workbooks[v.workbook_id] = {
+                                'id': v.workbook.id,
+                                'name': v.workbook.name
+                            }
+                similar.append({
+                    'id': m['id'],
+                    'name': m['name'],
+                    'datasourceName': m.get('datasourceName') or (dup_field.datasource.name if dup_field and dup_field.datasource else '-'),
+                    'datasourceId': m.get('datasourceId'),
+                    'usedInViews': dup_views,
+                    'usedInWorkbooks': list(dup_workbooks.values())
+                })
+
+    # 获取依赖字段（增强：含上游表信息）
+    dependencies = []
+    if calc_field.formula:
+        refs = re.findall(r'\[(.*?)\]', calc_field.formula)
+        unique_refs = list(set(refs))
+        for ref_name in unique_refs:
+            ref_field = session.query(Field).filter(Field.name == ref_name).first()
+            if ref_field:
+                dep_info = {
+                    'id': ref_field.id,
+                    'name': ref_field.name,
+                    'data_type': ref_field.data_type,
+                    'role': ref_field.role,
+                    'is_calculated': ref_field.is_calculated
+                }
+                # 追溯到表
+                if ref_field.table:
+                    dep_info['table_name'] = ref_field.table.name
+                    dep_info['table_id'] = ref_field.table.id
+                elif ref_field.datasource and ref_field.datasource.tables:
+                    dep_info['upstream_tables'] = [t.name for t in ref_field.datasource.tables[:3]]
+                dependencies.append(dep_info)
+            else:
+                dependencies.append({'name': ref_name, 'id': None})
+
+    # 获取被引用情况（视图和工作簿）
+    views_data = []
+    workbooks_set = {}
     if field.views:
         for v in field.views:
-            refs.append({
-                'id': v.id, 
+            views_data.append({
+                'id': v.id,
                 'name': v.name,
-                'workbookId': v.workbook_id,
-                'workbookName': v.workbook.name if v.workbook else 'Unknown'
+                'view_type': v.view_type,
+                'workbook_id': v.workbook_id,
+                'workbook_name': v.workbook.name if v.workbook else 'Unknown'
             })
+            if v.workbook and v.workbook_id not in workbooks_set:
+                workbooks_set[v.workbook_id] = {
+                    'id': v.workbook.id,
+                    'name': v.workbook.name,
+                    'project_name': v.workbook.project_name,
+                    'owner': v.workbook.owner
+                }
 
     metric_data = {
         'id': field.id,
@@ -685,14 +1132,24 @@ def get_metric_detail(metric_id):
         'role': field.role,
         'dataType': field.data_type,
         'complexity': calc_field.complexity_score or 0,
-        'referenceCount': len(refs),
-        'datasourceName': datasource_name,
+        'referenceCount': len(views_data),
+        'datasourceName': datasource_info['name'] if datasource_info else '-',
         'datasourceId': field.datasource_id,
+        'datasource_info': datasource_info,
+        'upstream_tables': upstream_tables,
         'similarMetrics': similar,
         'dependencyFields': dependencies,
-        'usedInViews': refs
+        'usedInViews': views_data,
+        'usedInWorkbooks': list(workbooks_set.values()),
+        'hasDuplicate': len(similar) > 0,
+        'stats': {
+            'view_count': len(views_data),
+            'workbook_count': len(workbooks_set),
+            'dependency_count': len(dependencies),
+            'duplicate_count': len(similar)
+        }
     }
-    
+
     return jsonify(metric_data)
 
 
@@ -1139,23 +1596,37 @@ def get_projects():
 
 @api_bp.route('/projects/<project_id>')
 def get_project_detail(project_id):
-    """获取项目详情及关联资产"""
+    """获取项目详情 - 完整上下文（含资产分布、统计）"""
     session = g.db_session
-    
+
     project = session.query(Project).filter(Project.id == project_id).first()
     if not project:
         return jsonify({'error': 'Not found'}), 404
-    
+
     # 获取关联的数据源
     datasources = session.query(Datasource).filter(
         Datasource.project_name == project.name
     ).all()
-    
+
     # 获取关联的工作簿
     workbooks = session.query(Workbook).filter(
         Workbook.project_name == project.name
     ).all()
-    
+
+    # 统计数据
+    total_fields = sum(len(ds.fields) for ds in datasources)
+    total_views = sum(len(wb.views) for wb in workbooks)
+    certified_ds = sum(1 for ds in datasources if ds.is_certified)
+
+    # 所有者分布
+    owner_dist = {}
+    for ds in datasources:
+        owner = ds.owner or 'Unknown'
+        owner_dist[owner] = owner_dist.get(owner, 0) + 1
+    for wb in workbooks:
+        owner = wb.owner or 'Unknown'
+        owner_dist[owner] = owner_dist.get(owner, 0) + 1
+
     return jsonify({
         'id': project.id,
         'name': project.name,
@@ -1165,14 +1636,26 @@ def get_project_detail(project_id):
             'name': ds.name,
             'owner': ds.owner,
             'is_certified': ds.is_certified,
-            'field_count': len(ds.fields)
+            'has_extract': ds.has_extract,
+            'field_count': len(ds.fields),
+            'workbook_count': len(ds.workbooks)
         } for ds in datasources],
         'workbooks': [{
             'id': wb.id,
             'name': wb.name,
             'owner': wb.owner,
-            'view_count': len(wb.views)
-        } for wb in workbooks]
+            'view_count': len(wb.views),
+            'datasource_count': len(wb.datasources)
+        } for wb in workbooks],
+        'stats': {
+            'datasource_count': len(datasources),
+            'workbook_count': len(workbooks),
+            'total_fields': total_fields,
+            'total_views': total_views,
+            'certified_datasources': certified_ds,
+            'certification_rate': round(certified_ds / len(datasources) * 100, 1) if datasources else 0
+        },
+        'owner_distribution': owner_dist
     })
 
 

@@ -245,19 +245,27 @@ function getModuleContent(t) {
 
 // ===================== 数据库表格 =====================
 function renderDBTable() {
-    const formatDate = (d) => d ? new Date(d).toLocaleDateString() : '-';
     return `<table class="data-table">
-        <thead><tr><th>名称</th><th>类型</th><th>平台</th><th>表数量</th><th>主机</th><th>更新时间</th><th>状态</th></tr></thead>
-        <tbody>${state.filteredData.map(i => `
+        <thead><tr><th style="width:22%">名称</th><th style="width:10%">类型</th><th style="width:6%">表</th><th style="width:6%">字段</th><th style="width:6%">数据源</th><th style="width:28%">包含的表 (预览)</th><th style="width:12%">主机</th><th style="width:10%">状态</th></tr></thead>
+        <tbody>${state.filteredData.map(i => {
+            const tableNames = i.table_names || [];
+            const tablePreview = tableNames.length ?
+                `<div class="flex flex-wrap gap-1">
+                    ${tableNames.slice(0, 4).map(t => `<span class="tag schema text-[9px]">${t}</span>`).join('')}
+                    ${tableNames.length > 4 ? `<span class="text-[9px] text-gray-400">+${tableNames.length - 4}</span>` : ''}
+                </div>` : '<span class="text-gray-300">-</span>';
+            return `
             <tr onclick="showDetail('${i.id}','databases')">
                 <td><div class="cell-main"><i data-lucide="database" class="icon db"></i><span class="name">${i.name}</span></div></td>
-                <td><span class="tag type">${i.type || '-'}</span></td>
-                <td class="muted">${i.platform || '-'}</td>
-                <td class="num">${i.table_count || i.tables || 0}</td>
-                <td class="muted">${i.host || i.id?.substring(0, 8) || '-'}</td>
-                <td class="muted text-[11px]">${formatDate(i.updatedAt)}</td>
-                <td>${(i.table_count || i.tables) ? '<span class="status ok">●</span>' : '<span class="status warn">●</span>'}</td>
-            </tr>`).join('')}
+                <td><span class="tag type text-[9px]">${i.connectionType || i.type || '-'}</span></td>
+                <td class="num font-bold">${i.table_count || 0}</td>
+                <td class="num">${i.total_field_count || 0}</td>
+                <td class="num">${i.datasource_count > 0 ? `<span class="text-indigo-600 font-medium">${i.datasource_count}</span>` : '-'}</td>
+                <td>${tablePreview}</td>
+                <td class="muted text-[10px]">${i.hostName || i.host || '-'}</td>
+                <td>${(i.datasource_count || 0) > 0 ? '<span class="status ok text-[10px]">● 使用中</span>' : (i.table_count || 0) > 0 ? '<span class="status warn text-[10px]">● 未关联</span>' : '<span class="status error text-[10px]">● 空库</span>'}</td>
+            </tr>`;
+        }).join('')}
         </tbody>
     </table>`;
 }
@@ -265,19 +273,25 @@ function renderDBTable() {
 // ===================== 数据表表格 =====================
 function renderTablesTable() {
     return `<table class="data-table">
-        <thead><tr><th>表名</th><th>数据库</th><th>Schema</th><th>字段数</th><th>连接</th><th>预览字段</th></tr></thead>
+        <thead><tr><th style="width:20%">表名</th><th style="width:12%">数据库</th><th style="width:7%">Schema</th><th style="width:6%">原始列</th><th style="width:6%">字段</th><th style="width:6%">数据源</th><th style="width:6%">工作簿</th><th style="width:25%">预览字段</th><th style="width:12%">状态</th></tr></thead>
         <tbody>${state.filteredData.map(i => {
         const fc = i.field_count || i.fieldCount || 0;
+        const colCount = i.column_count || 0;
+        const dsCount = i.datasource_count || 0;
+        const wbCount = i.workbook_count || 0;
         const pf = i.preview_fields || {};
-        const preview = [...(pf.measures || []).slice(0, 2).map(f => `<span class="tag measure">#${f}</span>`), ...(pf.dimensions || []).slice(0, 2).map(f => `<span class="tag dim">Abc ${f}</span>`)].join('');
+        const preview = [...(pf.measures || []).slice(0, 2).map(f => `<span class="tag measure text-[10px]">#${f}</span>`), ...(pf.dimensions || []).slice(0, 2).map(f => `<span class="tag dim text-[10px]">${f}</span>`)].join('');
         return `
             <tr onclick="showDetail('${i.id}','tables')">
-                <td><div class="cell-main"><i data-lucide="table-2" class="icon tbl"></i><span class="name">${i.name}</span>${i.isEmbedded ? '<span class="tag warn">嵌入</span>' : ''}</div></td>
-                <td class="muted">${i.databaseName || '-'}</td>
-                <td><span class="tag schema">${i.schema || 'public'}</span></td>
-                <td class="num">${fc}</td>
-                <td class="muted">${i.connectionType || '-'}</td>
-                <td class="preview">${preview || '-'}</td>
+                <td><div class="cell-main"><i data-lucide="table-2" class="icon tbl"></i><span class="name">${i.name}</span>${i.isEmbedded ? '<span class="tag warn text-[9px]">嵌入</span>' : ''}</div></td>
+                <td class="muted text-[11px]" title="${i.databaseName || ''}">${i.databaseName || '-'}</td>
+                <td><span class="tag schema text-[10px]">${i.schema || 'public'}</span></td>
+                <td class="num">${colCount || '-'}</td>
+                <td class="num">${fc || '-'}</td>
+                <td class="num">${dsCount > 0 ? `<span class="text-indigo-600 font-medium">${dsCount}</span>` : '-'}</td>
+                <td class="num">${wbCount > 0 ? `<span class="text-green-600 font-medium">${wbCount}</span>` : '-'}</td>
+                <td class="preview">${preview || '<span class="text-gray-300">-</span>'}</td>
+                <td>${wbCount > 0 ? '<span class="status ok text-[10px]">● 使用中</span>' : (dsCount > 0 ? '<span class="status warn text-[10px]">● 仅关联</span>' : '<span class="status error text-[10px]">● 孤立</span>')}</td>
             </tr>`;
     }).join('')}
         </tbody>
@@ -405,7 +419,7 @@ function renderMetricsTable() {
 function renderDSTable() {
     const formatDate = (d) => d ? new Date(d).toLocaleDateString() : '-';
     return `<table class="data-table">
-        <thead><tr><th>数据源</th><th>项目</th><th>所有者</th><th>表数</th><th>类型</th><th>认证</th><th>最后刷新</th><th>状态</th></tr></thead>
+        <thead><tr><th style="width:20%">数据源</th><th style="width:12%">项目</th><th style="width:8%">所有者</th><th style="width:5%">表</th><th style="width:5%">字段</th><th style="width:5%">指标</th><th style="width:5%">工作簿</th><th style="width:5%">视图</th><th style="width:6%">类型</th><th style="width:5%">认证</th><th style="width:10%">刷新</th><th style="width:14%">状态</th></tr></thead>
         <tbody>${state.filteredData.map(i => {
         const live = !i.hasExtract;
         let stale = 0;
@@ -413,13 +427,17 @@ function renderDSTable() {
         return `
             <tr onclick="showDetail('${i.id}','datasources')">
                 <td><div class="cell-main"><i data-lucide="layers" class="icon ds"></i><span class="name">${i.name}</span></div></td>
-                <td class="muted">${i.projectName || '-'}</td>
-                <td class="muted">${i.owner || '-'}</td>
-                <td class="num">${i.tableCount || 0}</td>
-                <td><span class="tag ${live ? 'live' : 'extract'}">${live ? 'Live' : 'Extract'}</span></td>
-                <td>${i.isCertified ? '<span class="tag cert">✓</span>' : '-'}</td>
-                <td class="muted text-[11px]">${formatDate(i.lastRefresh)}</td>
-                <td>${stale > 30 ? `<span class="tag error">停更${stale}天</span>` : stale > 7 ? `<span class="tag warn">${stale}天前</span>` : '<span class="status ok">●</span>'}</td>
+                <td class="muted text-[11px]">${i.projectName || '-'}</td>
+                <td class="muted text-[11px]">${i.owner || '-'}</td>
+                <td class="num">${i.table_count || i.tableCount || 0}</td>
+                <td class="num">${i.field_count || 0}</td>
+                <td class="num">${i.metric_count || 0}</td>
+                <td class="num">${i.workbook_count > 0 ? `<span class="text-green-600 font-medium">${i.workbook_count}</span>` : '-'}</td>
+                <td class="num">${i.view_count || 0}</td>
+                <td><span class="tag ${live ? 'live' : 'extract'} text-[9px]">${live ? 'Live' : 'Extract'}</span></td>
+                <td>${i.isCertified ? '<span class="tag cert text-[9px]">✓</span>' : '-'}</td>
+                <td class="muted text-[10px]">${formatDate(i.lastRefresh)}</td>
+                <td>${stale > 30 ? `<span class="tag error text-[9px]">停更${stale}天</span>` : stale > 7 ? `<span class="tag warn text-[9px]">${stale}天前</span>` : '<span class="status ok text-[10px]">● 正常</span>'}</td>
             </tr>`;
     }).join('')}
         </tbody>
@@ -429,14 +447,24 @@ function renderDSTable() {
 // ===================== 工作簿表格 =====================
 function renderWBTable() {
     return `<table class="data-table">
-        <thead><tr><th>工作簿</th><th>项目</th><th>所有者</th><th>视图数</th></tr></thead>
-        <tbody>${state.filteredData.map(i => `
+        <thead><tr><th style="width:25%">工作簿</th><th style="width:15%">项目</th><th style="width:12%">所有者</th><th style="width:8%">视图数</th><th style="width:25%">上游数据源</th><th style="width:15%">状态</th></tr></thead>
+        <tbody>${state.filteredData.map(i => {
+            const upDs = i.upstream_datasources || [];
+            const dsPreview = upDs.length ?
+                `<div class="flex flex-wrap gap-1">
+                    ${upDs.slice(0, 3).map(ds => `<span class="tag schema text-[9px]">${ds}</span>`).join('')}
+                    ${upDs.length > 3 ? `<span class="text-[9px] text-gray-400">+${upDs.length - 3}</span>` : ''}
+                </div>` : '<span class="text-gray-300">-</span>';
+            return `
             <tr onclick="showDetail('${i.id}','workbooks')">
                 <td><div class="cell-main"><i data-lucide="book-open" class="icon wb"></i><span class="name">${i.name}</span></div></td>
-                <td class="muted">${i.projectName || '-'}</td>
-                <td class="muted">${i.owner || '-'}</td>
+                <td class="muted text-[11px]">${i.projectName || '-'}</td>
+                <td class="muted text-[11px]">${i.owner || '-'}</td>
                 <td class="num">${i.viewCount || 0}</td>
-            </tr>`).join('')}
+                <td>${dsPreview}</td>
+                <td>${(i.viewCount || 0) > 0 ? '<span class="status ok text-[10px]">● 有视图</span>' : '<span class="status warn text-[10px]">● 空工作簿</span>'}</td>
+            </tr>`;
+        }).join('')}
         </tbody>
     </table>`;
 }
@@ -787,47 +815,152 @@ async function renderOverview() {
 }
 
 // ===================== 详情抽屉 (系统性分析核心) =====================
-async function showDetail(id, type) {
+// 全局变量存储当前详情数据和历史记录
+let currentDetailItem = null;
+let currentDetailType = null;
+let detailHistory = []; // 历史记录栈
+
+async function showDetail(id, type, addToHistory = true) {
     const drawer = document.getElementById('detail-drawer');
     const overlay = document.getElementById('overlay');
     const title = document.getElementById('drawer-title');
+    const tabs = document.getElementById('drawer-tabs');
     const content = document.getElementById('drawer-content');
+
+    // 添加到历史记录
+    if (addToHistory && currentDetailItem && currentDetailType) {
+        detailHistory.push({ id: currentDetailItem.id, type: currentDetailType, name: currentDetailItem.name });
+    }
 
     drawer.classList.add('open');
     overlay.classList.add('active');
 
     // 如果是切换，先清理
     content.innerHTML = '<div class="loading py-10 flex justify-center"><i data-lucide="loader-2" class="spin w-6 h-6 text-indigo-500"></i></div>';
+    tabs.innerHTML = '';
     lucide.createIcons();
 
-    // 数据获取
-    let item = state.data.find(i => i.id == id);
-    // 如果数据不在当前列表（比如从字段跳转到指标），需要单独 fetch
-    if (!item) {
-        try {
-            item = await api.get(`/${type}/${id}`);
-            // 兼容 metrics 列表接口返回的是 list，这里模拟单个 fetch
-            if (Array.isArray(item)) item = item.find(i => i.id == id);
-            // 如果后端没有单查接口 (如 metrics)，可能要遍历全量，这里假设列表已加载或后端支持 id 查询
-            // 现在的 API 在 metrics 上不支持单查，我们临时处理一下：
-            if (type === 'metrics' && !item) {
-                const allMetrics = await api.get('/metrics');
-                item = allMetrics.find(m => m.id == id);
-            }
-        } catch (e) { console.error(e); }
+    // 数据获取 - 优先使用详情API
+    let item = null;
+    try {
+        item = await api.get(`/${type}/${id}`);
+        // 兼容 metrics 列表接口返回的是 list
+        if (Array.isArray(item)) item = item.find(i => i.id == id);
+        // 兼容 metrics 接口返回分页格式
+        if (item && item.items) {
+            item = item.items.find(i => i.id == id);
+        }
+    } catch (e) {
+        console.error('Detail API error:', e);
+        // 回退到本地数据
+        item = state.data.find(i => i.id == id);
     }
 
     if (!item) { content.innerHTML = '<div class="text-center text-gray-400 py-8">未找到数据</div>'; return; }
+
+    // 存储当前数据
+    currentDetailItem = item;
+    currentDetailType = type;
 
     title.innerHTML = `<div class="flex flex-col">
         <span>${item.name}</span>
         <span class="text-[10px] font-normal text-gray-400 uppercase tracking-wide mt-0.5">${getModuleName(type)} 详情</span>
     </div>`;
 
-    let html = `<div class="space-y-6">`;
+    // 更新返回按钮和面包屑
+    updateBackButton();
 
-    // 1. 基本属性卡片
-    html += `
+    // 渲染Tab导航
+    renderDetailTabs(item, type);
+
+    // 默认显示概览Tab
+    renderDetailTab('overview');
+}
+
+// 渲染Tab导航
+function renderDetailTabs(item, type) {
+    const tabs = document.getElementById('drawer-tabs');
+    const tabConfig = [
+        { id: 'overview', label: '概览', icon: 'info' },
+        { id: 'upstream', label: '上游资产', icon: 'arrow-up-circle' },
+        { id: 'downstream', label: '下游资产', icon: 'arrow-down-circle' }
+    ];
+
+    // 根据类型添加特定Tab
+    if (type === 'metrics' && (item.similarMetrics || []).length > 0) {
+        tabConfig.push({ id: 'duplicates', label: `重复指标 (${item.similarMetrics.length})`, icon: 'alert-triangle' });
+    }
+    if (['fields', 'metrics', 'datasources', 'tables'].includes(type)) {
+        tabConfig.push({ id: 'lineage', label: '血缘图', icon: 'git-branch' });
+    }
+
+    tabs.innerHTML = tabConfig.map((tab, i) => `
+        <button onclick="renderDetailTab('${tab.id}')"
+                class="detail-tab px-4 py-3 text-[12px] font-medium border-b-2 transition-colors flex items-center gap-1.5
+                       ${i === 0 ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}"
+                data-tab="${tab.id}">
+            <i data-lucide="${tab.icon}" class="w-3.5 h-3.5"></i>
+            ${tab.label}
+        </button>
+    `).join('');
+    lucide.createIcons();
+}
+
+// 渲染Tab内容
+function renderDetailTab(tabId) {
+    const content = document.getElementById('drawer-content');
+    const item = currentDetailItem;
+    const type = currentDetailType;
+
+    if (!item) return;
+
+    // 更新Tab激活状态
+    document.querySelectorAll('.detail-tab').forEach(tab => {
+        if (tab.dataset.tab === tabId) {
+            tab.classList.add('border-indigo-500', 'text-indigo-600');
+            tab.classList.remove('border-transparent', 'text-gray-500');
+        } else {
+            tab.classList.remove('border-indigo-500', 'text-indigo-600');
+            tab.classList.add('border-transparent', 'text-gray-500');
+        }
+    });
+
+    let html = '<div class="space-y-6">';
+
+    switch (tabId) {
+        case 'overview':
+            html += renderOverviewTab(item, type);
+            break;
+        case 'upstream':
+            html += renderUpstreamAssets(item, type) || '<div class="text-center text-gray-400 py-8">无上游资产</div>';
+            break;
+        case 'downstream':
+            html += renderDownstreamAssets(item, type) || '<div class="text-center text-gray-400 py-8">无下游资产</div>';
+            break;
+        case 'duplicates':
+            html += renderSimilarAssets(item);
+            break;
+        case 'lineage':
+            html += `<div id="lineage-container" class="bg-white rounded-lg border p-4">
+                <div class="text-center py-4">
+                    <button onclick="loadLineageGraph('${type.replace(/s$/, '')}', '${item.id}')"
+                            class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-[12px] font-medium transition-colors">
+                        <i data-lucide="git-branch" class="w-4 h-4 inline mr-1"></i>
+                        加载血缘图
+                    </button>
+                </div>
+            </div>`;
+            break;
+    }
+
+    html += '</div>';
+    content.innerHTML = html;
+    lucide.createIcons();
+}
+
+// 渲染概览Tab
+function renderOverviewTab(item, type) {
+    let html = `
     <div class="bg-white rounded-lg border border-gray-100 p-4 shadow-sm">
         <h3 class="text-[12px] font-bold text-gray-900 mb-3 flex items-center gap-2">
             <i data-lucide="info" class="w-3.5 h-3.5 text-indigo-500"></i> 基本信息
@@ -835,8 +968,9 @@ async function showDetail(id, type) {
         <div class="grid grid-cols-2 gap-y-3 gap-x-4">
             ${renderPropRow('ID', item.id, true)}
             ${renderPropRow('类型', item.dataType || item.type)}
+            ${renderPropRow('角色', item.role)}
             ${renderPropRow('所有者', item.owner)}
-            ${renderPropRow('数据源', item.datasourceName || item.datasource)}
+            ${renderPropRow('项目', item.projectName || item.project_name)}
             ${item.formula ? `<div class="col-span-2">
                 <div class="text-[10px] text-gray-400 mb-1">计算公式</div>
                 <div class="bg-gray-50 rounded p-2 font-mono text-[11px] text-gray-700 break-all border border-gray-100">${item.formula}</div>
@@ -848,122 +982,667 @@ async function showDetail(id, type) {
         </div>
     </div>`;
 
-    // 2. 关联分析 (针对字段)
-    if (type === 'fields') {
-        const metrics = item.used_by_metrics || [];
-        const views = item.used_in_views || [];
+    // 统计信息
+    if (item.stats) {
+        html += renderStatsCard(item.stats, type);
+    }
 
-        // 指标影响
-        if (metrics.length) {
-            html += `
-            <div class="bg-indigo-50 rounded-lg border border-indigo-100 p-4">
-                <h3 class="text-[12px] font-bold text-indigo-900 mb-3 flex items-center gap-2">
-                    <i data-lucide="function-square" class="w-3.5 h-3.5 text-indigo-600"></i> 
-                    影响的指标 (${metrics.length})
-                </h3>
-                <div class="space-y-2">
-                    ${metrics.map(m => `
-                        <div class="flex items-center justify-between bg-white p-2 rounded border border-indigo-100 cursor-pointer hover:border-indigo-300 transition-colors"
-                             onclick="showDetail('${m.id}', 'metrics')">
-                            <span class="text-[12px] text-gray-700 font-medium">${m.name}</span>
-                            <i data-lucide="chevron-right" class="w-3 h-3 text-gray-400"></i>
+    return html;
+}
+
+// 加载血缘图
+async function loadLineageGraph(entityType, entityId) {
+    const container = document.getElementById('lineage-container');
+    container.innerHTML = '<div class="text-center py-4"><i data-lucide="loader-2" class="spin w-6 h-6 text-indigo-500 inline"></i></div>';
+    lucide.createIcons();
+
+    try {
+        const data = await api.get(`/lineage/graph/${entityType}/${entityId}`);
+        container.innerHTML = `
+            <div class="mb-4">
+                <div id="mermaid-graph" class="mermaid bg-gray-50 p-4 rounded-lg border overflow-auto" style="min-height: 200px;">
+                    ${data.mermaid}
+                </div>
+            </div>
+            <div class="border-t pt-4">
+                <h4 class="text-[11px] font-bold text-gray-500 uppercase mb-3">节点列表</h4>
+                <div class="grid grid-cols-2 gap-2">
+                    ${data.nodes.map(n => `
+                        <div class="flex items-center gap-2 p-2 bg-gray-50 rounded border cursor-pointer hover:bg-gray-100"
+                             onclick="showDetail('${n.id}', '${n.type}s')">
+                            <span class="w-2 h-2 rounded-full" style="background:${getTypeColor(n.type)}"></span>
+                            <span class="text-[12px] text-gray-700 truncate flex-1">${n.name}</span>
+                            <span class="text-[10px] text-gray-400">${n.type}</span>
                         </div>
                     `).join('')}
                 </div>
-            </div>`;
+            </div>
+        `;
+        // 初始化 Mermaid
+        if (typeof mermaid !== 'undefined') {
+            mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
+            mermaid.run({ nodes: [document.getElementById('mermaid-graph')] });
         }
+    } catch (e) {
+        container.innerHTML = '<div class="text-center text-red-500 py-4">加载血缘图失败</div>';
+        console.error(e);
+    }
+}
 
-        // 视图影响
-        if (views.length) {
-            html += `
-            <div class="bg-white rounded-lg border border-gray-200 p-4">
-                <h3 class="text-[12px] font-bold text-gray-900 mb-3 flex items-center gap-2">
-                    <i data-lucide="layout" class="w-3.5 h-3.5 text-gray-500"></i> 
-                    使用的视图 (${views.length})
-                </h3>
-                <div class="max-h-40 overflow-y-auto custom-scrollbar space-y-1">
-                    ${views.map(v => `
-                        <div class="flex items-center justify-between text-[12px] py-1 border-b border-gray-50 last:border-0">
-                            <span class="text-gray-600 truncate">${v.workbookName} / ${v.name}</span>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>`;
+
+// 渲染上游资产卡片
+function renderUpstreamAssets(item, type) {
+    let html = '';
+    const upstreamItems = [];
+
+    // 字段的上游: 表、数据源
+    if (type === 'fields') {
+        // 直接关联的表
+        if (item.table_info) {
+            upstreamItems.push({
+                type: 'tables',
+                icon: 'table-2',
+                label: '所属数据表',
+                items: [{
+                    id: item.table_info.id,
+                    name: item.table_info.name,
+                    subtitle: item.table_info.database_name ? `DB: ${item.table_info.database_name}` : (item.table_info.schema ? `Schema: ${item.table_info.schema}` : null)
+                }]
+            });
+        }
+        // 通过数据源追溯的上游表
+        if (item.upstream_tables && item.upstream_tables.length) {
+            upstreamItems.push({
+                type: 'tables',
+                icon: 'table-2',
+                label: '上游数据表 (通过数据源)',
+                items: item.upstream_tables.map(t => ({
+                    id: t.id,
+                    name: t.name,
+                    subtitle: t.database_name ? `DB: ${t.database_name}` : (t.schema || null)
+                }))
+            });
+        }
+        if (item.datasource_info) {
+            upstreamItems.push({
+                type: 'datasources',
+                icon: 'layers',
+                label: '所属数据源',
+                items: [{
+                    id: item.datasource_info.id,
+                    name: item.datasource_info.name,
+                    subtitle: item.datasource_info.is_certified ? '✓ 已认证' : null
+                }]
+            });
+        }
+        if (item.workbook_info) {
+            upstreamItems.push({
+                type: 'workbooks',
+                icon: 'book-open',
+                label: '所属工作簿',
+                items: [{
+                    id: item.workbook_info.id,
+                    name: item.workbook_info.name,
+                    subtitle: item.workbook_info.owner ? `Owner: ${item.workbook_info.owner}` : null
+                }]
+            });
         }
     }
 
-    // 3. 重复分析 (针对指标)
+    // 指标的上游: 依赖字段、数据源、上游表
     if (type === 'metrics') {
-        const dups = item.similarMetrics || [];
-        const deps = item.dependencyFields || [];
-        const views = item.usedInViews || [];
-
-        // 依赖字段
-        if (deps.length) {
-            html += `
-            <div class="bg-white rounded-lg border border-gray-200 p-4">
-                <h3 class="text-[12px] font-bold text-gray-900 mb-3">依赖基础字段 (${deps.length})</h3>
-                <div class="flex flex-wrap gap-2">
-                    ${deps.map(d => `
-                        <span class="px-2 py-1 bg-blue-50 text-blue-700 rounded text-[11px] border border-blue-100 cursor-pointer hover:bg-blue-100"
-                              onclick="${d.id ? `showDetail('${d.id}', 'fields')` : ''}">
-                            <i data-lucide="columns" class="w-3 h-3 inline mr-1 align-text-top"></i>${d.name}
-                        </span>
-                    `).join('')}
-                </div>
-            </div>`;
+        // 上游数据表（通过数据源追溯）
+        const upTables = item.upstream_tables || [];
+        if (upTables.length) {
+            upstreamItems.push({
+                type: 'tables',
+                icon: 'table-2',
+                label: '上游数据表',
+                items: upTables.map(t => ({
+                    id: t.id,
+                    name: t.name,
+                    subtitle: t.database_name ? `DB: ${t.database_name}` : (t.schema || null)
+                }))
+            });
         }
+        // 依赖字段（增强：显示来源表）
+        const deps = item.dependencyFields || [];
+        if (deps.length) {
+            upstreamItems.push({
+                type: 'fields',
+                icon: 'columns',
+                label: '依赖基础字段',
+                items: deps.map(d => ({
+                    id: d.id,
+                    name: d.name,
+                    subtitle: d.table_name ? `表: ${d.table_name}` : (d.upstream_tables ? `表: ${d.upstream_tables.join(', ')}` : null)
+                }))
+            });
+        }
+        // 数据源
+        if (item.datasource_info) {
+            upstreamItems.push({
+                type: 'datasources',
+                icon: 'layers',
+                label: '定义于数据源',
+                items: [{
+                    id: item.datasource_info.id,
+                    name: item.datasource_info.name,
+                    subtitle: item.datasource_info.is_certified ? '✓ 已认证' : null
+                }]
+            });
+        } else if (item.datasourceId || item.datasourceName) {
+            upstreamItems.push({
+                type: 'datasources',
+                icon: 'layers',
+                label: '定义于数据源',
+                items: [{
+                    id: item.datasourceId,
+                    name: item.datasourceName || '-'
+                }]
+            });
+        }
+    }
 
-        // 重复指标提示（只读，去掉治理按钮）
-        if (dups.length) {
-            html += `
-            <div class="bg-red-50 rounded-lg border border-red-100 p-4">
-                <div class="flex items-start gap-3">
-                    <i data-lucide="alert-triangle" class="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5"></i>
-                    <div class="flex-1">
-                        <h3 class="text-[13px] font-bold text-red-800 mb-1">发现重复定义的指标</h3>
-                        <p class="text-[11px] text-red-600 mb-3">以下 ${dups.length} 个指标使用了相同计算公式（只读展示）：</p>
-                        <div class="space-y-2">
-                            ${dups.map(d => `
-                                <div class="bg-white/60 p-2 rounded border border-red-100 flex flex-col gap-1 cursor-pointer hover:bg-white"
-                                     onclick="showDetail('${d.id}', 'metrics')">
-                                    <div class="flex justify-between items-center">
-                                        <span class="text-[12px] font-bold text-red-900">${d.name}</span>
-                                        <span class="text-[10px] text-red-400 bg-red-100 px-1.5 rounded">ID: ${d.id.substring(0, 6)}</span>
-                                    </div>
-                                    <div class="text-[10px] text-gray-500">数据源: ${d.datasourceName || '-'}</div>
+    // 视图的上游: 工作簿
+    if (type === 'views') {
+        if (item.workbook_info) {
+            upstreamItems.push({
+                type: 'workbooks',
+                icon: 'book-open',
+                label: '所属工作簿',
+                items: [{
+                    id: item.workbook_info.id,
+                    name: item.workbook_info.name,
+                    subtitle: item.workbook_info.owner ? `Owner: ${item.workbook_info.owner}` : null
+                }]
+            });
+        }
+    }
+
+    // 工作簿的上游: 数据源
+    if (type === 'workbooks') {
+        const datasources = item.datasources || [];
+        if (datasources.length) {
+            upstreamItems.push({
+                type: 'datasources',
+                icon: 'layers',
+                label: '上游数据源',
+                items: datasources.map(ds => ({
+                    id: ds.id,
+                    name: ds.name,
+                    subtitle: ds.is_certified ? '✓ 已认证' : (ds.has_extract ? 'Extract' : 'Live')
+                }))
+            });
+        }
+    }
+
+    // 数据源的上游: 表（增强版）
+    if (type === 'datasources') {
+        const tables = item.tables || item.connected_tables || [];
+        if (tables.length) {
+            upstreamItems.push({
+                type: 'tables',
+                icon: 'table-2',
+                label: '连接的数据表',
+                items: tables.map(t => typeof t === 'string' ? { name: t } : {
+                    id: t.id,
+                    name: t.name,
+                    subtitle: t.database_name ? `DB: ${t.database_name}` : (t.schema || null)
+                })
+            });
+        }
+    }
+
+    // 表的上游: 数据库（增强版）
+    if (type === 'tables') {
+        if (item.database_info) {
+            upstreamItems.push({
+                type: 'databases',
+                icon: 'database',
+                label: '所属数据库',
+                items: [{
+                    id: item.database_info.id,
+                    name: item.database_info.name,
+                    subtitle: item.database_info.connection_type || null
+                }]
+            });
+        } else if (item.databaseId || item.databaseName) {
+            upstreamItems.push({
+                type: 'databases',
+                icon: 'database',
+                label: '所属数据库',
+                items: [{
+                    id: item.databaseId,
+                    name: item.databaseName || '-'
+                }]
+            });
+        }
+    }
+
+    if (upstreamItems.length === 0) return '';
+
+    html += `
+    <div class="bg-blue-50 rounded-lg border border-blue-100 p-4">
+        <h3 class="text-[12px] font-bold text-blue-900 mb-3 flex items-center gap-2">
+            <i data-lucide="arrow-up-circle" class="w-3.5 h-3.5 text-blue-600"></i> 上游资产 (数据来源)
+        </h3>
+        <div class="space-y-3">
+            ${upstreamItems.map(group => `
+                <div>
+                    <div class="text-[10px] text-blue-600 font-medium mb-1.5 flex items-center gap-1">
+                        <i data-lucide="${group.icon}" class="w-3 h-3"></i> ${group.label}
+                    </div>
+                    <div class="space-y-1">
+                        ${group.items.slice(0, 5).map(asset => `
+                            <div class="flex items-center justify-between bg-white p-2 rounded border border-blue-100 ${asset.id ? 'cursor-pointer hover:border-blue-300' : ''} transition-colors"
+                                 ${asset.id ? `onclick="showDetail('${asset.id}', '${group.type}')"` : ''}>
+                                <div class="flex flex-col min-w-0">
+                                    <span class="text-[12px] text-gray-700 font-medium truncate">${asset.name}</span>
+                                    ${asset.subtitle ? `<span class="text-[10px] text-gray-400">${asset.subtitle}</span>` : ''}
                                 </div>
-                            `).join('')}
-                        </div>
+                                ${asset.id ? '<i data-lucide="chevron-right" class="w-3 h-3 text-gray-400 flex-shrink-0"></i>' : ''}
+                            </div>
+                        `).join('')}
+                        ${group.items.length > 5 ? `<div class="text-[10px] text-blue-500 pl-2">+${group.items.length - 5} 更多...</div>` : ''}
                     </div>
                 </div>
-            </div>`;
-        }
+            `).join('')}
+        </div>
+    </div>`;
 
-        // 所在报表 (Impact)
+    return html;
+}
+
+// 渲染下游资产卡片
+function renderDownstreamAssets(item, type) {
+    let html = '';
+    const downstreamItems = [];
+
+    // 字段的下游: 指标、视图
+    if (type === 'fields') {
+        const metrics = item.used_by_metrics || [];
+        if (metrics.length) {
+            downstreamItems.push({
+                type: 'metrics',
+                icon: 'function-square',
+                label: '使用此字段的指标',
+                items: metrics.map(m => ({ id: m.id, name: m.name }))
+            });
+        }
+        const views = item.used_in_views || [];
         if (views.length) {
-            html += `
-            <div class="bg-white rounded-lg border border-gray-200 p-4">
-                <h3 class="text-[12px] font-bold text-gray-900 mb-3">应用报表 (${views.length})</h3>
-                <ul class="list-disc pl-4 space-y-1">
-                    ${views.map(v => `<li class="text-[12px] text-gray-600">${v.workbookName} / <span class="font-medium text-gray-800">${v.name}</span></li>`).join('')}
-                </ul>
-            </div>`;
+            downstreamItems.push({
+                type: 'views',
+                icon: 'layout',
+                label: '使用此字段的视图',
+                items: views.map(v => ({
+                    id: v.id,
+                    name: v.name,
+                    subtitle: v.workbook_name || v.workbookName
+                }))
+            });
         }
     }
 
-    html += `</div>`;
-    content.innerHTML = html;
-    lucide.createIcons();
+    // 指标的下游: 视图、工作簿
+    if (type === 'metrics') {
+        const views = item.usedInViews || [];
+        if (views.length) {
+            downstreamItems.push({
+                type: 'views',
+                icon: 'layout',
+                label: '使用此指标的视图',
+                items: views.map(v => ({
+                    id: v.id,
+                    name: v.name,
+                    subtitle: v.workbook_name || v.workbookName
+                }))
+            });
+        }
+        const workbooks = item.usedInWorkbooks || [];
+        if (workbooks.length) {
+            downstreamItems.push({
+                type: 'workbooks',
+                icon: 'book-open',
+                label: '使用此指标的工作簿',
+                items: workbooks.map(wb => ({
+                    id: wb.id,
+                    name: wb.name,
+                    subtitle: wb.owner ? `Owner: ${wb.owner}` : null
+                }))
+            });
+        }
+    }
+
+    // 数据源的下游: 工作簿（增强版）
+    if (type === 'datasources') {
+        const workbooks = item.workbooks || [];
+        if (workbooks.length) {
+            downstreamItems.push({
+                type: 'workbooks',
+                icon: 'book-open',
+                label: '使用此数据源的工作簿',
+                items: workbooks.map(wb => ({
+                    id: wb.id,
+                    name: wb.name,
+                    subtitle: wb.owner ? `Owner: ${wb.owner}` : null
+                }))
+            });
+        }
+        // 数据源的字段
+        const fields = item.full_fields || [];
+        if (fields.length) {
+            downstreamItems.push({
+                type: 'fields',
+                icon: 'columns',
+                label: '包含的字段',
+                items: fields.slice(0, 10).map(f => ({
+                    id: f.id,
+                    name: f.name,
+                    subtitle: f.role === 'measure' ? '度量' : '维度'
+                }))
+            });
+        }
+        // 数据源的指标
+        const metrics = item.metrics || [];
+        if (metrics.length) {
+            downstreamItems.push({
+                type: 'metrics',
+                icon: 'function-square',
+                label: '包含的指标',
+                items: metrics.slice(0, 10).map(m => ({
+                    id: m.id,
+                    name: m.name
+                }))
+            });
+        }
+    }
+
+    // 表的下游: 数据源、原始列、字段（增强版）
+    if (type === 'tables') {
+        // 原始数据库列
+        const columns = item.columns || [];
+        if (columns.length) {
+            downstreamItems.push({
+                type: 'columns',
+                icon: 'list',
+                label: '原始数据库列 (未改写)',
+                items: columns.slice(0, 10).map(c => ({
+                    name: c.name,
+                    subtitle: c.remote_type || null
+                }))
+            });
+        }
+        // Tableau字段
+        const fields = item.full_fields || [];
+        if (fields.length) {
+            downstreamItems.push({
+                type: 'fields',
+                icon: 'columns',
+                label: 'Tableau字段',
+                items: fields.slice(0, 10).map(f => ({
+                    id: f.id,
+                    name: f.name,
+                    subtitle: f.role === 'measure' ? '度量' : '维度'
+                }))
+            });
+        }
+        // 关联的数据源
+        const datasources = item.datasources || [];
+        if (datasources.length) {
+            downstreamItems.push({
+                type: 'datasources',
+                icon: 'layers',
+                label: '使用此表的数据源',
+                items: datasources.map(ds => ({
+                    id: ds.id,
+                    name: ds.name,
+                    subtitle: ds.is_certified ? '✓ 已认证' : null
+                }))
+            });
+        }
+    }
+
+    // 数据库的下游: 表（增强版）
+    if (type === 'databases') {
+        const tables = item.tables || [];
+        if (tables.length) {
+            downstreamItems.push({
+                type: 'tables',
+                icon: 'table-2',
+                label: '包含的数据表',
+                items: tables.slice(0, 15).map(t => ({
+                    id: t.id,
+                    name: t.name,
+                    subtitle: t.schema ? `Schema: ${t.schema}` : `${t.field_count || 0} 字段`
+                }))
+            });
+        }
+    }
+
+    // 工作簿的下游: 视图
+    if (type === 'workbooks') {
+        const views = item.views || [];
+        if (views.length) {
+            downstreamItems.push({
+                type: 'views',
+                icon: 'layout',
+                label: '包含的视图',
+                items: views.map(v => ({
+                    id: v.id,
+                    name: v.name,
+                    subtitle: v.view_type || 'sheet'
+                }))
+            });
+        }
+        const usedFields = item.used_fields || [];
+        const usedMetrics = item.used_metrics || [];
+        if (usedFields.length) {
+            downstreamItems.push({
+                type: 'fields',
+                icon: 'columns',
+                label: '使用的字段',
+                items: usedFields.slice(0, 10).map(f => ({ id: f.id, name: f.name }))
+            });
+        }
+        if (usedMetrics.length) {
+            downstreamItems.push({
+                type: 'metrics',
+                icon: 'function-square',
+                label: '使用的指标',
+                items: usedMetrics.slice(0, 10).map(m => ({ id: m.id, name: m.name }))
+            });
+        }
+    }
+
+    // 视图的下游: 字段、指标
+    if (type === 'views') {
+        const usedFields = item.used_fields || [];
+        const usedMetrics = item.used_metrics || [];
+        if (usedFields.length) {
+            downstreamItems.push({
+                type: 'fields',
+                icon: 'columns',
+                label: '使用的字段',
+                items: usedFields.slice(0, 10).map(f => ({ id: f.id, name: f.name }))
+            });
+        }
+        if (usedMetrics.length) {
+            downstreamItems.push({
+                type: 'metrics',
+                icon: 'function-square',
+                label: '使用的指标',
+                items: usedMetrics.slice(0, 10).map(m => ({ id: m.id, name: m.name }))
+            });
+        }
+    }
+
+    // 项目的下游: 数据源、工作簿
+    if (type === 'projects') {
+        const datasources = item.datasources || [];
+        if (datasources.length) {
+            downstreamItems.push({
+                type: 'datasources',
+                icon: 'layers',
+                label: '项目内数据源',
+                items: datasources.map(ds => ({
+                    id: ds.id,
+                    name: ds.name,
+                    subtitle: ds.is_certified ? '✓ 已认证' : `${ds.field_count || 0} 字段`
+                }))
+            });
+        }
+        const workbooks = item.workbooks || [];
+        if (workbooks.length) {
+            downstreamItems.push({
+                type: 'workbooks',
+                icon: 'book-open',
+                label: '项目内工作簿',
+                items: workbooks.map(wb => ({
+                    id: wb.id,
+                    name: wb.name,
+                    subtitle: `${wb.view_count || 0} 视图`
+                }))
+            });
+        }
+    }
+
+    if (downstreamItems.length === 0) return '';
+
+    html += `
+    <div class="bg-green-50 rounded-lg border border-green-100 p-4">
+        <h3 class="text-[12px] font-bold text-green-900 mb-3 flex items-center gap-2">
+            <i data-lucide="arrow-down-circle" class="w-3.5 h-3.5 text-green-600"></i> 下游资产 (被谁使用)
+        </h3>
+        <div class="space-y-3">
+            ${downstreamItems.map(group => `
+                <div>
+                    <div class="text-[10px] text-green-600 font-medium mb-1.5 flex items-center gap-1">
+                        <i data-lucide="${group.icon}" class="w-3 h-3"></i> ${group.label} (${group.items.length})
+                    </div>
+                    <div class="space-y-1">
+                        ${group.items.slice(0, 5).map(asset => `
+                            <div class="flex items-center justify-between bg-white p-2 rounded border border-green-100 ${asset.id ? 'cursor-pointer hover:border-green-300' : ''} transition-colors"
+                                 ${asset.id ? `onclick="showDetail('${asset.id}', '${group.type}')"` : ''}>
+                                <div class="flex flex-col min-w-0">
+                                    <span class="text-[12px] text-gray-700 font-medium truncate">${asset.name}</span>
+                                    ${asset.subtitle ? `<span class="text-[10px] text-gray-400">${asset.subtitle}</span>` : ''}
+                                </div>
+                                ${asset.id ? '<i data-lucide="chevron-right" class="w-3 h-3 text-gray-400 flex-shrink-0"></i>' : ''}
+                            </div>
+                        `).join('')}
+                        ${group.items.length > 5 ? `<div class="text-[10px] text-green-500 pl-2">+${group.items.length - 5} 更多...</div>` : ''}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    </div>`;
+
+    return html;
+}
+
+// 渲染相似/重复资产卡片 (仅指标) - 增强版：显示使用情况
+function renderSimilarAssets(item) {
+    const dups = item.similarMetrics || [];
+    if (dups.length === 0) return '';
+
+    return `
+    <div class="bg-red-50 rounded-lg border border-red-100 p-4">
+        <div class="flex items-start gap-3">
+            <i data-lucide="alert-triangle" class="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5"></i>
+            <div class="flex-1">
+                <h3 class="text-[13px] font-bold text-red-800 mb-1">发现重复定义的指标</h3>
+                <p class="text-[11px] text-red-600 mb-3">以下 ${dups.length} 个指标使用了相同计算公式：</p>
+                <div class="space-y-3">
+                    ${dups.map(d => {
+                        const views = d.usedInViews || [];
+                        const workbooks = d.usedInWorkbooks || [];
+                        return `
+                        <div class="bg-white/80 p-3 rounded border border-red-100 cursor-pointer hover:bg-white transition-colors"
+                             onclick="showDetail('${d.id}', 'metrics')">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-[12px] font-bold text-red-900">${d.name}</span>
+                                <span class="text-[10px] text-red-400 bg-red-100 px-1.5 rounded">ID: ${d.id ? d.id.substring(0, 6) : '-'}</span>
+                            </div>
+                            <div class="text-[10px] text-gray-500 mb-2">数据源: ${d.datasourceName || '-'}</div>
+                            ${workbooks.length ? `
+                            <div class="mt-2 pt-2 border-t border-red-100">
+                                <div class="text-[10px] text-red-700 font-medium mb-1">使用此重复指标的工作簿:</div>
+                                <div class="flex flex-wrap gap-1">
+                                    ${workbooks.slice(0, 3).map(wb => `
+                                        <span class="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded"
+                                              onclick="event.stopPropagation(); showDetail('${wb.id}', 'workbooks')">${wb.name}</span>
+                                    `).join('')}
+                                    ${workbooks.length > 3 ? `<span class="text-[10px] text-red-400">+${workbooks.length - 3} 更多</span>` : ''}
+                                </div>
+                            </div>
+                            ` : ''}
+                            ${views.length && !workbooks.length ? `
+                            <div class="mt-2 pt-2 border-t border-red-100">
+                                <div class="text-[10px] text-red-700 font-medium mb-1">使用此重复指标的视图:</div>
+                                <div class="flex flex-wrap gap-1">
+                                    ${views.slice(0, 3).map(v => `
+                                        <span class="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded">${v.name}</span>
+                                    `).join('')}
+                                    ${views.length > 3 ? `<span class="text-[10px] text-red-400">+${views.length - 3} 更多</span>` : ''}
+                                </div>
+                            </div>
+                            ` : ''}
+                        </div>
+                    `}).join('')}
+                </div>
+            </div>
+        </div>
+    </div>`;
 }
 
 function closeDrawer() {
     document.getElementById('detail-drawer').classList.remove('open');
     document.getElementById('overlay').classList.remove('active');
+    // 清空历史记录
+    detailHistory = [];
+    currentDetailItem = null;
+    currentDetailType = null;
+    updateBackButton();
+}
+
+// 返回上一个详情
+function goBackDetail() {
+    if (detailHistory.length === 0) return;
+    const prev = detailHistory.pop();
+    showDetail(prev.id, prev.type, false); // 不添加到历史
+}
+
+// 更新返回按钮和面包屑
+function updateBackButton() {
+    const backBtn = document.getElementById('drawer-back-btn');
+    const breadcrumb = document.getElementById('drawer-breadcrumb');
+
+    if (detailHistory.length > 0) {
+        backBtn.style.display = 'flex';
+        breadcrumb.style.display = 'block';
+        // 渲染面包屑
+        const crumbs = detailHistory.map((h, i) => `
+            <span class="cursor-pointer hover:text-indigo-600" onclick="jumpToHistory(${i})">${getModuleName(h.type)}: ${h.name}</span>
+        `).join(' <span class="mx-1">→</span> ');
+        breadcrumb.innerHTML = crumbs + ` <span class="mx-1">→</span> <span class="text-gray-700 font-medium">${currentDetailItem?.name || ''}</span>`;
+    } else {
+        backBtn.style.display = 'none';
+        breadcrumb.style.display = 'none';
+    }
+}
+
+// 跳转到历史中的某一项
+function jumpToHistory(index) {
+    // 移除index之后的所有历史
+    const target = detailHistory[index];
+    detailHistory = detailHistory.slice(0, index);
+    showDetail(target.id, target.type, false);
 }
 
 function getModuleName(type) {
-    const titles = { databases: '数据库', tables: '数据表', fields: '字段', metrics: '指标', datasources: '数据源', workbooks: '工作簿' };
+    const titles = { databases: '数据库', tables: '数据表', fields: '字段', metrics: '指标', datasources: '数据源', workbooks: '工作簿', projects: '项目', views: '视图' };
     return titles[type] || type;
 }
 
@@ -973,6 +1652,48 @@ function renderPropRow(label, value, isCode = false) {
     <div class="col-span-1">
         <div class="text-[10px] text-gray-400 mb-0.5">${label}</div>
         <div class="text-[12px] text-gray-700 ${isCode ? 'font-mono text-[11px]' : ''} truncate" title="${value}">${value}</div>
+    </div>`;
+}
+
+// 渲染统计信息卡片
+function renderStatsCard(stats, type) {
+    const statLabels = {
+        table_count: '数据表',
+        total_fields: '字段总数',
+        total_columns: '原始列',
+        connected_datasource_count: '关联数据源',
+        column_count: '原始列',
+        field_count: '字段数',
+        datasource_count: '数据源',
+        workbook_count: '工作簿',
+        metric_count: '指标数',
+        total_views: '视图总数',
+        certified_datasources: '已认证',
+        certification_rate: '认证率'
+    };
+
+    const statItems = Object.entries(stats)
+        .filter(([k, v]) => v !== undefined && v !== null && statLabels[k])
+        .map(([k, v]) => ({
+            label: statLabels[k],
+            value: k === 'certification_rate' ? `${v}%` : v
+        }));
+
+    if (statItems.length === 0) return '';
+
+    return `
+    <div class="bg-purple-50 rounded-lg border border-purple-100 p-4">
+        <h3 class="text-[12px] font-bold text-purple-900 mb-3 flex items-center gap-2">
+            <i data-lucide="bar-chart-2" class="w-3.5 h-3.5 text-purple-600"></i> 统计概览
+        </h3>
+        <div class="grid grid-cols-3 gap-3">
+            ${statItems.map(s => `
+                <div class="bg-white rounded p-2 border border-purple-100 text-center">
+                    <div class="text-lg font-bold text-purple-700">${s.value}</div>
+                    <div class="text-[10px] text-gray-500">${s.label}</div>
+                </div>
+            `).join('')}
+        </div>
     </div>`;
 }
 
