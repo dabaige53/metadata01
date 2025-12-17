@@ -5,8 +5,9 @@ REST API 路由
 from flask import Blueprint, jsonify, request, g
 from sqlalchemy import func, case
 from ..models import (
-    Database, DBTable, Field, Datasource, Workbook, View,
-    CalculatedField, Metric, MetricVariant, MetricDuplicate
+    Database, DBTable, DBColumn, Field, Datasource, Workbook, View,
+    CalculatedField, Metric, MetricVariant, MetricDuplicate,
+    TableauUser, Project
 )
 
 api_bp = Blueprint('api', __name__)
@@ -32,7 +33,9 @@ def get_stats():
         'views': session.query(View).count(),
         'metrics': calc_fields_count,  # 指标数量 = 计算字段数量
         'duplicateMetrics': 0,  # 暂不计算重复
-        'orphanedFields': session.query(Field).outerjoin(Field.views).filter(View.id == None).count()
+        'orphanedFields': session.query(Field).outerjoin(Field.views).filter(View.id == None).count(),
+        'projects': session.query(Project).count(),
+        'users': session.query(TableauUser).count()
     }
     
     return jsonify(stats)
@@ -951,7 +954,6 @@ def get_lineage_graph(item_type, item_id):
     })
 
 
-# ==================== 治理操作接口 - 已禁用 (只读展示) ====================
 @api_bp.route('/governance/merge', methods=['POST'])
 def merge_metrics(): return jsonify({'error': '只读模式，治理操作已禁用'}), 405
 
@@ -961,3 +963,352 @@ def deprecate_metrics(): return jsonify({'error': '只读模式，治理操作�
 @api_bp.route('/governance/cleanup', methods=['POST'])
 def cleanup_fields(): return jsonify({'error': '只读模式，治理操作已禁用'}), 405
 
+
+# ==================== 数据质量接口 ====================
+
+@api_bp.route('/quality/overview')
+def get_quality_overview():
+    """获取数据质量概览 - 描述覆盖率、认证状态等"""
+    session = g.db_session
+    
+    # 字段描述覆盖率
+    total_fields = session.query(Field).count()
+    fields_with_desc = session.query(Field).filter(
+        Field.description != None,
+        Field.description != ''
+    ).count()
+    field_desc_coverage = round(fields_with_desc / total_fields * 100, 1) if total_fields else 0
+    
+    # 数据源描述覆盖率
+    total_datasources = session.query(Datasource).count()
+    ds_with_desc = session.query(Datasource).filter(
+        Datasource.description != None,
+        Datasource.description != ''
+    ).count()
+    ds_desc_coverage = round(ds_with_desc / total_datasources * 100, 1) if total_datasources else 0
+    
+    # 数据源认证状态
+    certified_ds = session.query(Datasource).filter(Datasource.is_certified == True).count()
+    certification_rate = round(certified_ds / total_datasources * 100, 1) if total_datasources else 0
+    
+    # 表描述覆盖率
+    total_tables = session.query(DBTable).count()
+    tables_with_desc = session.query(DBTable).filter(
+        DBTable.description != None,
+        DBTable.description != ''
+    ).count()
+    table_desc_coverage = round(tables_with_desc / total_tables * 100, 1) if total_tables else 0
+    
+    # 工作簿描述覆盖率
+    total_workbooks = session.query(Workbook).count()
+    wb_with_desc = session.query(Workbook).filter(
+        Workbook.description != None,
+        Workbook.description != ''
+    ).count()
+    wb_desc_coverage = round(wb_with_desc / total_workbooks * 100, 1) if total_workbooks else 0
+    
+    # 计算综合质量分数
+    quality_score = int((field_desc_coverage + ds_desc_coverage + certification_rate + table_desc_coverage) / 4)
+    
+    return jsonify({
+        'quality_score': quality_score,
+        'field_coverage': {
+            'total': total_fields,
+            'with_description': fields_with_desc,
+            'coverage_rate': field_desc_coverage
+        },
+        'datasource_coverage': {
+            'total': total_datasources,
+            'with_description': ds_with_desc,
+            'coverage_rate': ds_desc_coverage,
+            'certified': certified_ds,
+            'certification_rate': certification_rate
+        },
+        'table_coverage': {
+            'total': total_tables,
+            'with_description': tables_with_desc,
+            'coverage_rate': table_desc_coverage
+        },
+        'workbook_coverage': {
+            'total': total_workbooks,
+            'with_description': wb_with_desc,
+            'coverage_rate': wb_desc_coverage
+        }
+    })
+
+
+@api_bp.route('/quality/uncovered-fields')
+def get_uncovered_fields():
+    """获取缺少描述的字段列表"""
+    session = g.db_session
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 50, type=int)
+    
+    query = session.query(Field).filter(
+        (Field.description == None) | (Field.description == '')
+    )
+    
+    total = query.count()
+    offset = (page - 1) * page_size
+    fields = query.offset(offset).limit(page_size).all()
+    
+    results = []
+    for f in fields:
+        results.append({
+            'id': f.id,
+            'name': f.name,
+            'data_type': f.data_type,
+            'role': f.role,
+            'datasource_name': f.datasource.name if f.datasource else '-',
+            'datasource_id': f.datasource_id,
+            'table_name': f.table.name if f.table else '-'
+        })
+    
+    return jsonify({
+        'items': results,
+        'total': total,
+        'page': page,
+        'page_size': page_size
+    })
+
+
+@api_bp.route('/quality/uncertified-datasources')
+def get_uncertified_datasources():
+    """获取未认证的数据源列表"""
+    session = g.db_session
+    
+    datasources = session.query(Datasource).filter(
+        (Datasource.is_certified == False) | (Datasource.is_certified == None)
+    ).all()
+    
+    results = []
+    for ds in datasources:
+        results.append({
+            'id': ds.id,
+            'name': ds.name,
+            'project_name': ds.project_name,
+            'owner': ds.owner,
+            'has_description': bool(ds.description),
+            'field_count': len(ds.fields),
+            'workbook_count': len(ds.workbooks)
+        })
+    
+    return jsonify({
+        'items': results,
+        'total': len(results)
+    })
+
+
+# ==================== 项目接口 ====================
+
+@api_bp.route('/projects')
+def get_projects():
+    """获取项目列表及统计"""
+    session = g.db_session
+    
+    projects = session.query(Project).all()
+    
+    # 统计各项目资产数量
+    results = []
+    for p in projects:
+        # 通过 project_name 统计关联资产
+        ds_count = session.query(Datasource).filter(
+            Datasource.project_name == p.name
+        ).count()
+        wb_count = session.query(Workbook).filter(
+            Workbook.project_name == p.name
+        ).count()
+        
+        results.append({
+            'id': p.id,
+            'name': p.name,
+            'description': p.description,
+            'datasource_count': ds_count,
+            'workbook_count': wb_count,
+            'total_assets': ds_count + wb_count
+        })
+    
+    # 按资产数量排序
+    results.sort(key=lambda x: x['total_assets'], reverse=True)
+    
+    return jsonify({
+        'items': results,
+        'total': len(results)
+    })
+
+
+@api_bp.route('/projects/<project_id>')
+def get_project_detail(project_id):
+    """获取项目详情及关联资产"""
+    session = g.db_session
+    
+    project = session.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        return jsonify({'error': 'Not found'}), 404
+    
+    # 获取关联的数据源
+    datasources = session.query(Datasource).filter(
+        Datasource.project_name == project.name
+    ).all()
+    
+    # 获取关联的工作簿
+    workbooks = session.query(Workbook).filter(
+        Workbook.project_name == project.name
+    ).all()
+    
+    return jsonify({
+        'id': project.id,
+        'name': project.name,
+        'description': project.description,
+        'datasources': [{
+            'id': ds.id,
+            'name': ds.name,
+            'owner': ds.owner,
+            'is_certified': ds.is_certified,
+            'field_count': len(ds.fields)
+        } for ds in datasources],
+        'workbooks': [{
+            'id': wb.id,
+            'name': wb.name,
+            'owner': wb.owner,
+            'view_count': len(wb.views)
+        } for wb in workbooks]
+    })
+
+
+# ==================== 用户接口 ====================
+
+@api_bp.route('/users')
+def get_users():
+    """获取用户列表及资产统计"""
+    session = g.db_session
+    
+    users = session.query(TableauUser).all()
+    
+    results = []
+    for u in users:
+        # 统计用户拥有的资产
+        ds_count = session.query(Datasource).filter(
+            Datasource.owner == u.name
+        ).count()
+        wb_count = session.query(Workbook).filter(
+            Workbook.owner == u.name
+        ).count()
+        
+        results.append({
+            'id': u.id,
+            'name': u.name,
+            'display_name': u.display_name,
+            'email': u.email,
+            'site_role': u.site_role,
+            'datasource_count': ds_count,
+            'workbook_count': wb_count,
+            'total_assets': ds_count + wb_count
+        })
+    
+    # 按资产数量排序
+    results.sort(key=lambda x: x['total_assets'], reverse=True)
+    
+    return jsonify({
+        'items': results,
+        'total': len(results)
+    })
+
+
+@api_bp.route('/users/<user_id>')
+def get_user_detail(user_id):
+    """获取用户详情及拥有的资产"""
+    session = g.db_session
+    
+    user = session.query(TableauUser).filter(TableauUser.id == user_id).first()
+    if not user:
+        return jsonify({'error': 'Not found'}), 404
+    
+    # 获取用户的数据源
+    datasources = session.query(Datasource).filter(
+        Datasource.owner == user.name
+    ).all()
+    
+    # 获取用户的工作簿
+    workbooks = session.query(Workbook).filter(
+        Workbook.owner == user.name
+    ).all()
+    
+    return jsonify({
+        'id': user.id,
+        'name': user.name,
+        'display_name': user.display_name,
+        'email': user.email,
+        'site_role': user.site_role,
+        'datasources': [{
+            'id': ds.id,
+            'name': ds.name,
+            'project_name': ds.project_name,
+            'is_certified': ds.is_certified
+        } for ds in datasources],
+        'workbooks': [{
+            'id': wb.id,
+            'name': wb.name,
+            'project_name': wb.project_name,
+            'view_count': len(wb.views)
+        } for wb in workbooks]
+    })
+
+
+# ==================== 资产健康评分接口 ====================
+
+@api_bp.route('/health/datasources')
+def get_datasource_health():
+    """获取数据源健康评分排名"""
+    session = g.db_session
+    import datetime
+    
+    datasources = session.query(Datasource).all()
+    
+    results = []
+    for ds in datasources:
+        # 计算健康分
+        score = 100
+        issues = []
+        
+        # 无描述 -20分
+        if not ds.description:
+            score -= 20
+            issues.append('缺少描述')
+        
+        # 未认证 -15分
+        if not ds.is_certified:
+            score -= 15
+            issues.append('未认证')
+        
+        # 数据刷新超过30天 -25分
+        if ds.has_extract and ds.extract_last_refresh_time:
+            days_since_refresh = (datetime.datetime.now(datetime.timezone.utc) - ds.extract_last_refresh_time).days if ds.extract_last_refresh_time.tzinfo else (datetime.datetime.now() - ds.extract_last_refresh_time).days
+            if days_since_refresh > 30:
+                score -= 25
+                issues.append(f'数据过期({days_since_refresh}天)')
+        
+        # 无关联表 -10分
+        if not ds.tables:
+            score -= 10
+            issues.append('无上游表')
+        
+        results.append({
+            'id': ds.id,
+            'name': ds.name,
+            'project_name': ds.project_name,
+            'owner': ds.owner,
+            'health_score': max(0, score),
+            'issues': issues,
+            'is_certified': ds.is_certified,
+            'has_description': bool(ds.description)
+        })
+    
+    # 按健康分排序
+    results.sort(key=lambda x: x['health_score'])
+    
+    return jsonify({
+        'items': results,
+        'total': len(results),
+        'avg_score': round(sum(r['health_score'] for r in results) / len(results), 1) if results else 0
+    })

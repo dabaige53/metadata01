@@ -133,10 +133,25 @@ function renderList() {
     const c = document.getElementById('main-content');
     const n = state.filteredData.length;
     const t = state.activeModule;
-    const titles = { databases: '数据库', tables: '数据表', fields: '字段字典', metrics: '指标库', datasources: '数据源', workbooks: '工作簿' };
+    const titles = {
+        databases: '数据库',
+        tables: '数据表',
+        fields: '字段字典',
+        metrics: '指标库',
+        datasources: '数据源',
+        workbooks: '工作簿',
+        projects: '项目',
+        users: '用户'
+    };
 
     // 排序按钮
-    const sortCfg = { fields: ['usageCount:热度', 'name:名称'], metrics: ['complexity:复杂度', 'referenceCount:引用'], tables: ['field_count:字段数'] };
+    const sortCfg = {
+        fields: ['usageCount:热度', 'name:名称'],
+        metrics: ['complexity:复杂度', 'referenceCount:引用'],
+        tables: ['field_count:字段数'],
+        projects: ['total_assets:资产数', 'name:名称'],
+        users: ['total_assets:资产数', 'name:名称']
+    };
     const sortBtns = (sortCfg[t] || []).map(s => {
         const [k, l] = s.split(':');
         const active = state.sortOption === k;
@@ -222,6 +237,8 @@ function getModuleContent(t) {
         case 'metrics': return renderMetricsTable();
         case 'datasources': return renderDSTable();
         case 'workbooks': return renderWBTable();
+        case 'projects': return renderProjectsTable();
+        case 'users': return renderUsersTable();
         default: return '';
     }
 }
@@ -456,11 +473,49 @@ async function navigateWithFilter(module, filterKey, filterVal) {
     await switchModule(module, initialFilters);
 }
 
+// ===================== 项目表格 =====================
+function renderProjectsTable() {
+    return `<table class="data-table">
+        <thead><tr><th>项目名称</th><th>简介</th><th>数据源</th><th>工作簿</th><th>资产总数</th></tr></thead>
+        <tbody>${state.filteredData.map(i => `
+            <tr onclick="showDetail('${i.id}','projects')">
+                <td><div class="cell-main"><i data-lucide="folder" class="icon proj"></i><span class="name">${i.name}</span></div></td>
+                <td class="muted"><span class="truncate max-w-[200px]">${i.description || '-'}</span></td>
+                <td class="num">${i.datasource_count || 0}</td>
+                <td class="num">${i.workbook_count || 0}</td>
+                <td class="num font-bold">${i.total_assets || 0}</td>
+            </tr>`).join('')}
+        </tbody>
+    </table>`;
+}
+
+// ===================== 用户表格 =====================
+function renderUsersTable() {
+    return `<table class="data-table">
+        <thead><tr><th>用户名</th><th>显示名称</th><th>角色</th><th>数据源</th><th>工作簿</th><th>资产总数</th></tr></thead>
+        <tbody>${state.filteredData.map(i => `
+            <tr onclick="showDetail('${i.id}','users')">
+                <td><div class="cell-main"><i data-lucide="user" class="icon user"></i><span class="name">${i.name}</span></div></td>
+                <td>${i.display_name || '-'}</td>
+                <td><span class="tag role">${i.site_role || 'User'}</span></td>
+                <td class="num">${i.datasource_count || 0}</td>
+                <td class="num">${i.workbook_count || 0}</td>
+                <td class="num font-bold">${i.total_assets || 0}</td>
+            </tr>`).join('')}
+        </tbody>
+    </table>`;
+}
+
+
 // ===================== 概览 (新版治理仪表盘) =====================
 async function renderOverview() {
     const c = document.getElementById('main-content');
     try {
-        const d = await api.get('/dashboard/analysis');
+        // 并行请求：获取仪表盘分析数据和质量概览数据
+        const [d, qualityData] = await Promise.all([
+            api.get('/dashboard/analysis'),
+            api.get('/quality/overview').catch(() => null) // 允许失败 (向后兼容)
+        ]);
 
         // 确保 scores 存在 (兼容旧接口)
         const scores = d.governance_scores || { completeness: 0, timeliness: 0, consistency: 0, validity: 0 };
@@ -471,7 +526,6 @@ async function renderOverview() {
 
         // 辅助函数: 构建维度卡片
         const buildDimCard = (label, score, icon, color) => {
-            const status = score >= 90 ? 'good' : score >= 70 ? 'warn' : 'bad';
             const statusColor = score >= 90 ? 'text-green-600' : score >= 70 ? 'text-orange-500' : 'text-red-500';
             const bgClass = score >= 90 ? 'bg-green-50' : score >= 70 ? 'bg-orange-50' : 'bg-red-50';
 
@@ -541,6 +595,44 @@ async function renderOverview() {
             </div>`;
         };
 
+        // 辅助函数: 构建覆盖率进度条 (新)
+        const buildCoverageBar = (title, data) => {
+            const pct = data.coverage_rate || 0;
+            const color = pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-red-500';
+            return `
+            <div class="mb-3 last:mb-0">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-[12px] text-gray-600">${title}</span>
+                    <span class="text-[11px] font-medium text-gray-800">${data.with_description}/${data.total} (${pct}%)</span>
+                </div>
+                <div class="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                    <div class="h-full ${color}" style="width: ${pct}%"></div>
+                </div>
+            </div>`;
+        };
+
+        // 辅助函数: 构建认证状态环 (新)
+        const buildCertPie = (data) => {
+            const pct = data.certification_rate || 0;
+            const color = pct >= 80 ? 'text-green-500' : pct >= 50 ? 'text-yellow-500' : 'text-red-500';
+
+            return `
+            <div class="flex items-center gap-4">
+                <div class="relative w-16 h-16 flex items-center justify-center">
+                    <svg viewBox="0 0 36 36" class="w-full h-full transform -rotate-90">
+                        <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#f3f4f6" stroke-width="3" />
+                        <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="${pct}, 100" class="${color}" />
+                    </svg>
+                    <div class="absolute text-[12px] font-bold text-gray-700">${pct}%</div>
+                </div>
+                <div class="flex-1">
+                    <div class="text-[12px] text-gray-500 mb-1">已认证数据源</div>
+                    <div class="text-xl font-bold text-gray-800">${data.certified} <span class="text-xs font-normal text-gray-400">/ ${data.total}</span></div>
+                    <div class="text-[10px] text-gray-400 mt-0.5">可信数据比例</div>
+                </div>
+            </div>`;
+        };
+
         // 颜色映射
         const typeColors = k => ({ 'string': '#10b981', 'integer': '#3b82f6', 'real': '#f59e0b', 'datetime': '#8b5cf6', 'boolean': '#6366f1' }[k] || '#94a3b8');
 
@@ -595,6 +687,34 @@ async function renderOverview() {
                         </div>
                     </div>
                 </div>
+                
+                <!-- 新增：数据质量仪表盘 (如果有质量数据) -->
+                ${qualityData ? `
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- 描述覆盖率 -->
+                    <div class="col-span-2 bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+                        <h4 class="text-[13px] font-bold text-gray-800 mb-4 flex items-center gap-2">
+                            <i data-lucide="file-text" class="w-4 h-4 text-indigo-500"></i> 元数据描述覆盖率
+                        </h4>
+                        <div class="grid grid-cols-2 gap-x-8 gap-y-2">
+                             ${buildCoverageBar('字段字典', qualityData.field_coverage)}
+                             ${buildCoverageBar('数据表', qualityData.table_coverage)}
+                             ${buildCoverageBar('数据源', qualityData.datasource_coverage)}
+                             ${buildCoverageBar('工作簿', qualityData.workbook_coverage)}
+                        </div>
+                    </div>
+                    
+                    <!-- 认证状态 -->
+                    <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+                        <h4 class="text-[13px] font-bold text-gray-800 mb-4 flex items-center gap-2">
+                            <i data-lucide="shield-check" class="w-4 h-4 text-green-500"></i> 数据源认证
+                        </h4>
+                        <div class="py-2">
+                            ${buildCertPie(qualityData.datasource_coverage)}
+                        </div>
+                    </div>
+                </div>
+                ` : ''}
 
                 <!-- 待处理事项 (Action Center) -->
                 ${(d.issues.stale_datasources || d.issues.duplicate_formulas || d.issues.orphaned_tables || d.issues.missing_description) ? `
