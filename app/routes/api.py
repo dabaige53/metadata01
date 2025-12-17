@@ -3,7 +3,7 @@ REST API 路由
 提供元数据查询和治理操作接口
 """
 from flask import Blueprint, jsonify, request, g
-from sqlalchemy import func
+from sqlalchemy import func, case
 from ..models import (
     Database, DBTable, Field, Datasource, Workbook, View,
     CalculatedField, Metric, MetricVariant, MetricDuplicate
@@ -61,7 +61,7 @@ def build_metric_index(session):
     ).all()
     
     field_usage = defaultdict(list)  # field_name -> [metric_info]
-    metric_deps = {}                 # metric_id -> [field_info]
+    metric_deps = defaultdict(list)  # metric_id -> [field_info]
     formula_map = defaultdict(list)  # formula -> [metric_info]
     
     for field, calc in results:
@@ -91,7 +91,8 @@ def build_metric_index(session):
                     deps.append(field_id_map[ref_name])
                 else:
                     deps.append({'name': ref_name, 'id': None}) # 未找到对应 ID
-            
+            # 写入指标依赖索引
+            metric_deps[field.id] = deps
             
     return field_usage, metric_deps, formula_map, field_id_map
 
@@ -99,60 +100,195 @@ def build_metric_index(session):
 
 @api_bp.route('/dashboard/analysis')
 def get_dashboard_analysis():
-    """获取仪表盘分析数据 - 基于真实数据的聚合分析"""
+    """获取仪表盘分析数据 - 基于真实数据的深度聚合分析"""
     session = g.db_session
-    
-    # 1. 治理健康度指标
-    score = 100
-    
-    missing_desc_count = session.query(Field).filter((Field.description == None) | (Field.description == '')).count()
-    
     import datetime
+    
+    # ===== 1. 基础统计 =====
+    total_fields = session.query(Field).count()
+    total_calc_fields = session.query(CalculatedField).count()
+    total_tables = session.query(DBTable).count()
+    total_datasources = session.query(Datasource).count()
+    total_workbooks = session.query(Workbook).count()
+    total_views = session.query(View).count()
+    
+    # ===== 2. 字段来源分布 =====
+    from_datasource = session.query(Field).filter(Field.datasource_id != None).count()
+    from_table = session.query(Field).filter(Field.table_id != None).count()
+    from_workbook = session.query(Field).filter(Field.workbook_id != None).count()
+    orphan_fields = session.query(Field).filter(
+        Field.datasource_id == None,
+        Field.table_id == None,
+        Field.workbook_id == None
+    ).count()
+    
+    field_source_distribution = {
+        'datasource': from_datasource,
+        'table': from_table,
+        'workbook': from_workbook,
+        'orphan': orphan_fields
+    }
+    
+    # ===== 3. 数据类型分布 =====
+    type_results = session.query(
+        Field.data_type, func.count(Field.id)
+    ).group_by(Field.data_type).all()
+    data_type_distribution = {(t or 'unknown'): c for t, c in type_results}
+    
+    # ===== 4. 角色分布（度量/维度） =====
+    role_results = session.query(
+        Field.role, func.count(Field.id)
+    ).group_by(Field.role).all()
+    role_distribution = {(r or 'unknown'): c for r, c in role_results}
+    
+    # ===== 5. 重复公式 Top 10 =====
+    dupe_formulas = session.query(
+        CalculatedField.formula, func.count(CalculatedField.field_id).label('cnt')
+    ).filter(
+        CalculatedField.formula != None,
+        CalculatedField.formula != ''
+    ).group_by(CalculatedField.formula)\
+     .having(func.count(CalculatedField.field_id) > 1)\
+     .order_by(func.count(CalculatedField.field_id).desc())\
+     .limit(10).all()
+    
+    duplicate_formulas_top = [
+        {'formula': f[:80] + '...' if len(f) > 80 else f, 'count': c}
+        for f, c in dupe_formulas
+    ]
+    total_duplicate_formulas = sum([c - 1 for f, c in dupe_formulas])
+    
+    # ===== 6. 复杂度分布 =====
+    complexity_results = session.query(
+        case(
+            (CalculatedField.complexity_score <= 3, 'low'),
+            (CalculatedField.complexity_score <= 7, 'medium'),
+            else_='high'
+        ).label('level'),
+        func.count(CalculatedField.field_id)
+    ).group_by('level').all()
+    complexity_distribution = {level: cnt for level, cnt in complexity_results}
+    
+    # ===== 7. 问题检测 =====
+    missing_desc_count = session.query(Field).filter(
+        (Field.description == None) | (Field.description == '')
+    ).count()
+    
     thirty_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=30)
     stale_ds_count = session.query(Datasource).filter(
         Datasource.has_extract == True,
         Datasource.extract_last_refresh_time < thirty_days_ago
     ).count()
     
-    duplicate_metrics_count = session.query(MetricDuplicate).count()
-    if duplicate_metrics_count == 0:
-        dupes = session.query(CalculatedField.formula, func.count(CalculatedField.field_id))\
-            .group_by(CalculatedField.formula)\
-            .having(func.count(CalculatedField.field_id) > 1).all()
-        duplicate_metrics_count = sum([c-1 for f, c in dupes])
-
-    score -= (missing_desc_count * 0.1)
-    score -= (stale_ds_count * 5)
-    score -= (duplicate_metrics_count * 2)
-    score = max(0, min(100, int(score)))
+    orphaned_tables = session.query(DBTable).outerjoin(DBTable.datasources)\
+        .filter(Datasource.id == None).count()
     
-    # 2. 核心资产 Top N
-    top_fields = session.query(Field).outerjoin(Field.views)\
-        .group_by(Field.id)\
-        .order_by(func.count(View.id).desc())\
-        .limit(5).all()
-        
-    top_fields_data = [{
-        'id': f.id, 
-        'name': f.name, 
-        'usage': len(f.views),
-        'table': f.table.name if f.table else (f.datasource.name if f.datasource else '-')
-    } for f in top_fields]
-
+    # 计算字段无描述比例
+    calc_no_desc = session.query(CalculatedField).join(
+        Field, CalculatedField.field_id == Field.id
+    ).filter((Field.description == None) | (Field.description == '')).count()
+    
     issues = {
         'missing_description': missing_desc_count,
+        'missing_desc_ratio': round(missing_desc_count / total_fields * 100, 1) if total_fields else 0,
         'stale_datasources': stale_ds_count,
-        'duplicate_metrics': duplicate_metrics_count,
-        'orphaned_tables': session.query(DBTable).outerjoin(DBTable.datasources).filter(Datasource.id == None).count()
+        'duplicate_formulas': total_duplicate_formulas,
+        'orphaned_tables': orphaned_tables,
+        'calc_field_no_desc': calc_no_desc
     }
     
-    total_assets = session.query(Field).count() + session.query(DBTable).count() + session.query(Metric).count()
+    # ===== 8. 健康度计算（改进版 - 维度细分） =====
+    
+    # 1. 完整性 (Completeness)
+    # - 字段描述缺失率 (权重 60%)
+    # - 计算字段描述缺失率 (权重 40%)
+    field_desc_ratio = (missing_desc_count / total_fields) if total_fields else 0
+    calc_desc_ratio = (calc_no_desc / total_calc_fields) if total_calc_fields else 0
+    completeness_score = max(0, 100 - (field_desc_ratio * 100 * 0.6 + calc_desc_ratio * 100 * 0.4))
+    
+    # 2. 时效性 (Timeliness)
+    # - 停更数据源 (每个扣 5 分)
+    timeliness_score = max(0, 100 - (stale_ds_count * 5))
+    
+    # 3. 一致性 (Consistency)
+    # - 重复公式 (每个扣 2 分)
+    consistency_score = max(0, 100 - (total_duplicate_formulas * 2))
+    
+    # 4. 有效性 (Validity)
+    # - 孤立表 (每个扣 2 分)
+    # - 孤立字段 (每个扣 1 分 - 权重低因为可能是中间字段)
+    validity_score = max(0, 100 - (orphaned_tables * 2) - (orphan_fields * 0.5))
+    
+    # 综合健康分 (加权平均)
+    # 完整性 30%, 一致性 30%, 有效性 20%, 时效性 20%
+    score = (completeness_score * 0.3) + (consistency_score * 0.3) + (validity_score * 0.2) + (timeliness_score * 0.2)
+    score = int(score)
+
+    # 维度得分详情
+    governance_scores = {
+        'completeness': int(completeness_score),
+        'timeliness': int(timeliness_score),
+        'consistency': int(consistency_score),
+        'validity': int(validity_score)
+    }
+    
+    # ===== 9. 热点资产 Top 10（基于计算字段被引用次数） =====
+    top_metrics = session.query(Field, CalculatedField).join(
+        CalculatedField, Field.id == CalculatedField.field_id
+    ).order_by(CalculatedField.reference_count.desc()).limit(10).all()
+    
+    top_fields_data = [{
+        'id': f.id,
+        'name': f.name,
+        'usage': c.reference_count or 0,
+        'complexity': c.complexity_score or 0,
+        'source': f.datasource.name if f.datasource else '-'
+    } for f, c in top_metrics]
+    
+    # 如果计算字段引用不够，补充普通字段
+    if len(top_fields_data) < 10:
+        regular_fields = session.query(Field).filter(
+            ~Field.id.in_([f['id'] for f in top_fields_data])
+        ).limit(10 - len(top_fields_data)).all()
+        for f in regular_fields:
+            top_fields_data.append({
+                'id': f.id,
+                'name': f.name,
+                'usage': 0,
+                'complexity': 0,
+                'source': f.datasource.name if f.datasource else (f.table.name if f.table else '-')
+            })
+    
+    # ===== 10. 最近同步信息 =====
+    from ..models import SyncLog
+    last_sync = session.query(SyncLog).order_by(SyncLog.started_at.desc()).first()
+    sync_info = None
+    if last_sync:
+        sync_info = {
+            'status': last_sync.status,
+            'time': last_sync.started_at.isoformat() if last_sync.started_at else None,
+            'records': last_sync.records_synced
+        }
     
     return jsonify({
         'health_score': score,
+        'governance_scores': governance_scores,
         'issues': issues,
         'top_fields': top_fields_data,
-        'total_assets': total_assets
+        'total_assets': {
+            'fields': total_fields,
+            'calculated_fields': total_calc_fields,
+            'tables': total_tables,
+            'datasources': total_datasources,
+            'workbooks': total_workbooks,
+            'views': total_views
+        },
+        'field_source_distribution': field_source_distribution,
+        'data_type_distribution': data_type_distribution,
+        'role_distribution': role_distribution,
+        'complexity_distribution': complexity_distribution,
+        'duplicate_formulas_top': duplicate_formulas_top,
+        'last_sync': sync_info
     })
 
 def apply_sorting(query, model, sort_key, order):
@@ -337,11 +473,16 @@ def get_views():
 
 @api_bp.route('/fields')
 def get_fields():
-    """获取字段列表，包含深度使用情况"""
+    """获取字段列表，支持分页和深度使用情况"""
     session = g.db_session
     search = request.args.get('search', '')
     sort = request.args.get('sort', '')
     order = request.args.get('order', 'desc')
+    
+    # 分页参数
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 50, type=int)
+    page_size = min(page_size, 200)  # 限制最大页大小
     
     field_usage, _, _, _ = build_metric_index(session)
     query = session.query(Field)
@@ -357,9 +498,15 @@ def get_fields():
         if order == 'desc': query = query.order_by(func.count(View.id).desc())
         else: query = query.order_by(func.count(View.id).asc())
 
-    fields = query.limit(200).all()
-    results = []
+    # 计算总数
+    total = query.count()
+    total_pages = (total + page_size - 1) // page_size
     
+    # 分页查询
+    offset = (page - 1) * page_size
+    fields = query.offset(offset).limit(page_size).all()
+    
+    results = []
     for f in fields:
         data = f.to_dict()
         # 关联指标使用
@@ -376,24 +523,27 @@ def get_fields():
                     'workbookName': v.workbook.name if v.workbook else 'Unknown'
                 })
         data['used_in_views'] = views
-        data['usageCount'] = len(views) # 校准 usageCount
+        data['usageCount'] = len(views)
+        data['hasDescription'] = bool(f.description and f.description.strip())  # 用于 facet 筛选
         
         results.append(data)
         
-    return jsonify(results)
+    return jsonify({
+        'items': results,
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': total_pages
+    })
+
+
+
 
 
 @api_bp.route('/fields/<field_id>', methods=['PUT'])
 def update_field(field_id):
-    """更新字段信息"""
-    session = g.db_session
-    field = session.query(Field).filter(Field.id == field_id).first()
-    if not field: return jsonify({'error': '字段不存在'}), 404
-    data = request.json
-    if 'description' in data: field.description = data['description']
-    if 'formula' in data and field.is_calculated: field.formula = data['formula']
-    session.commit()
-    return jsonify(field.to_dict())
+    """只读模式 - 禁止修改"""
+    return jsonify({'error': '只读模式，禁止修改字段'}), 405
 
 
 # ... (Datasource/Table routes should be updated similarly if needed, but for now focusing on Fields/Metrics) ...
@@ -402,11 +552,16 @@ def update_field(field_id):
 
 @api_bp.route('/metrics')
 def get_metrics():
-    """获取指标列表，包含精确的依赖关系"""
+    """获取指标列表，支持分页和精确的依赖关系"""
     session = g.db_session
     search = request.args.get('search', '')
     sort = request.args.get('sort', '')
     order = request.args.get('order', 'desc')
+    
+    # 分页参数
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 50, type=int)
+    page_size = min(page_size, 200)  # 限制最大页大小
     
     field_usage, metric_deps, formula_map, _ = build_metric_index(session)
     
@@ -423,8 +578,14 @@ def get_metrics():
     elif sort == 'referenceCount':
         attr = CalculatedField.reference_count
         query = query.order_by(attr.desc() if order == 'desc' else attr.asc())
-        
-    results = query.limit(200).all()
+    
+    # 计算总数
+    total = query.count()
+    total_pages = (total + page_size - 1) // page_size
+    
+    # 分页查询
+    offset = (page - 1) * page_size
+    results = query.offset(offset).limit(page_size).all()
     
     metrics = []
     for field, calc_field in results:
@@ -459,20 +620,83 @@ def get_metrics():
             'role': field.role,
             'dataType': field.data_type,
             'complexity': calc_field.complexity_score or 0,
-            'referenceCount': len(refs), # 使用真实视图引用数
+            'referenceCount': len(refs),
             'datasourceName': datasource_name,
             'datasourceId': field.datasource_id,
             'similarMetrics': similar,
             'dependencyFields': dependencies,
-            'usedInViews': refs
+            'usedInViews': refs,
+            'hasDuplicate': len(similar) > 0  # 用于 facet 筛选
         })
     
-    return jsonify(metrics)
+    return jsonify({
+        'items': metrics,
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': total_pages
+    })
+
+
+@api_bp.route('/metrics/<metric_id>')
+def get_metric_detail(metric_id):
+    """获取单条指标详情"""
+    session = g.db_session
+    field_usage, metric_deps, formula_map, _ = build_metric_index(session)
+    
+    result = session.query(Field, CalculatedField).join(
+        CalculatedField, Field.id == CalculatedField.field_id
+    ).filter(Field.id == metric_id).first()
+    
+    if not result:
+        return jsonify({'error': 'Not found'}), 404
+    
+    field, calc_field = result
+    datasource_name = field.datasource.name if field.datasource else '-'
+    formula_clean = (calc_field.formula or '').strip()
+    
+    # 查找相似指标
+    similar = []
+    if formula_clean:
+        similar = [m for m in formula_map.get(formula_clean, []) if m['id'] != field.id]
+    
+    # 获取依赖字段
+    dependencies = metric_deps.get(field.id, [])
+    
+    # 获取被引用情况
+    refs = []
+    if field.views:
+        for v in field.views:
+            refs.append({
+                'id': v.id, 
+                'name': v.name,
+                'workbookId': v.workbook_id,
+                'workbookName': v.workbook.name if v.workbook else 'Unknown'
+            })
+
+    metric_data = {
+        'id': field.id,
+        'name': field.name,
+        'description': field.description or '',
+        'formula': calc_field.formula or '',
+        'role': field.role,
+        'dataType': field.data_type,
+        'complexity': calc_field.complexity_score or 0,
+        'referenceCount': len(refs),
+        'datasourceName': datasource_name,
+        'datasourceId': field.datasource_id,
+        'similarMetrics': similar,
+        'dependencyFields': dependencies,
+        'usedInViews': refs
+    }
+    
+    return jsonify(metric_data)
 
 
 @api_bp.route('/metrics/<metric_id>', methods=['PUT'])
 def update_metric(metric_id):
-    return jsonify({'error': 'Not implemented'}), 501
+    """只读模式 - 禁止修改"""
+    return jsonify({'error': '只读模式，禁止修改指标'}), 405
 
 
 # ==================== 血缘关系接口 ====================
@@ -515,12 +739,225 @@ def get_lineage(item_type, item_id):
     
     return jsonify({'upstream': upstream, 'downstream': downstream})
 
-# ==================== 治理操作接口 (Empty Stubs) ====================
+
+# ==================== 全局搜索接口 ====================
+
+@api_bp.route('/search')
+def global_search():
+    """全局跨资产类型搜索"""
+    session = g.db_session
+    q = request.args.get('q', '').strip()
+    limit = request.args.get('limit', 20, type=int)
+    
+    if not q or len(q) < 2:
+        return jsonify({'error': '搜索关键词至少需要2个字符'}), 400
+    
+    search_pattern = f'%{q}%'
+    results = {
+        'fields': [],
+        'tables': [],
+        'datasources': [],
+        'workbooks': [],
+        'metrics': []
+    }
+    
+    # 搜索字段
+    fields = session.query(Field).filter(
+        (Field.name.ilike(search_pattern)) | 
+        (Field.description.ilike(search_pattern))
+    ).limit(limit).all()
+    results['fields'] = [{
+        'id': f.id,
+        'name': f.name,
+        'type': 'field',
+        'description': f.description or '',
+        'source': f.datasource.name if f.datasource else (f.table.name if f.table else '-')
+    } for f in fields]
+    
+    # 搜索表
+    tables = session.query(DBTable).filter(
+        DBTable.name.ilike(search_pattern)
+    ).limit(limit).all()
+    results['tables'] = [{
+        'id': t.id,
+        'name': t.name,
+        'type': 'table',
+        'schema': t.schema or '',
+        'database': t.database.name if t.database else '-'
+    } for t in tables]
+    
+    # 搜索数据源
+    datasources = session.query(Datasource).filter(
+        Datasource.name.ilike(search_pattern)
+    ).limit(limit).all()
+    results['datasources'] = [{
+        'id': ds.id,
+        'name': ds.name,
+        'type': 'datasource',
+        'project': ds.project_name or '',
+        'owner': ds.owner or ''
+    } for ds in datasources]
+    
+    # 搜索工作簿
+    workbooks = session.query(Workbook).filter(
+        Workbook.name.ilike(search_pattern)
+    ).limit(limit).all()
+    results['workbooks'] = [{
+        'id': wb.id,
+        'name': wb.name,
+        'type': 'workbook',
+        'project': wb.project_name or '',
+        'owner': wb.owner or ''
+    } for wb in workbooks]
+    
+    # 搜索指标（计算字段）
+    metrics = session.query(Field, CalculatedField).join(
+        CalculatedField, Field.id == CalculatedField.field_id
+    ).filter(
+        (Field.name.ilike(search_pattern)) |
+        (CalculatedField.formula.ilike(search_pattern))
+    ).limit(limit).all()
+    results['metrics'] = [{
+        'id': f.id,
+        'name': f.name,
+        'type': 'metric',
+        'formula': c.formula[:50] + '...' if c.formula and len(c.formula) > 50 else (c.formula or ''),
+        'datasource': f.datasource.name if f.datasource else '-'
+    } for f, c in metrics]
+    
+    # 总数统计
+    total = sum(len(v) for v in results.values())
+    
+    return jsonify({
+        'query': q,
+        'total': total,
+        'results': results
+    })
+
+
+# ==================== 增强血缘接口（支持 Mermaid 图形化）====================
+
+@api_bp.route('/lineage/graph/<item_type>/<item_id>')
+def get_lineage_graph(item_type, item_id):
+    """获取血缘关系 - 返回 Mermaid 图形化格式"""
+    session = g.db_session
+    nodes = []
+    edges = []
+    
+    def add_node(id, name, type, is_center=False):
+        style = 'center' if is_center else type
+        nodes.append({'id': id, 'name': name, 'type': type, 'style': style})
+    
+    def add_edge(from_id, to_id, label=''):
+        edges.append({'from': from_id, 'to': to_id, 'label': label})
+    
+    if item_type == 'field':
+        field = session.query(Field).filter(Field.id == item_id).first()
+        if field:
+            add_node(field.id, field.name, 'field', is_center=True)
+            
+            # 上游：表
+            if field.table:
+                add_node(field.table.id, field.table.name, 'table')
+                add_edge(field.table.id, field.id, '包含')
+            
+            # 上游：数据源
+            if field.datasource:
+                add_node(field.datasource.id, field.datasource.name, 'datasource')
+                add_edge(field.datasource.id, field.id, '定义')
+            
+            # 下游：视图
+            for view in field.views[:10]:
+                add_node(view.id, view.name, 'view')
+                add_edge(field.id, view.id, '使用于')
+                if view.workbook:
+                    add_node(view.workbook_id, view.workbook.name, 'workbook')
+                    add_edge(view.id, view.workbook_id, '属于')
+    
+    elif item_type == 'metric':
+        result = session.query(Field, CalculatedField).join(
+            CalculatedField, Field.id == CalculatedField.field_id
+        ).filter(Field.id == item_id).first()
+        
+        if result:
+            field, calc = result
+            add_node(field.id, field.name, 'metric', is_center=True)
+            
+            # 上游：数据源
+            if field.datasource:
+                add_node(field.datasource.id, field.datasource.name, 'datasource')
+                add_edge(field.datasource.id, field.id, '定义')
+            
+            # 上游：依赖字段
+            if calc.formula:
+                refs = re.findall(r'\[(.*?)\]', calc.formula)
+                for ref_name in set(refs)[:5]:
+                    dep_field = session.query(Field).filter(Field.name == ref_name).first()
+                    if dep_field:
+                        add_node(dep_field.id, dep_field.name, 'field')
+                        add_edge(dep_field.id, field.id, '依赖')
+            
+            # 下游：视图
+            for view in field.views[:5]:
+                add_node(view.id, view.name, 'view')
+                add_edge(field.id, view.id, '使用于')
+    
+    elif item_type == 'datasource':
+        ds = session.query(Datasource).filter(Datasource.id == item_id).first()
+        if ds:
+            add_node(ds.id, ds.name, 'datasource', is_center=True)
+            
+            # 上游：表
+            for table in ds.tables[:10]:
+                add_node(table.id, table.name, 'table')
+                add_edge(table.id, ds.id, '来源')
+            
+            # 下游：工作簿
+            for wb in ds.workbooks[:10]:
+                add_node(wb.id, wb.name, 'workbook')
+                add_edge(ds.id, wb.id, '使用')
+    
+    # 生成 Mermaid 代码
+    mermaid_code = "graph LR\n"
+    
+    # 样式定义
+    style_map = {
+        'field': '([{}])',
+        'metric': '{{{}}}',
+        'table': '[{}]',
+        'datasource': '[({})]',
+        'workbook': '(({}))' ,
+        'view': '>{}]'
+    }
+    
+    node_ids = set()
+    for node in nodes:
+        nid = node['id'][:8]  # 简化 ID
+        if nid not in node_ids:
+            node_ids.add(nid)
+            shape = style_map.get(node['type'], '[{}]')
+            mermaid_code += f"    {nid}{shape.format(node['name'][:20])}\n"
+    
+    for edge in edges:
+        from_id = edge['from'][:8]
+        to_id = edge['to'][:8]
+        label = edge['label']
+        mermaid_code += f"    {from_id} -->|{label}| {to_id}\n"
+    
+    return jsonify({
+        'nodes': nodes,
+        'edges': edges,
+        'mermaid': mermaid_code
+    })
+
+
+# ==================== 治理操作接口 - 已禁用 (只读展示) ====================
 @api_bp.route('/governance/merge', methods=['POST'])
-def merge_metrics(): return jsonify({'success': True})
+def merge_metrics(): return jsonify({'error': '只读模式，治理操作已禁用'}), 405
 
 @api_bp.route('/governance/deprecate', methods=['POST'])
-def deprecate_metrics(): return jsonify({'success': True})
+def deprecate_metrics(): return jsonify({'error': '只读模式，治理操作已禁用'}), 405
 
 @api_bp.route('/governance/cleanup', methods=['POST'])
-def cleanup_fields(): return jsonify({'success': True})
+def cleanup_fields(): return jsonify({'error': '只读模式，治理操作已禁用'}), 405
+

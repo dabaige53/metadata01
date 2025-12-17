@@ -610,6 +610,75 @@
         color: #94a3b8;
     }
 
+    /* === 内联筛选器 (Chip 样式) === */
+    .inline-facets {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 16px;
+        padding: 12px 16px;
+        background: #f8fafc;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+    }
+
+    .facet-inline-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+
+    .facet-inline-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+    }
+
+    .facet-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        font-size: 12px;
+        color: #475569;
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .facet-chip:hover {
+        border-color: #c7d2fe;
+        background: #eef2ff;
+    }
+
+    .facet-chip.active {
+        background: #eef2ff;
+        border-color: #a5b4fc;
+        color: #4f46e5;
+    }
+
+    .facet-chip input {
+        display: none;
+    }
+
+    .facet-chip .chip-cnt {
+        font-size: 10px;
+        color: #94a3b8;
+        background: #f1f5f9;
+        padding: 1px 5px;
+        border-radius: 8px;
+    }
+
+    .facet-chip.active .chip-cnt {
+        background: #c7d2fe;
+        color: #4f46e5;
+    }
+
     /* === 抽屉样式 === */
     #detail-drawer.open {
         transform: translateX(0);

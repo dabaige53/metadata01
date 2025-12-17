@@ -8,6 +8,7 @@ import json
 import requests
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+from sqlalchemy import select
 
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -15,8 +16,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from app.config import Config
 from app.models import (
     get_engine, get_session,
-    Database, Table, Field, Datasource, Workbook, View,
-    TableToDatasource, DatasourceToWorkbook, CalculatedField, SyncLog
+    Database, DBTable, Field, Datasource, Workbook, View,
+    table_to_datasource, datasource_to_workbook, field_to_view, CalculatedField, SyncLog
 )
 
 
@@ -267,6 +268,142 @@ class TableauMetadataClient:
                 cf["datasource_id"] = cf["datasource"].get("id")
         
         return calc_fields
+    
+    def fetch_views_with_fields(self) -> List[Dict]:
+        """获取视图及其使用的字段（用于填充 field_to_view 关联表）"""
+        query = """
+        {
+            sheets {
+                id
+                name
+                workbook {
+                    id
+                    name
+                }
+                sheetFieldInstances {
+                    id
+                    name
+                    datasource {
+                        id
+                    }
+                }
+            }
+        }
+        """
+        result = self.execute_query(query)
+        
+        # 检查是否有错误
+        if "errors" in result:
+            print(f"  ⚠️ GraphQL 错误 (sheetFieldInstances): {result['errors']}")
+            # 尝试备用查询
+            return self._fetch_views_with_fields_fallback()
+        
+        data = result.get("data")
+        if data is None:
+            print(f"  ⚠️ 未获取到数据")
+            return []
+        
+        sheets = data.get("sheets") or []
+        
+        # 构建视图→字段映射
+        view_fields = []
+        for sheet in sheets:
+            if not sheet:
+                continue
+            view_id = sheet.get("id")
+            view_name = sheet.get("name")
+            workbook = sheet.get("workbook") or {}
+            fields = sheet.get("sheetFieldInstances") or []
+            
+            for field in fields:
+                if field and field.get("id"):
+                    view_fields.append({
+                        "view_id": view_id,
+                        "view_name": view_name,
+                        "workbook_id": workbook.get("id"),
+                        "field_id": field.get("id"),
+                        "field_name": field.get("name"),
+                        "datasource_id": (field.get("datasource") or {}).get("id")
+                    })
+        
+        return view_fields
+    
+    def _fetch_views_with_fields_fallback(self) -> List[Dict]:
+        """备用方法：通过工作簿的数据源关系间接获取"""
+        # 由于 Tableau API 限制，我们采用简化策略：
+        # 通过 calculatedFields 的 datasource 关系来建立字段→视图的间接关联
+        query = """
+        {
+            workbooks {
+                id
+                name
+                sheets {
+                    id
+                    name
+                }
+                upstreamDatasources {
+                    id
+                    name
+                }
+            }
+        }
+        """
+        result = self.execute_query(query)
+        
+        if "errors" in result:
+            print(f"  ⚠️ 备用查询也失败: {result['errors']}")
+            return []
+        
+        data = result.get("data")
+        if data is None:
+            return []
+        
+        workbooks = data.get("workbooks") or []
+        
+        # 获取数据源到字段的映射
+        ds_to_fields = {}
+        fields_result = self.execute_query("""
+        {
+            publishedDatasources {
+                id
+                fields {
+                    id
+                    name
+                }
+            }
+        }
+        """)
+        if "data" in fields_result and fields_result["data"]:
+            for ds in (fields_result["data"].get("publishedDatasources") or []):
+                if ds:
+                    ds_to_fields[ds["id"]] = ds.get("fields") or []
+        
+        # 构建视图→字段关联
+        view_fields = []
+        for wb in workbooks:
+            if not wb:
+                continue
+            sheets = wb.get("sheets") or []
+            datasources = wb.get("upstreamDatasources") or []
+            
+            for sheet in sheets:
+                if not sheet:
+                    continue
+                # 将数据源的字段关联到视图
+                for ds in datasources:
+                    if not ds:
+                        continue
+                    for field in ds_to_fields.get(ds.get("id"), []):
+                        if field and field.get("id"):
+                            view_fields.append({
+                                "view_id": sheet.get("id"),
+                                "view_name": sheet.get("name"),
+                                "workbook_id": wb.get("id"),
+                                "field_id": field.get("id"),
+                                "field_name": field.get("name")
+                            })
+        
+        return view_fields
 
 
 class MetadataSync:
@@ -340,9 +477,9 @@ class MetadataSync:
             count = 0
             
             for t_data in tables:
-                table = self.session.query(Table).filter_by(id=t_data["id"]).first()
+                table = self.session.query(DBTable).filter_by(id=t_data["id"]).first()
                 if not table:
-                    table = Table(id=t_data["id"])
+                    table = DBTable(id=t_data["id"])
                     self.session.add(table)
                 
                 table.name = t_data.get("name", "")
@@ -355,7 +492,6 @@ class MetadataSync:
                     table.database_id = db_info.get("id")
                     table.connection_type = db_info.get("connectionType", "")
                 
-                table.updated_at = datetime.now()
                 count += 1
             
             self.session.commit()
@@ -402,23 +538,25 @@ class MetadataSync:
                     except:
                         pass
                 
-                ds.updated_at = datetime.now()
                 count += 1
                 
                 # 同步表到数据源的关系
                 upstream_tables = ds_data.get("upstreamTables", [])
                 for tbl in upstream_tables:
-                    rel = self.session.query(TableToDatasource).filter_by(
-                        table_id=tbl["id"],
-                        datasource_id=ds_data["id"]
+                    rel = self.session.execute(
+                        select(table_to_datasource).where(
+                            table_to_datasource.c.table_id == tbl["id"],
+                            table_to_datasource.c.datasource_id == ds_data["id"]
+                        )
                     ).first()
                     if not rel:
-                        rel = TableToDatasource(
-                            table_id=tbl["id"],
-                            datasource_id=ds_data["id"],
-                            relationship_type="upstream"
+                        self.session.execute(
+                            table_to_datasource.insert().values(
+                                table_id=tbl["id"],
+                                datasource_id=ds_data["id"],
+                                relationship_type="upstream"
+                            )
                         )
-                        self.session.add(rel)
             
             self.session.commit()
             self._complete_sync_log(count)
@@ -454,36 +592,24 @@ class MetadataSync:
                 if owner:
                     wb.owner = owner.get("username", "")
                 
-                # 解析时间
-                created_at = wb_data.get("createdAt")
-                if created_at:
-                    try:
-                        wb.created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-                    except:
-                        pass
-                
-                updated_at = wb_data.get("updatedAt")
-                if updated_at:
-                    try:
-                        wb.updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
-                    except:
-                        wb.updated_at = datetime.now()
-                
                 wb_count += 1
                 
                 # 同步数据源到工作簿的关系
                 upstream_ds = wb_data.get("upstreamDatasources", [])
                 for ds in upstream_ds:
-                    rel = self.session.query(DatasourceToWorkbook).filter_by(
-                        datasource_id=ds["id"],
-                        workbook_id=wb_data["id"]
+                    rel = self.session.execute(
+                        select(datasource_to_workbook).where(
+                            datasource_to_workbook.c.datasource_id == ds["id"],
+                            datasource_to_workbook.c.workbook_id == wb_data["id"]
+                        )
                     ).first()
                     if not rel:
-                        rel = DatasourceToWorkbook(
-                            datasource_id=ds["id"],
-                            workbook_id=wb_data["id"]
+                        self.session.execute(
+                            datasource_to_workbook.insert().values(
+                                datasource_id=ds["id"],
+                                workbook_id=wb_data["id"]
+                            )
                         )
-                        self.session.add(rel)
                 
                 # 同步视图 (sheets)
                 sheets = wb_data.get("sheets", [])
@@ -495,7 +621,6 @@ class MetadataSync:
                     
                     view.name = sheet.get("name", "")
                     view.workbook_id = wb_data["id"]
-                    view.updated_at = datetime.now()
                     view_count += 1
             
             self.session.commit()
@@ -545,7 +670,6 @@ class MetadataSync:
                         if table_info:
                             field.table_id = table_info.get("id")
                 
-                field.updated_at = datetime.now()
                 count += 1
                 
                 # 处理计算字段
@@ -600,7 +724,6 @@ class MetadataSync:
                 field.formula = cf_data.get("formula") or ""
                 field.role = cf_data.get("role") or ""
                 field.datasource_id = cf_data.get("datasource_id")
-                field.updated_at = datetime.now()
                 
                 # 更新/创建 CalculatedField 记录
                 calc_field = self.session.query(CalculatedField).filter_by(
@@ -627,6 +750,60 @@ class MetadataSync:
             traceback.print_exc()
             return 0
     
+    def sync_field_to_view(self) -> int:
+        """同步字段到视图的关联关系"""
+        print("\n🔗 同步字段→视图关联...")
+        self._start_sync_log("field_to_view")
+        
+        try:
+            view_fields = self.client.fetch_views_with_fields()
+            count = 0
+            skipped = 0
+            
+            for vf in view_fields:
+                field_id = vf.get("field_id")
+                view_id = vf.get("view_id")
+                
+                if not field_id or not view_id:
+                    skipped += 1
+                    continue
+                
+                # 检查是否已存在
+                existing = self.session.execute(
+                    select(field_to_view).where(
+                        field_to_view.c.field_id == field_id,
+                        field_to_view.c.view_id == view_id
+                    )
+                ).first()
+                
+                if not existing:
+                    try:
+                        self.session.execute(
+                            field_to_view.insert().values(
+                                field_id=field_id,
+                                view_id=view_id,
+                                used_in_formula=False
+                            )
+                        )
+                        count += 1
+                    except Exception as e:
+                        # 忽略外键约束错误（字段或视图不存在）
+                        skipped += 1
+                        continue
+            
+            self.session.commit()
+            self._complete_sync_log(count)
+            print(f"  ✅ 同步 {count} 个字段→视图关联 (跳过 {skipped} 个)")
+            return count
+            
+        except Exception as e:
+            self.session.rollback()
+            self._complete_sync_log(0, str(e))
+            print(f"  ❌ 同步失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return 0
+    
     def sync_all(self):
         """全量同步所有实体"""
         print("=" * 60)
@@ -642,6 +819,7 @@ class MetadataSync:
         wb_count = self.sync_workbooks()
         field_count = self.sync_fields()
         calc_count = self.sync_calculated_fields()
+        ftv_count = self.sync_field_to_view()  # 新增: 同步字段→视图关联
         
         duration = (datetime.now() - start_time).total_seconds()
         
@@ -654,6 +832,7 @@ class MetadataSync:
         print(f"  工作簿: {wb_count}")
         print(f"  字段:   {field_count}")
         print(f"  计算字段: {calc_count}")
+        print(f"  字段→视图: {ftv_count}")
         print(f"  耗时: {duration:.2f} 秒")
         print("=" * 60)
     

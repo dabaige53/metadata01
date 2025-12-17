@@ -21,6 +21,3 @@ class Config:
     # 服务器配置
     HOST = os.environ.get('HOST', '0.0.0.0')
     PORT = int(os.environ.get('PORT', 8001))
-    
-    # 是否使用模拟数据（当真实数据不可用时）
-    USE_MOCK_DATA = os.environ.get('USE_MOCK_DATA', 'False').lower() == 'true'

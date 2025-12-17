@@ -30,7 +30,6 @@ def main():
     print(f"\n🌐 服务器启动中...")
     print(f"   地址: http://localhost:{Config.PORT}")
     print(f"   数据库: {Config.DATABASE_PATH}")
-    print(f"   模拟数据模式: {'开启' if Config.USE_MOCK_DATA else '关闭'}")
     print("\n💡 提示: 首次使用请点击 '同步数据' 按钮加载数据")
     print("=" * 60)
     

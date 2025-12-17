@@ -64,7 +64,9 @@ class Database(Base):
             'host': self.host_name,
             'platform': self.platform,
             'tables': len(self.tables) if self.tables else 0,
-            'status': 'active'
+            'status': 'active',
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }
 
 
