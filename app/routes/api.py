@@ -172,21 +172,51 @@ def get_dashboard_analysis():
     ).group_by('level').all()
     complexity_distribution = {level: cnt for level, cnt in complexity_results}
     
-    # ===== 7. 问题检测 =====
-    missing_desc_count = session.query(Field).filter(
-        (Field.description == None) | (Field.description == '')
-    ).count()
+    # ===== 7. 问题检测与质量分析 =====
     
+    # 7.1 描述覆盖率细分
+    def calc_desc_rate(model):
+        total = session.query(model).count()
+        if total == 0: return 0, 0
+        has_desc = session.query(model).filter((model.description != None) & (model.description != '')).count()
+        return total, round(has_desc / total * 100, 1)
+
+    _, table_desc_rate = calc_desc_rate(DBTable)
+    _, field_desc_rate = calc_desc_rate(Field)
+    _, metric_desc_rate = calc_desc_rate(CalculatedField) # 注意：这里使用 CalculatedField 关联 Field 查描述会更准，暂用简单方式
+    
+    # 7.2 认证率统计
+    def calc_cert_rate(model):
+        total = session.query(model).count()
+        if total == 0: return 0
+        certified = session.query(model).filter(model.is_certified == True).count()
+        return round(certified / total * 100, 1)
+        
+    ds_cert_rate = calc_cert_rate(Datasource)
+    table_cert_rate = calc_cert_rate(DBTable)
+
+    # 7.3 过期/陈旧资产
     thirty_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=30)
+    ninety_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=90)
+    
     stale_ds_count = session.query(Datasource).filter(
         Datasource.has_extract == True,
         Datasource.extract_last_refresh_time < thirty_days_ago
     ).count()
     
+    dead_ds_count = session.query(Datasource).filter(
+        Datasource.has_extract == True, 
+        Datasource.extract_last_refresh_time < ninety_days_ago
+    ).count()
+
+    missing_desc_count = session.query(Field).filter(
+        (Field.description == None) | (Field.description == '')
+    ).count()
+
     orphaned_tables = session.query(DBTable).outerjoin(DBTable.datasources)\
         .filter(Datasource.id == None).count()
     
-    # 计算字段无描述比例
+    # 计算字段无描述计数(复用)
     calc_no_desc = session.query(CalculatedField).join(
         Field, CalculatedField.field_id == Field.id
     ).filter((Field.description == None) | (Field.description == '')).count()
@@ -195,36 +225,50 @@ def get_dashboard_analysis():
         'missing_description': missing_desc_count,
         'missing_desc_ratio': round(missing_desc_count / total_fields * 100, 1) if total_fields else 0,
         'stale_datasources': stale_ds_count,
+        'dead_datasources': dead_ds_count,
         'duplicate_formulas': total_duplicate_formulas,
         'orphaned_tables': orphaned_tables,
         'calc_field_no_desc': calc_no_desc
     }
     
+    quality_metrics = {
+        'description_coverage': {
+            'tables': table_desc_rate,
+            'fields': field_desc_rate,
+            'metrics': metric_desc_rate
+        },
+        'certification_rate': {
+            'datasources': ds_cert_rate,
+            'tables': table_cert_rate
+        }
+    }
+    
     # ===== 8. 健康度计算（改进版 - 维度细分） =====
     
     # 1. 完整性 (Completeness)
-    # - 字段描述缺失率 (权重 60%)
-    # - 计算字段描述缺失率 (权重 40%)
-    field_desc_ratio = (missing_desc_count / total_fields) if total_fields else 0
-    calc_desc_ratio = (calc_no_desc / total_calc_fields) if total_calc_fields else 0
-    completeness_score = max(0, 100 - (field_desc_ratio * 100 * 0.6 + calc_desc_ratio * 100 * 0.4))
+    # 综合表、字段、指标的描述覆盖率
+    completeness_score = (table_desc_rate * 0.2 + field_desc_rate * 0.5 + metric_desc_rate * 0.3)
     
     # 2. 时效性 (Timeliness)
-    # - 停更数据源 (每个扣 5 分)
-    timeliness_score = max(0, 100 - (stale_ds_count * 5))
+    # 无过期数据源 = 100分，每发现一个严重过期(90天)扣10分，普通过期(30天)扣5分
+    timeliness_deduction = (dead_ds_count * 10) + ((stale_ds_count - dead_ds_count) * 5)
+    timeliness_score = max(0, 100 - timeliness_deduction)
     
     # 3. 一致性 (Consistency)
-    # - 重复公式 (每个扣 2 分)
-    consistency_score = max(0, 100 - (total_duplicate_formulas * 2))
+    # 无重复公式 = 100分
+    consistency_score = max(0, 100 - (total_duplicate_formulas * 5))
     
     # 4. 有效性 (Validity)
-    # - 孤立表 (每个扣 2 分)
-    # - 孤立字段 (每个扣 1 分 - 权重低因为可能是中间字段)
-    validity_score = max(0, 100 - (orphaned_tables * 2) - (orphan_fields * 0.5))
+    # 孤立表每5个扣1分
+    validity_score = max(0, 100 - (orphaned_tables // 5))
+    
+    # 5. 规范性 (Standardization) - 新增
+    # 认证率作为规范性指标
+    standardization_score = (ds_cert_rate * 0.6 + table_cert_rate * 0.4)
     
     # 综合健康分 (加权平均)
-    # 完整性 30%, 一致性 30%, 有效性 20%, 时效性 20%
-    score = (completeness_score * 0.3) + (consistency_score * 0.3) + (validity_score * 0.2) + (timeliness_score * 0.2)
+    # 完整性 25%, 规范性 20%, 一致性 20%, 有效性 15%, 时效性 20%
+    score = (completeness_score * 0.25) + (standardization_score * 0.20) + (consistency_score * 0.20) + (validity_score * 0.15) + (timeliness_score * 0.20)
     score = int(score)
 
     # 维度得分详情
@@ -232,7 +276,8 @@ def get_dashboard_analysis():
         'completeness': int(completeness_score),
         'timeliness': int(timeliness_score),
         'consistency': int(consistency_score),
-        'validity': int(validity_score)
+        'validity': int(validity_score),
+        'standardization': int(standardization_score)
     }
     
     # ===== 9. 热点资产 Top 10（基于计算字段被引用次数） =====
@@ -277,6 +322,7 @@ def get_dashboard_analysis():
         'health_score': score,
         'governance_scores': governance_scores,
         'issues': issues,
+        'quality_metrics': quality_metrics,  # 新增：质量指标详情
         'top_fields': top_fields_data,
         'total_assets': {
             'fields': total_fields,
@@ -803,7 +849,7 @@ def get_fields():
 
 @api_bp.route('/fields/<field_id>')
 def get_field_detail(field_id):
-    """获取单个字段详情 - 完整上下文（含上游表追溯）"""
+    """获取单个字段详情 - 完整上下文（含上游表和列追溯）"""
     session = g.db_session
     field_usage, _, _, _ = build_metric_index(session)
 
@@ -812,6 +858,18 @@ def get_field_detail(field_id):
         return jsonify({'error': 'Not found'}), 404
 
     data = field.to_dict()
+    
+    # ========== 新增：上游列信息（血缘追溯核心） ==========
+    if field.upstream_column:
+        data['upstream_column_info'] = {
+            'id': field.upstream_column.id,
+            'name': field.upstream_column.name,
+            'remote_type': field.upstream_column.remote_type,
+            'description': field.upstream_column.description,
+            'is_certified': field.upstream_column.is_certified,
+            'table_id': field.upstream_column.table_id,
+            'table_name': field.upstream_column.table.name if field.upstream_column.table else None
+        }
 
     # 所属表信息（直接关联）
     if field.table:
@@ -930,11 +988,23 @@ def update_field(field_id):
 
 @api_bp.route('/metrics')
 def get_metrics():
-    """获取指标列表，支持分页和精确的依赖关系"""
+    """
+    获取指标列表，支持分页和精确的依赖关系
+    
+    指标定义：计算字段 (is_calculated=True) 
+    - 业务指标：role='measure' 的计算字段（如：利润率、同比增长）
+    - 技术计算：role='dimension' 的计算字段（如：年份提取、分类合并）
+    
+    筛选参数:
+    - metric_type: 'business' (仅度量) / 'technical' (仅维度) / 'all' (全部)
+    - role: 'measure' / 'dimension'
+    """
     session = g.db_session
     search = request.args.get('search', '')
     sort = request.args.get('sort', '')
     order = request.args.get('order', 'desc')
+    metric_type = request.args.get('metric_type', 'all')  # 新增：指标类型筛选
+    role_filter = request.args.get('role', '')  # 新增：角色筛选
     
     # 分页参数
     page = request.args.get('page', 1, type=int)
@@ -946,6 +1016,16 @@ def get_metrics():
     query = session.query(Field, CalculatedField).join(
         CalculatedField, Field.id == CalculatedField.field_id
     )
+    
+    # 指标类型筛选
+    if metric_type == 'business':
+        query = query.filter(Field.role == 'measure')
+    elif metric_type == 'technical':
+        query = query.filter(Field.role == 'dimension')
+    
+    # 角色筛选
+    if role_filter:
+        query = query.filter(Field.role == role_filter)
     
     if search:
         query = query.filter((Field.name.ilike(f'%{search}%')) | (CalculatedField.formula.ilike(f'%{search}%')))
@@ -1163,7 +1243,7 @@ def update_metric(metric_id):
 
 @api_bp.route('/lineage/<item_type>/<item_id>')
 def get_lineage(item_type, item_id):
-    """获取血缘关系 - 真实数据"""
+    """获取血缘关系 - 增强版（含上游列追溯）"""
     session = g.db_session
     upstream = []
     downstream = []
@@ -1171,15 +1251,42 @@ def get_lineage(item_type, item_id):
     if item_type == 'field':
         field = session.query(Field).filter(Field.id == item_id).first()
         if field:
-            if field.table:
-                upstream.append({'type': 'table', 'name': field.table.name, 'schema': field.table.schema})
-            if field.datasource:
-                downstream.append({'type': 'datasource', 'name': field.datasource.name})
-            for view in field.views:
-                downstream.append({'type': 'view', 'name': view.name})
+            # 上游：原始数据库列（最上游）
+            if field.upstream_column:
+                upstream.append({
+                    'type': 'column', 
+                    'id': field.upstream_column.id,
+                    'name': field.upstream_column.name,
+                    'remote_type': field.upstream_column.remote_type,
+                    'table_name': field.upstream_column.table.name if field.upstream_column.table else None
+                })
             
-            # 使用索引查找指标引用 (虽然这通常在详情页已通过 used_by_metrics 返回，但血缘图也可以用)
-            # 这里为了简单，暂不重复计算，前端主要从字段属性取
+            # 上游：所属表
+            if field.table:
+                upstream.append({
+                    'type': 'table', 
+                    'id': field.table.id,
+                    'name': field.table.name, 
+                    'schema': field.table.schema,
+                    'database_name': field.table.database.name if field.table.database else None
+                })
+            
+            # 下游：数据源
+            if field.datasource:
+                downstream.append({
+                    'type': 'datasource', 
+                    'id': field.datasource.id,
+                    'name': field.datasource.name
+                })
+            
+            # 下游：视图
+            for view in field.views:
+                downstream.append({
+                    'type': 'view', 
+                    'id': view.id,
+                    'name': view.name,
+                    'workbook_name': view.workbook.name if view.workbook else None
+                })
     
     elif item_type == 'table':
         table = session.query(DBTable).filter(DBTable.id == item_id).first()

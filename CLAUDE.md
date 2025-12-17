@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-Tableau 元数据治理平台 - 从 Tableau Server 抓取元数据，存入本地 SQLite 数据库，提供 Web 界面进行数据治理分析。
+Tableau 元数据治理平台 - 从 Tableau Server 抓取元数据，存入本地 SQLite 数据库，提供 Web 界面进行数据治理分析。参考开源项目设计、元数据采集、元数据管理、血缘分析等理念，<https://github.com/datahub-project/datahub>
 
 ## 技术栈
 
@@ -45,12 +45,14 @@ app/
 数据流向：`Database → Table → Datasource → Workbook → View`
 
 关键实体：
+
 - **Database/DBTable/DBColumn**: 数据库连接层
 - **Datasource**: Tableau 已发布数据源
 - **Field/CalculatedField**: 字段与计算字段
 - **Workbook/View**: 工作簿与视图/仪表板
 
 血缘关系表：
+
 - `table_to_datasource`: 表→数据源
 - `datasource_to_workbook`: 数据源→工作簿
 - `field_to_view`: 字段→视图

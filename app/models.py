@@ -209,13 +209,13 @@ class DBColumn(Base):
 
 
 class Field(Base):
-    """字段（增强版）"""
+    """字段（增强版 - 补全 Tableau Metadata API 字段）"""
     __tablename__ = 'fields'
     
     id = Column(String(255), primary_key=True)
-    name = Column(String(255), nullable=False)
-    data_type = Column(String(100))  # float, int, string
-    remote_type = Column(String(100))  # NUMBER(18,2)
+    name = Column(String(255), nullable=False)  # 重命名后的显示名
+    data_type = Column(String(100))  # Tableau 数据类型: float, int, string
+    remote_type = Column(String(100))  # 数据库原生类型: NUMBER(18,2)
     description = Column(Text)
     table_id = Column(String(255), ForeignKey('tables.id'))
     datasource_id = Column(String(255), ForeignKey('datasources.id'))
@@ -227,28 +227,53 @@ class Field(Base):
     is_hidden = Column(Boolean, default=False)  # 是否隐藏
     folder_name = Column(String(255))  # 所属文件夹
     
+    # ========== 新增字段：名称层次 ==========
+    fully_qualified_name = Column(String(500))  # 完全限定名（内部唯一标识）: [Orders].[Sales]
+    caption = Column(String(255))  # 显示标题（用户界面显示的名称）
+    upstream_column_name = Column(String(255))  # 原始列名（数据库表的物理列名）
+    upstream_column_id = Column(String(255), ForeignKey('db_columns.id'))  # 关联的上游数据列 ID
+    
+    # ========== 新增字段：语义信息 ==========
+    semantic_role = Column(String(100))  # 语义角色: [Geography].[City] 等
+    default_format = Column(String(100))  # 默认格式: currency, percentage 等
+    
+    # ========== 新增字段：时间戳 ==========
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
+    
     # 关系
     table = relationship('DBTable', back_populates='fields')
     datasource = relationship('Datasource', back_populates='fields')
     workbook = relationship('Workbook', back_populates='fields')
     views = relationship('View', secondary=field_to_view, back_populates='fields')
+    upstream_column = relationship('DBColumn', foreign_keys=[upstream_column_id])
     
     def to_dict(self):
         return {
             'id': self.id,
             'name': self.name,
+            'caption': self.caption,
+            'fullyQualifiedName': self.fully_qualified_name,
+            'upstreamColumnName': self.upstream_column_name,
+            'upstreamColumnId': self.upstream_column_id,
             'dataType': self.data_type,
             'remoteType': self.remote_type,
             'description': self.description,
+            'tableId': self.table_id,
             'table': self.table.name if self.table else None,
+            'datasourceId': self.datasource_id,
             'datasource': self.datasource.name if self.datasource else None,
             'isCalculated': self.is_calculated,
             'formula': self.formula,
             'role': self.role,
+            'semanticRole': self.semantic_role,
             'aggregation': self.aggregation,
+            'defaultFormat': self.default_format,
             'isHidden': self.is_hidden,
             'folderName': self.folder_name,
-            'usageCount': len(self.views) if self.views else 0
+            'usageCount': len(self.views) if self.views else 0,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }
 
 

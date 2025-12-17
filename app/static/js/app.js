@@ -116,15 +116,23 @@ function calculateFacets(data) {
     const cfg = {
         databases: ['connection_type'],
         tables: ['schema'],
-        fields: ['role', 'data_type', 'hasDescription'],  // 新增 hasDescription
+        fields: ['role', 'data_type', 'hasDescription'],
         datasources: ['is_certified'],
-        metrics: ['role', 'hasDuplicate']  // 新增 hasDuplicate
+        metrics: ['metricType', 'role', 'hasDuplicate']  // 新增 metricType 分类
     };
     const keys = cfg[state.activeModule] || [];
     state.facets = {};
     keys.forEach(k => {
         state.facets[k] = {};
-        data.forEach(i => { if (i[k] != null) state.facets[k][String(i[k])] = (state.facets[k][String(i[k])] || 0) + 1; });
+        data.forEach(i => {
+            // 为指标计算 metricType (业务指标 vs 技术计算)
+            if (k === 'metricType') {
+                const t = i.role === 'measure' ? 'business' : 'technical';
+                state.facets[k][t] = (state.facets[k][t] || 0) + 1;
+            } else if (i[k] != null) {
+                state.facets[k][String(i[k])] = (state.facets[k][String(i[k])] || 0) + 1;
+            }
+        });
     });
 }
 
@@ -206,7 +214,11 @@ function renderInlineFacets() {
         'true': '是',
         'false': '否',
         hasDescription: '有描述',
-        hasDuplicate: '有重复'
+        hasDuplicate: '有重复',
+        // 新增：指标类型标签
+        metricType: '指标类型',
+        business: '业务指标',
+        technical: '技术计算'
     };
     const facetEntries = Object.entries(state.facets).filter(([, v]) => Object.keys(v).length);
 
@@ -248,13 +260,13 @@ function renderDBTable() {
     return `<table class="data-table">
         <thead><tr><th style="width:22%">名称</th><th style="width:10%">类型</th><th style="width:6%">表</th><th style="width:6%">字段</th><th style="width:6%">数据源</th><th style="width:28%">包含的表 (预览)</th><th style="width:12%">主机</th><th style="width:10%">状态</th></tr></thead>
         <tbody>${state.filteredData.map(i => {
-            const tableNames = i.table_names || [];
-            const tablePreview = tableNames.length ?
-                `<div class="flex flex-wrap gap-1">
+        const tableNames = i.table_names || [];
+        const tablePreview = tableNames.length ?
+            `<div class="flex flex-wrap gap-1">
                     ${tableNames.slice(0, 4).map(t => `<span class="tag schema text-[9px]">${t}</span>`).join('')}
                     ${tableNames.length > 4 ? `<span class="text-[9px] text-gray-400">+${tableNames.length - 4}</span>` : ''}
                 </div>` : '<span class="text-gray-300">-</span>';
-            return `
+        return `
             <tr onclick="showDetail('${i.id}','databases')">
                 <td><div class="cell-main"><i data-lucide="database" class="icon db"></i><span class="name">${i.name}</span></div></td>
                 <td><span class="tag type text-[9px]">${i.connectionType || i.type || '-'}</span></td>
@@ -265,7 +277,7 @@ function renderDBTable() {
                 <td class="muted text-[10px]">${i.hostName || i.host || '-'}</td>
                 <td>${(i.datasource_count || 0) > 0 ? '<span class="status ok text-[10px]">● 使用中</span>' : (i.table_count || 0) > 0 ? '<span class="status warn text-[10px]">● 未关联</span>' : '<span class="status error text-[10px]">● 空库</span>'}</td>
             </tr>`;
-        }).join('')}
+    }).join('')}
         </tbody>
     </table>`;
 }
@@ -449,13 +461,13 @@ function renderWBTable() {
     return `<table class="data-table">
         <thead><tr><th style="width:25%">工作簿</th><th style="width:15%">项目</th><th style="width:12%">所有者</th><th style="width:8%">视图数</th><th style="width:25%">上游数据源</th><th style="width:15%">状态</th></tr></thead>
         <tbody>${state.filteredData.map(i => {
-            const upDs = i.upstream_datasources || [];
-            const dsPreview = upDs.length ?
-                `<div class="flex flex-wrap gap-1">
+        const upDs = i.upstream_datasources || [];
+        const dsPreview = upDs.length ?
+            `<div class="flex flex-wrap gap-1">
                     ${upDs.slice(0, 3).map(ds => `<span class="tag schema text-[9px]">${ds}</span>`).join('')}
                     ${upDs.length > 3 ? `<span class="text-[9px] text-gray-400">+${upDs.length - 3}</span>` : ''}
                 </div>` : '<span class="text-gray-300">-</span>';
-            return `
+        return `
             <tr onclick="showDetail('${i.id}','workbooks')">
                 <td><div class="cell-main"><i data-lucide="book-open" class="icon wb"></i><span class="name">${i.name}</span></div></td>
                 <td class="muted text-[11px]">${i.projectName || '-'}</td>
@@ -464,7 +476,7 @@ function renderWBTable() {
                 <td>${dsPreview}</td>
                 <td>${(i.viewCount || 0) > 0 ? '<span class="status ok text-[10px]">● 有视图</span>' : '<span class="status warn text-[10px]">● 空工作簿</span>'}</td>
             </tr>`;
-        }).join('')}
+    }).join('')}
         </tbody>
     </table>`;
 }
@@ -539,14 +551,12 @@ function renderUsersTable() {
 async function renderOverview() {
     const c = document.getElementById('main-content');
     try {
-        // 并行请求：获取仪表盘分析数据和质量概览数据
-        const [d, qualityData] = await Promise.all([
-            api.get('/dashboard/analysis'),
-            api.get('/quality/overview').catch(() => null) // 允许失败 (向后兼容)
-        ]);
+        // 获取仪表盘分析数据 (包含 quality_metrics)
+        const d = await api.get('/dashboard/analysis');
+        const qualityData = d.quality_metrics || {};  // 从同一接口获取质量指标
 
         // 确保 scores 存在 (兼容旧接口)
-        const scores = d.governance_scores || { completeness: 0, timeliness: 0, consistency: 0, validity: 0 };
+        const scores = d.governance_scores || { completeness: 0, timeliness: 0, consistency: 0, validity: 0, standardization: 0 };
         const hc = d.health_score >= 80 ? 'good' : d.health_score >= 60 ? 'warn' : 'bad';
 
         // 构建资产统计
@@ -687,6 +697,7 @@ async function renderOverview() {
                     <!-- 右侧：四个治理维度 -->
                     <div class="col-span-12 md:col-span-8 lg:col-span-9 grid grid-cols-2 lg:grid-cols-4 gap-4">
                         ${buildDimCard('完整性 (Completeness)', scores.completeness, 'file-text', 'blue')}
+                        ${buildDimCard('规范性 (Standardization)', scores.standardization || 0, 'award', 'purple')}
                         ${buildDimCard('时效性 (Timeliness)', scores.timeliness, 'clock', 'orange')}
                         ${buildDimCard('一致性 (Consistency)', scores.consistency, 'git-branch', 'purple')}
                         ${buildDimCard('有效性 (Validity)', scores.validity, 'check-circle', 'green')}
@@ -1035,8 +1046,22 @@ function renderUpstreamAssets(item, type) {
     let html = '';
     const upstreamItems = [];
 
-    // 字段的上游: 表、数据源
+    // 字段的上游: 原始列、表、数据源
     if (type === 'fields') {
+        // 原始数据库列 (最上游)
+        if (item.upstream_column_info) {
+            upstreamItems.push({
+                type: 'tables', // 使用通用图标
+                icon: 'database',
+                label: '原始数据库列',
+                items: [{
+                    id: item.upstream_column_info.id,
+                    name: item.upstream_column_info.name,
+                    subtitle: `${item.upstream_column_info.remote_type || 'Unknown'} | ${item.upstream_column_info.table_name || '-'}`
+                }]
+            });
+        }
+
         // 直接关联的表
         if (item.table_info) {
             upstreamItems.push({
@@ -1556,9 +1581,9 @@ function renderSimilarAssets(item) {
                 <p class="text-[11px] text-red-600 mb-3">以下 ${dups.length} 个指标使用了相同计算公式：</p>
                 <div class="space-y-3">
                     ${dups.map(d => {
-                        const views = d.usedInViews || [];
-                        const workbooks = d.usedInWorkbooks || [];
-                        return `
+        const views = d.usedInViews || [];
+        const workbooks = d.usedInWorkbooks || [];
+        return `
                         <div class="bg-white/80 p-3 rounded border border-red-100 cursor-pointer hover:bg-white transition-colors"
                              onclick="showDetail('${d.id}', 'metrics')">
                             <div class="flex justify-between items-center mb-2">
