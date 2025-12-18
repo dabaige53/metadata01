@@ -478,6 +478,8 @@ export default function DetailDrawer() {
     // ========== 渲染概览 Tab ==========
     const renderOverviewTab = () => {
         if (!data) return null;
+        const isFieldType = currentItem?.type === 'fields' || currentItem?.type === 'metrics';
+
         return (
             <div className="space-y-6">
                 <div className="bg-white rounded-lg border border-gray-100 p-4 shadow-sm">
@@ -498,7 +500,17 @@ export default function DetailDrawer() {
                         {data.role && (
                             <div className="col-span-2 sm:col-span-1 border-b border-gray-50 pb-1">
                                 <span className="text-gray-400 text-xs block mb-0.5">角色</span>
-                                <span className="text-gray-700">{data.role}</span>
+                                <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${data.role === 'measure' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                    {data.role === 'measure' ? '度量' : data.role === 'dimension' ? '维度' : data.role}
+                                </span>
+                            </div>
+                        )}
+                        {data.isCalculated && (
+                            <div className="col-span-2 sm:col-span-1 border-b border-gray-50 pb-1">
+                                <span className="text-gray-400 text-xs block mb-0.5">字段类型</span>
+                                <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
+                                    计算字段
+                                </span>
                             </div>
                         )}
                         {data.owner && (
@@ -513,24 +525,59 @@ export default function DetailDrawer() {
                                 <span className="text-gray-700">{data.projectName || data.project_name}</span>
                             </div>
                         )}
-                        {data.formula && (
-                            <div className="col-span-2 mt-2">
-                                <div className="text-xs text-gray-400 mb-1">计算公式</div>
-                                <div className="bg-gray-50 rounded p-2 font-mono text-xs text-gray-700 break-all border border-gray-100">
-                                    {data.formula}
-                                </div>
-                            </div>
-                        )}
-                        {data.description && (
-                            <div className="col-span-2 mt-2">
-                                <div className="text-xs text-gray-400 mb-1">描述</div>
-                                <p className="text-sm text-gray-600 bg-gray-50 p-2 rounded border border-gray-100">
-                                    {data.description}
-                                </p>
-                            </div>
-                        )}
                     </div>
                 </div>
+
+                {/* 字段名称层次 - 仅对字段/指标类型显示 */}
+                {isFieldType && (data.fullyQualifiedName || data.upstreamColumnName || data.caption) && (
+                    <div className="bg-indigo-50 rounded-lg border border-indigo-100 p-4 shadow-sm">
+                        <h3 className="text-xs font-bold text-indigo-900 mb-3 flex items-center gap-2">
+                            <Columns className="w-3.5 h-3.5 text-indigo-500" /> 名称层次
+                        </h3>
+                        <div className="space-y-2 text-xs">
+                            {data.upstreamColumnName && (
+                                <div className="flex items-start gap-2">
+                                    <span className="text-indigo-600 font-medium w-24 flex-shrink-0">① 原始列名</span>
+                                    <span className="font-mono bg-white px-2 py-0.5 rounded border border-indigo-100 text-gray-700">{data.upstreamColumnName}</span>
+                                </div>
+                            )}
+                            {data.fullyQualifiedName && (
+                                <div className="flex items-start gap-2">
+                                    <span className="text-indigo-600 font-medium w-24 flex-shrink-0">② 完全限定名</span>
+                                    <span className="font-mono bg-white px-2 py-0.5 rounded border border-indigo-100 text-gray-700 break-all">{data.fullyQualifiedName}</span>
+                                </div>
+                            )}
+                            {data.caption && data.caption !== data.name && (
+                                <div className="flex items-start gap-2">
+                                    <span className="text-indigo-600 font-medium w-24 flex-shrink-0">③ 显示标题</span>
+                                    <span className="bg-white px-2 py-0.5 rounded border border-indigo-100 text-gray-700">{data.caption}</span>
+                                </div>
+                            )}
+                            <div className="flex items-start gap-2">
+                                <span className="text-indigo-600 font-medium w-24 flex-shrink-0">④ 当前名称</span>
+                                <span className="bg-white px-2 py-0.5 rounded border border-indigo-100 text-gray-900 font-medium">{data.name}</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {data.formula && (
+                    <div className="bg-white rounded-lg border border-gray-100 p-4 shadow-sm">
+                        <div className="text-xs text-gray-400 mb-1">计算公式</div>
+                        <div className="bg-gray-50 rounded p-2 font-mono text-xs text-gray-700 break-all border border-gray-100">
+                            {data.formula}
+                        </div>
+                    </div>
+                )}
+
+                {data.description && (
+                    <div className="bg-white rounded-lg border border-gray-100 p-4 shadow-sm">
+                        <div className="text-xs text-gray-400 mb-1">描述</div>
+                        <p className="text-sm text-gray-600">
+                            {data.description}
+                        </p>
+                    </div>
+                )}
             </div>
         );
     };

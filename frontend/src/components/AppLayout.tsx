@@ -107,6 +107,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     <NavItem href="/metrics" icon={FunctionSquare} label="指标库" count={stats.metrics} />
                     <NavItem href="/datasources" icon={Layers} label="数据源" count={stats.datasources} />
                     <NavItem href="/workbooks" icon={BookOpen} label="工作簿" count={stats.workbooks} />
+                    <NavItem href="/views" icon={LayoutDashboard} label="视图" count={stats.views} />
                     <NavItem href="/projects" icon={FolderOpen} label="项目" count={stats.projects} />
                     <NavItem href="/users" icon={Users} label="用户" count={stats.users} />
                 </div>

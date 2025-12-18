@@ -1,144 +1,228 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
-import { api } from '@/lib/api';
-import {
-    Loader2,
-    FunctionSquare,
-    ChevronLeft,
-    ChevronRight,
-    AlertTriangle,
-    Beaker
-} from 'lucide-react';
+import { Loader2, FunctionSquare, AlertTriangle } from 'lucide-react';
+import InlineFilter from '@/components/data-table/InlineFilter';
+import SortButtons from '@/components/data-table/SortButtons';
+import Pagination from '@/components/data-table/Pagination';
+import { useDataTable } from '@/hooks/useDataTable';
 
 interface MetricItem {
     id: string;
     name: string;
+    role?: string;
     formula?: string;
     complexity?: number;
+    referenceCount?: number;
+    reference_count?: number;
     hasDuplicate?: boolean;
     has_duplicate?: boolean;
+    similarMetrics?: Array<{ id: string; name: string }>;
+    dependencyFields?: Array<{ id: string; name: string; role?: string }>;
+    datasourceName?: string;
+    datasource_name?: string;
     [key: string]: any;
 }
 
-interface PaginatedResponse {
-    items: MetricItem[];
-    total: number;
-    page: number;
-    total_pages: number;
-}
-
-export default function MetricsPage() {
-    const [data, setData] = useState<MetricItem[]>([]);
+function MetricsContent() {
+    const [allData, setAllData] = useState<MetricItem[]>([]);
     const [loading, setLoading] = useState(true);
-    const [page, setPage] = useState(1);
-    const [total, setTotal] = useState(0);
-    const [totalPages, setTotalPages] = useState(0);
-    const pageSize = 100;
-
     const { openDrawer } = useDrawer();
-    const searchParams = useSearchParams();
 
-    const loadData = useCallback(async (pageNum: number) => {
-        setLoading(true);
-        try {
-            const filters: Record<string, string> = {};
-            searchParams.forEach((value, key) => {
-                filters[key] = value;
-            });
-
-            const res = await api.getMetrics(pageNum, pageSize, filters);
-            const items = res.items || [];
-            setData(items);
-            setTotal(res.total);
-            setTotalPages(res.total_pages);
-            setPage(res.page);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
-    }, [searchParams]);
-
+    // 加载数据
     useEffect(() => {
-        loadData(1);
-    }, [loadData]);
+        setLoading(true);
+        fetch('/api/metrics?page=1&page_size=1000')
+            .then(res => res.json())
+            .then(result => {
+                const items = result.items || result || [];
+                setAllData(items);
+            })
+            .catch(console.error)
+            .finally(() => setLoading(false));
+    }, []);
 
+    // 使用自定义 Hook 管理表格状态
+    const {
+        displayData,
+        totalCount,
+        facets,
+        activeFilters,
+        handleFilterChange,
+        sortState,
+        handleSortChange,
+        paginationState,
+        handlePageChange,
+    } = useDataTable({
+        moduleName: 'metrics',
+        data: allData,
+        facetFields: ['metricType', 'role', 'hasDuplicate'],
+        defaultPageSize: 50,
+        searchFields: ['name', 'formula', 'datasourceName', 'datasource_name'],
+    });
+
+    // 排序选项
+    const sortOptions = [
+        { key: 'complexity', label: '复杂度' },
+        { key: 'referenceCount', label: '引用数' },
+        { key: 'name', label: '名称' },
+    ];
+
+    if (loading) {
+        return (
+            <div className="flex justify-center py-20">
+                <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+            </div>
+        );
+    }
 
     return (
-        <div>
-            <div className="flex items-center justify-between mb-4">
+        <div className="space-y-4">
+            {/* 页面标题 */}
+            <div className="flex items-center justify-between">
                 <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                     <FunctionSquare className="w-5 h-5 text-indigo-600" />
                     指标库
-                    <span className="text-sm font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{total}</span>
+                    <span className="text-sm font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                        {totalCount} 项
+                    </span>
                 </h1>
+
+                {/* 排序按钮 */}
+                <SortButtons
+                    sortOptions={sortOptions}
+                    currentSort={sortState}
+                    onSortChange={handleSortChange}
+                />
             </div>
 
+            {/* 筛选器 */}
+            <InlineFilter
+                facets={facets}
+                activeFilters={activeFilters}
+                onFilterChange={handleFilterChange}
+            />
+
+            {/* 数据表格 */}
             <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
                 <table className="w-full text-sm">
                     <thead>
                         <tr className="bg-gray-50 border-b border-gray-200 text-left">
-                            <th className="px-4 py-3 font-medium text-gray-500 text-xs uppercase w-[25%]">指标名称</th>
-                            <th className="px-4 py-3 font-medium text-gray-500 text-xs uppercase w-[35%]">计算公式</th>
-                            <th className="px-4 py-3 font-medium text-gray-500 text-xs uppercase w-[15%]">复杂度</th>
-                            <th className="px-4 py-3 font-medium text-gray-500 text-xs uppercase w-[10%]">重复风险</th>
-                            <th className="px-4 py-3 font-medium text-gray-500 text-xs uppercase w-[15%] text-right">操作</th>
+                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase tracking-wider" style={{ width: '25%' }}>指标名称</th>
+                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase tracking-wider text-center" style={{ width: '8%' }}>复杂度</th>
+                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase tracking-wider" style={{ width: '25%' }}>计算逻辑 (公式)</th>
+                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase tracking-wider" style={{ width: '15%' }}>依赖字段</th>
+                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase tracking-wider text-center" style={{ width: '12%' }}>重复风险</th>
+                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase tracking-wider" style={{ width: '15%' }}>数据源</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {loading ? (
+                        {displayData.length === 0 ? (
                             <tr>
-                                <td colSpan={5} className="text-center py-12">
-                                    <Loader2 className="w-6 h-6 text-indigo-600 animate-spin mx-auto" />
-                                </td>
-                            </tr>
-                        ) : data.length === 0 ? (
-                            <tr>
-                                <td colSpan={5} className="text-center py-12 text-gray-400">
-                                    {searchParams.has('hasDuplicate') ? '没有发现重复指标' : '暂无数据'}
+                                <td colSpan={6} className="text-center py-12 text-gray-400">
+                                    {totalCount === 0 ? '暂无数据' : '未找到匹配的指标'}
                                 </td>
                             </tr>
                         ) : (
-                            data.map((item) => {
-                                const complexity = item.complexity || 0;
-                                // 计算复杂度颜色
-                                const complexityColor = complexity > 50 ? 'bg-red-500' : complexity > 20 ? 'bg-orange-400' : 'bg-green-400';
-                                const hasDup = item.hasDuplicate || item.has_duplicate; // API可能有变化
+                            displayData.map((item) => {
+                                const cx = item.complexity || 0;
+                                const dups = item.similarMetrics || [];
+                                const deps = item.dependencyFields || [];
+                                const hasDup = dups.length > 0 || item.hasDuplicate || item.has_duplicate;
+                                const dsName = item.datasourceName || item.datasource_name || '-';
 
                                 return (
                                     <tr
                                         key={item.id}
+                                        className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
                                         onClick={() => openDrawer(item.id, 'metrics')}
-                                        className="border-b border-gray-100 last:border-0 hover:bg-gray-50 cursor-pointer group transition-colors"
                                     >
-                                        <td className="px-4 py-3">
-                                            <div className="font-medium text-gray-800">{item.name}</div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <code className="block bg-gray-50 px-2 py-1 rounded text-[11px] font-mono text-gray-500 truncate max-w-md" title={item.formula}>
-                                                {item.formula || '-'}
-                                            </code>
-                                        </td>
-                                        <td className="px-4 py-3">
+                                        {/* 指标名称 */}
+                                        <td className="px-3 py-2.5">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                                    <div className={`h-full ${complexityColor}`} style={{ width: `${Math.min(complexity, 100)}%` }}></div>
-                                                </div>
-                                                <span className="text-xs text-gray-400 font-mono">{complexity}</span>
+                                                <FunctionSquare className="w-4 h-4 text-purple-500 flex-shrink-0" />
+                                                <span className="font-medium text-gray-800 truncate text-[13px]">{item.name}</span>
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3">
-                                            {hasDup && (
-                                                <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-50 text-red-600 rounded-full text-[10px] font-bold">
-                                                    <AlertTriangle className="w-3 h-3" /> 重复
+
+                                        {/* 复杂度 */}
+                                        <td className="px-3 py-2.5">
+                                            <div className="flex items-center gap-1.5 justify-center">
+                                                <div className="w-10 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                                    <div
+                                                        className={`h-full transition-all ${
+                                                            cx > 10 ? 'bg-red-500' :
+                                                            cx > 4 ? 'bg-orange-400' :
+                                                            'bg-green-500'
+                                                        }`}
+                                                        style={{ width: `${Math.min(cx * 10, 100)}%` }}
+                                                    ></div>
                                                 </div>
+                                                <span className="text-[10px] font-mono text-gray-600 min-w-[1.5rem] text-right">{cx}</span>
+                                            </div>
+                                        </td>
+
+                                        {/* 计算逻辑 (公式) */}
+                                        <td className="px-3 py-2.5">
+                                            <div className="font-mono text-[11px] text-gray-500 truncate" title={item.formula || ''}>
+                                                {item.formula || '-'}
+                                            </div>
+                                        </td>
+
+                                        {/* 依赖字段 - 头像叠加显示 */}
+                                        <td className="px-3 py-2.5">
+                                            {deps.length > 0 ? (
+                                                <div className="flex -space-x-1.5 items-center">
+                                                    {deps.slice(0, 4).map((d, idx) => {
+                                                        const isMeasure = d.role === 'measure';
+                                                        return (
+                                                            <div
+                                                                key={d.id || idx}
+                                                                className={`w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[9px] font-semibold shadow-sm ${
+                                                                    isMeasure
+                                                                        ? 'bg-green-100 text-green-700'
+                                                                        : 'bg-blue-100 text-blue-700'
+                                                                }`}
+                                                                title={`${d.name} (${isMeasure ? '度量' : '维度'})`}
+                                                            >
+                                                                {d.name[0].toUpperCase()}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                    {deps.length > 4 && (
+                                                        <div className="w-6 h-6 rounded-full bg-gray-100 border-2 border-white flex items-center justify-center text-[9px] text-gray-600 font-semibold shadow-sm">
+                                                            +{deps.length - 4}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="text-gray-300 text-xs">-</span>
                                             )}
                                         </td>
-                                        <td className="px-4 py-3 text-right">
-                                            <button className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">查看血缘</button>
+
+                                        {/* 重复风险 */}
+                                        <td className="px-3 py-2.5">
+                                            <div className="flex justify-center">
+                                                {hasDup ? (
+                                                    <div className="inline-flex items-center gap-1 px-2 py-1 bg-red-50 text-red-600 rounded border border-red-200 text-[10px] font-bold">
+                                                        <AlertTriangle className="w-3 h-3" />
+                                                        <span>{dups.length || 1} 重复</span>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                                                        <span className="text-[10px] text-gray-400">正常</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </td>
+
+                                        {/* 数据源 */}
+                                        <td className="px-3 py-2.5">
+                                            <span className="text-xs text-gray-600 truncate block" title={dsName}>
+                                                {dsName}
+                                            </span>
                                         </td>
                                     </tr>
                                 );
@@ -147,34 +231,24 @@ export default function MetricsPage() {
                     </tbody>
                 </table>
 
-                {/* 分页 */}
-                {totalPages > 1 && (
-                    <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50">
-                        <div className="text-sm text-gray-500">
-                            共 {total} 条，第 {page} / {totalPages} 页
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={() => loadData(page - 1)}
-                                disabled={page <= 1 || loading}
-                                className="p-1.5 rounded border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                <ChevronLeft className="w-4 h-4" />
-                            </button>
-                            <span className="text-sm text-gray-600 min-w-[60px] text-center">
-                                {page} / {totalPages}
-                            </span>
-                            <button
-                                onClick={() => loadData(page + 1)}
-                                disabled={page >= totalPages || loading}
-                                className="p-1.5 rounded border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                <ChevronRight className="w-4 h-4" />
-                            </button>
-                        </div>
-                    </div>
-                )}
+                {/* 分页控件 */}
+                <Pagination
+                    pagination={paginationState}
+                    onPageChange={handlePageChange}
+                />
             </div>
         </div>
+    );
+}
+
+export default function MetricsPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex justify-center py-20">
+                <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+            </div>
+        }>
+            <MetricsContent />
+        </Suspense>
     );
 }

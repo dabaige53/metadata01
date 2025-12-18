@@ -1,16 +1,13 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useDrawer } from '@/lib/drawer-context';
 import { api } from '@/lib/api';
 import {
     Loader2,
     Layers,
-    CheckCircle,
-    AlertOctagon,
-    Clock,
-    RefreshCw
+    CheckCircle
 } from 'lucide-react';
 
 interface DatasourceItem {
@@ -18,17 +15,24 @@ interface DatasourceItem {
     name: string;
     project?: string;
     project_name?: string;
+    projectName?: string;
     owner?: string;
     isCertified?: boolean;
     is_certified?: boolean;
     hasExtract?: boolean;
     has_extract?: boolean;
-    updatedAt?: string;
-    updated_at?: string;
+    lastRefresh?: string;
+    last_refresh?: string;
+    table_count?: number;
+    tableCount?: number;
+    field_count?: number;
+    metric_count?: number;
+    workbook_count?: number;
+    view_count?: number;
     [key: string]: any;
 }
 
-export default function DatasourcesPage() {
+function DatasourcesContent() {
     const [data, setData] = useState<DatasourceItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [total, setTotal] = useState(0);
@@ -43,7 +47,7 @@ export default function DatasourcesPage() {
                 filters[key] = value;
             });
 
-            const res = await api.getDatasources(1, 100, filters);
+            const res = await api.getDatasources(1, 50, filters);
             const items = Array.isArray(res) ? res : (res.items || []);
             setData(items);
             setTotal(Array.isArray(res) ? items.length : res.total);
@@ -58,6 +62,7 @@ export default function DatasourcesPage() {
         loadData();
     }, [loadData]);
 
+    const formatDate = (d?: string) => d ? new Date(d).toLocaleDateString() : '-';
 
     return (
         <div>
@@ -73,74 +78,84 @@ export default function DatasourcesPage() {
                 <table className="w-full text-sm">
                     <thead>
                         <tr className="bg-gray-50 border-b border-gray-200 text-left">
-                            <th className="px-4 py-3 font-medium text-gray-500 text-xs uppercase w-[25%]">数据源名称</th>
-                            <th className="px-4 py-3 font-medium text-gray-500 text-xs uppercase w-[15%]">项目</th>
-                            <th className="px-4 py-3 font-medium text-gray-500 text-xs uppercase w-[15%]">所有者</th>
-                            <th className="px-4 py-3 font-medium text-gray-500 text-xs uppercase w-[15%]">类型/认证</th>
-                            <th className="px-4 py-3 font-medium text-gray-500 text-xs uppercase w-[15%]">刷新状态</th>
-                            <th className="px-4 py-3 font-medium text-gray-500 text-xs uppercase w-[15%] text-right">最后更新</th>
+                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase" style={{ width: '20%' }}>数据源</th>
+                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase" style={{ width: '12%' }}>项目</th>
+                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase" style={{ width: '8%' }}>所有者</th>
+                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase text-right" style={{ width: '5%' }}>表</th>
+                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase text-right" style={{ width: '5%' }}>字段</th>
+                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase text-right" style={{ width: '5%' }}>指标</th>
+                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase text-right" style={{ width: '5%' }}>工作簿</th>
+                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase text-right" style={{ width: '5%' }}>视图</th>
+                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase text-center" style={{ width: '6%' }}>类型</th>
+                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase text-center" style={{ width: '5%' }}>认证</th>
+                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase" style={{ width: '10%' }}>刷新</th>
+                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase" style={{ width: '14%' }}>状态</th>
                         </tr>
                     </thead>
                     <tbody>
                         {loading ? (
                             <tr>
-                                <td colSpan={6} className="text-center py-12">
+                                <td colSpan={12} className="text-center py-12">
                                     <Loader2 className="w-6 h-6 text-indigo-600 animate-spin mx-auto" />
                                 </td>
                             </tr>
                         ) : data.length === 0 ? (
                             <tr>
-                                <td colSpan={6} className="text-center py-12 text-gray-400">暂无数据</td>
+                                <td colSpan={12} className="text-center py-12 text-gray-400">暂无数据</td>
                             </tr>
                         ) : (
                             data.map((item) => {
                                 const isCertified = item.isCertified ?? item.is_certified;
                                 const hasExtract = item.hasExtract ?? item.has_extract;
-                                // 模拟一个停更时间判断，实际应该由后端给
-                                const isStale = false;
+                                const live = !hasExtract;
+                                const lastRefresh = item.lastRefresh || item.last_refresh;
+                                let stale = 0;
+                                if (hasExtract && lastRefresh) {
+                                    stale = Math.floor((new Date().getTime() - new Date(lastRefresh).getTime()) / 86400000);
+                                }
 
                                 return (
                                     <tr
                                         key={item.id}
                                         onClick={() => openDrawer(item.id, 'datasources')}
-                                        className="border-b border-gray-100 last:border-0 hover:bg-gray-50 cursor-pointer group transition-colors"
+                                        className="border-b border-gray-100 last:border-0 hover:bg-gray-50 cursor-pointer"
                                     >
-                                        <td className="px-4 py-3">
-                                            <div className="font-medium text-gray-800 flex items-center gap-2">
-                                                {item.name}
-                                                {isCertified && (
-                                                    <CheckCircle className="w-3.5 h-3.5 text-green-500" />
-                                                )}
+                                        <td className="px-3 py-2">
+                                            <div className="flex items-center gap-2">
+                                                <Layers className="w-4 h-4 text-purple-500 flex-shrink-0" />
+                                                <span className="font-medium text-gray-800 truncate">{item.name}</span>
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3 text-gray-600">{item.project_name || item.project || '-'}</td>
-                                        <td className="px-4 py-3 text-gray-600">
-                                            <div className="flex items-center gap-1.5">
-                                                <div className="w-5 h-5 rounded-full bg-gray-200 text-[10px] flex items-center justify-center text-gray-600 font-bold">
-                                                    {(item.owner || '?').charAt(0).toUpperCase()}
-                                                </div>
-                                                {item.owner || '-'}
-                                            </div>
+                                        <td className="px-3 py-2 text-[11px] text-gray-500">{item.projectName || item.project_name || item.project || '-'}</td>
+                                        <td className="px-3 py-2 text-[11px] text-gray-500">{item.owner || '-'}</td>
+                                        <td className="px-3 py-2 text-right font-mono text-xs">{item.table_count || item.tableCount || 0}</td>
+                                        <td className="px-3 py-2 text-right font-mono text-xs">{item.field_count || 0}</td>
+                                        <td className="px-3 py-2 text-right font-mono text-xs">{item.metric_count || 0}</td>
+                                        <td className="px-3 py-2 text-right">
+                                            {(item.workbook_count || 0) > 0 ? (
+                                                <span className="font-mono text-xs text-green-600 font-medium">{item.workbook_count}</span>
+                                            ) : '-'}
                                         </td>
-                                        <td className="px-4 py-3">
-                                            <div className="flex flex-col gap-1">
-                                                <span className={`text-xs px-1.5 py-0.5 rounded w-fit ${hasExtract ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'}`}>
-                                                    {hasExtract ? 'Extract' : 'Live'}
-                                                </span>
-                                            </div>
+                                        <td className="px-3 py-2 text-right font-mono text-xs">{item.view_count || 0}</td>
+                                        <td className="px-3 py-2 text-center">
+                                            <span className={`text-[9px] px-1.5 py-0.5 rounded ${live ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
+                                                {live ? 'Live' : 'Extract'}
+                                            </span>
                                         </td>
-                                        <td className="px-4 py-3">
-                                            {/* 模拟状态 */}
-                                            <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                                                {isStale ? (
-                                                    <span className="flex items-center gap-1 text-red-600"><AlertOctagon className="w-3 h-3" /> 停更</span>
-                                                ) : (
-                                                    <span className="flex items-center gap-1 text-green-600"><RefreshCw className="w-3 h-3" /> 正常</span>
-                                                )}
-                                            </div>
+                                        <td className="px-3 py-2 text-center">
+                                            {isCertified ? (
+                                                <CheckCircle className="w-3.5 h-3.5 text-green-500 mx-auto" />
+                                            ) : '-'}
                                         </td>
-                                        <td className="px-4 py-3 text-right text-gray-500 font-mono text-xs">
-                                            {item.updated_at ? new Date(item.updated_at).toLocaleDateString() : '-'}
+                                        <td className="px-3 py-2 text-[10px] text-gray-500">{formatDate(lastRefresh)}</td>
+                                        <td className="px-3 py-2">
+                                            {stale > 30 ? (
+                                                <span className="text-[9px] px-1.5 py-0.5 bg-red-50 text-red-600 rounded">停更{stale}天</span>
+                                            ) : stale > 7 ? (
+                                                <span className="text-[9px] px-1.5 py-0.5 bg-orange-50 text-orange-600 rounded">{stale}天前</span>
+                                            ) : (
+                                                <span className="text-[10px] text-green-600">● 正常</span>
+                                            )}
                                         </td>
                                     </tr>
                                 );
@@ -150,5 +165,17 @@ export default function DatasourcesPage() {
                 </table>
             </div>
         </div>
+    );
+}
+
+export default function DatasourcesPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex justify-center py-20">
+                <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+            </div>
+        }>
+            <DatasourcesContent />
+        </Suspense>
     );
 }

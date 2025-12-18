@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useDrawer } from '@/lib/drawer-context';
 import { api } from '@/lib/api';
@@ -22,19 +22,18 @@ interface DatabaseItem {
     port?: number;
     dbName?: string;
     db_name?: string;
-    state?: 'active' | 'inactive'; // 假设字段
-    tables?: number; // 简单假设
+    state?: 'active' | 'inactive';
+    tables?: number;
     table_count?: number;
 }
 
-export default function DatabasesPage() {
+function DatabasesContent() {
     const [data, setData] = useState<DatabaseItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [total, setTotal] = useState(0);
     const { openDrawer } = useDrawer();
     const searchParams = useSearchParams();
 
-    // 虽然现在API可能不支持分页的所有元数据，但保留结构
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
@@ -43,10 +42,7 @@ export default function DatabasesPage() {
                 filters[key] = value;
             });
 
-            // API 返回的是 PaginatedResponse
             const res = await api.getDatabases(1, 100, filters);
-
-            // 兼容直接返回数组或分页对象
             const items = Array.isArray(res) ? res : (res.items || []);
             setData(items);
             setTotal(Array.isArray(res) ? items.length : res.total);
@@ -89,7 +85,6 @@ export default function DatabasesPage() {
                                 <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
                                     <Database className="w-5 h-5" />
                                 </div>
-                                {/* 状态徽章模拟 */}
                                 <div className="px-2 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-700">
                                     使用中
                                 </div>
@@ -109,5 +104,17 @@ export default function DatabasesPage() {
                 )}
             </div>
         </div>
+    );
+}
+
+export default function DatabasesPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex justify-center py-20">
+                <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+            </div>
+        }>
+            <DatabasesContent />
+        </Suspense>
     );
 }
