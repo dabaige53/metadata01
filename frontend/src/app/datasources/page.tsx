@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 import { api } from '@/lib/api';
 import {
@@ -9,6 +8,10 @@ import {
     Layers,
     CheckCircle
 } from 'lucide-react';
+import InlineFilter from '@/components/data-table/InlineFilter';
+import SortButtons from '@/components/data-table/SortButtons';
+import Pagination from '@/components/data-table/Pagination';
+import { useDataTable } from '@/hooks/useDataTable';
 
 interface DatasourceItem {
     id: string;
@@ -33,47 +36,87 @@ interface DatasourceItem {
 }
 
 function DatasourcesContent() {
-    const [data, setData] = useState<DatasourceItem[]>([]);
+    const [allData, setAllData] = useState<DatasourceItem[]>([]);
     const [loading, setLoading] = useState(true);
-    const [total, setTotal] = useState(0);
     const { openDrawer } = useDrawer();
-    const searchParams = useSearchParams();
 
-    const loadData = useCallback(async () => {
-        setLoading(true);
-        try {
-            const filters: Record<string, string> = {};
-            searchParams.forEach((value, key) => {
-                filters[key] = value;
-            });
-
-            const res = await api.getDatasources(1, 50, filters);
-            const items = Array.isArray(res) ? res : (res.items || []);
-            setData(items);
-            setTotal(Array.isArray(res) ? items.length : res.total);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
-    }, [searchParams]);
-
+    // 加载数据
     useEffect(() => {
-        loadData();
-    }, [loadData]);
+        setLoading(true);
+        // 使用较大页面大小以支持客户端过滤/排序
+        api.getDatasources(1, 1000)
+            .then(res => {
+                const items = Array.isArray(res) ? res : (res.items || []);
+                setAllData(items);
+            })
+            .catch(console.error)
+            .finally(() => setLoading(false));
+    }, []);
+
+    // 使用自定义 Hook 管理表格状态
+    const {
+        displayData,
+        totalCount,
+        facets,
+        activeFilters,
+        handleFilterChange,
+        sortState,
+        handleSortChange,
+        paginationState,
+        handlePageChange,
+    } = useDataTable({
+        moduleName: 'datasources',
+        data: allData,
+        defaultPageSize: 50,
+        searchFields: ['name', 'project_name', 'project', 'owner'],
+    });
+
+    // 排序选项
+    const sortOptions = [
+        { key: 'table_count', label: '表数量' },
+        { key: 'workbook_count', label: '引用数' },
+        { key: 'last_refresh', label: '更新时间' },
+        { key: 'name', label: '名称' },
+    ];
 
     const formatDate = (d?: string) => d ? new Date(d).toLocaleDateString() : '-';
 
+    if (loading) {
+        return (
+            <div className="flex justify-center py-20">
+                <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+            </div>
+        );
+    }
+
     return (
-        <div>
-            <div className="flex items-center justify-between mb-6">
+        <div className="space-y-4">
+            {/* 页面标题 */}
+            <div className="flex items-center justify-between">
                 <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                     <Layers className="w-5 h-5 text-indigo-600" />
                     数据源列表
-                    <span className="text-sm font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{total}</span>
+                    <span className="text-sm font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                        {totalCount} 项
+                    </span>
                 </h1>
+
+                {/* 排序按钮 */}
+                <SortButtons
+                    sortOptions={sortOptions}
+                    currentSort={sortState}
+                    onSortChange={handleSortChange}
+                />
             </div>
 
+            {/* 筛选器 */}
+            <InlineFilter
+                facets={facets}
+                activeFilters={activeFilters}
+                onFilterChange={handleFilterChange}
+            />
+
+            {/* 数据表格 */}
             <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
                 <table className="w-full text-sm">
                     <thead>
@@ -93,18 +136,14 @@ function DatasourcesContent() {
                         </tr>
                     </thead>
                     <tbody>
-                        {loading ? (
+                        {displayData.length === 0 ? (
                             <tr>
-                                <td colSpan={12} className="text-center py-12">
-                                    <Loader2 className="w-6 h-6 text-indigo-600 animate-spin mx-auto" />
+                                <td colSpan={12} className="text-center py-12 text-gray-400">
+                                    {totalCount === 0 ? '暂无数据' : '未找到匹配的数据源'}
                                 </td>
                             </tr>
-                        ) : data.length === 0 ? (
-                            <tr>
-                                <td colSpan={12} className="text-center py-12 text-gray-400">暂无数据</td>
-                            </tr>
                         ) : (
-                            data.map((item) => {
+                            displayData.map((item) => {
                                 const isCertified = item.isCertified ?? item.is_certified;
                                 const hasExtract = item.hasExtract ?? item.has_extract;
                                 const live = !hasExtract;
@@ -118,37 +157,37 @@ function DatasourcesContent() {
                                     <tr
                                         key={item.id}
                                         onClick={() => openDrawer(item.id, 'datasources')}
-                                        className="border-b border-gray-100 last:border-0 hover:bg-gray-50 cursor-pointer"
+                                        className="border-b border-gray-50 last:border-0 hover:bg-gray-50 cursor-pointer"
                                     >
-                                        <td className="px-3 py-2">
+                                        <td className="px-3 py-2.5">
                                             <div className="flex items-center gap-2">
                                                 <Layers className="w-4 h-4 text-purple-500 flex-shrink-0" />
                                                 <span className="font-medium text-gray-800 truncate">{item.name}</span>
                                             </div>
                                         </td>
-                                        <td className="px-3 py-2 text-[11px] text-gray-500">{item.projectName || item.project_name || item.project || '-'}</td>
-                                        <td className="px-3 py-2 text-[11px] text-gray-500">{item.owner || '-'}</td>
-                                        <td className="px-3 py-2 text-right font-mono text-xs">{item.table_count || item.tableCount || 0}</td>
-                                        <td className="px-3 py-2 text-right font-mono text-xs">{item.field_count || 0}</td>
-                                        <td className="px-3 py-2 text-right font-mono text-xs">{item.metric_count || 0}</td>
-                                        <td className="px-3 py-2 text-right">
+                                        <td className="px-3 py-2.5 text-[11px] text-gray-500">{item.projectName || item.project_name || item.project || '-'}</td>
+                                        <td className="px-3 py-2.5 text-[11px] text-gray-500">{item.owner || '-'}</td>
+                                        <td className="px-3 py-2.5 text-right font-mono text-xs">{item.table_count || item.tableCount || 0}</td>
+                                        <td className="px-3 py-2.5 text-right font-mono text-xs">{item.field_count || 0}</td>
+                                        <td className="px-3 py-2.5 text-right font-mono text-xs">{item.metric_count || 0}</td>
+                                        <td className="px-3 py-2.5 text-right">
                                             {(item.workbook_count || 0) > 0 ? (
                                                 <span className="font-mono text-xs text-green-600 font-medium">{item.workbook_count}</span>
                                             ) : '-'}
                                         </td>
-                                        <td className="px-3 py-2 text-right font-mono text-xs">{item.view_count || 0}</td>
-                                        <td className="px-3 py-2 text-center">
+                                        <td className="px-3 py-2.5 text-right font-mono text-xs">{item.view_count || 0}</td>
+                                        <td className="px-3 py-2.5 text-center">
                                             <span className={`text-[9px] px-1.5 py-0.5 rounded ${live ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
                                                 {live ? 'Live' : 'Extract'}
                                             </span>
                                         </td>
-                                        <td className="px-3 py-2 text-center">
+                                        <td className="px-3 py-2.5 text-center">
                                             {isCertified ? (
                                                 <CheckCircle className="w-3.5 h-3.5 text-green-500 mx-auto" />
                                             ) : '-'}
                                         </td>
-                                        <td className="px-3 py-2 text-[10px] text-gray-500">{formatDate(lastRefresh)}</td>
-                                        <td className="px-3 py-2">
+                                        <td className="px-3 py-2.5 text-[10px] text-gray-500">{formatDate(lastRefresh)}</td>
+                                        <td className="px-3 py-2.5">
                                             {stale > 30 ? (
                                                 <span className="text-[9px] px-1.5 py-0.5 bg-red-50 text-red-600 rounded">停更{stale}天</span>
                                             ) : stale > 7 ? (
@@ -163,6 +202,11 @@ function DatasourcesContent() {
                         )}
                     </tbody>
                 </table>
+                {/* 分页控件 */}
+                <Pagination
+                    pagination={paginationState}
+                    onPageChange={handlePageChange}
+                />
             </div>
         </div>
     );

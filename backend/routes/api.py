@@ -1930,3 +1930,63 @@ def get_datasource_health():
         'total': len(results),
         'avg_score': round(sum(r['health_score'] for r in results) / len(results), 1) if results else 0
     })
+
+
+@api_bp.route('/quality/duplicates')
+def get_duplicate_metrics():
+    """识别重复指标：相同公式但名称不同，或同名同公式但在不同位置"""
+    session = g.db_session
+    
+    # 获取所有计算字段及其基本信息
+    results = session.query(Field, CalculatedField).join(
+        CalculatedField, Field.id == CalculatedField.field_id
+    ).all()
+    
+    formula_groups = defaultdict(list)
+    
+    for field, calc in results:
+        if not calc.formula:
+            continue
+            
+        # 公式标准化：去除多余空格，统一大小写（Tableau公式通常不区分大小写，但为了保险我们这里只去空格）
+        # 实际情况中可能需要更复杂的 AST 比较，这里先用字符串标准化
+        normalized_formula = " ".join(calc.formula.split()).strip()
+        
+        formula_groups[normalized_formula].append({
+            'id': field.id,
+            'name': field.name,
+            'formula': calc.formula,
+            'datasource_id': field.datasource_id,
+            'datasource_name': field.datasource.name if field.datasource else 'Unknown',
+            'workbook_id': field.workbook_id,
+            'workbook_name': field.workbook.name if field.workbook else 'Unknown',
+            'project_name': field.workbook.project_name if field.workbook else (field.datasource.project_name if field.datasource else 'Unknown')
+        })
+    
+    duplicates = []
+    
+    for formula, items in formula_groups.items():
+        if len(items) < 2:
+            continue
+            
+        # 在同一个公式组内，检测异名重复
+        names = set(item['name'] for item in items)
+        
+        # 归类逻辑
+        # 1. 如果有多个不同的名称 -> 不同名称重复 (Duplicate Metrics)
+        # 2. 如果名称全部相同 -> 同名异地 (Location Variant)
+        
+        group_type = 'NAME_VARIANT' if len(names) > 1 else 'LOCATION_VARIANT'
+        
+        duplicates.append({
+            'formula': items[0]['formula'],
+            'normalized_formula': formula,
+            'type': group_type,
+            'count': len(items),
+            'items': items
+        })
+        
+    # 按重复数量降序排列
+    duplicates.sort(key=lambda x: x['count'], reverse=True)
+    
+    return jsonify(duplicates)

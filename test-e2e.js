@@ -160,6 +160,7 @@ async function runTests() {
   await testAPIEndpoint('指标列表', '/api/metrics?page=1&page_size=50');
   await testAPIEndpoint('工作簿列表', '/api/workbooks');
   await testAPIEndpoint('数据源列表', '/api/datasources');
+  await testAPIEndpoint('重复指标分析', '/api/quality/duplicates');
 
   // 测试前端页面
   log('yellow', '\n【阶段 2】测试前端页面 (localhost:3001)');

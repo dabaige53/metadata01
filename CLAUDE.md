@@ -20,6 +20,8 @@ Tableau 元数据治理平台前端 - 基于 Next.js 构建的现代化 Web 应�
 - **图标**: Lucide React
 - **后端 API**: Flask 3.0（运行于 localhost:8001）
 - **数据库**: SQLite (metadata.db)
+- **Tableau 集成**: Metadata API (GraphQL) + REST API 认证
+- **UI 风格**: 参考 [ui_style.md](docs/ui_style.md)
 
 ## 快速开始
 

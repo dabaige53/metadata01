@@ -75,7 +75,7 @@ export default function DataTable<T extends { id: string }>({
                             {columns.map((col) => (
                                 <th
                                     key={String(col.key)}
-                                    className="text-left px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wide"
+                                    className="text-left px-3 py-2 font-medium text-gray-500 text-xs uppercase tracking-wider"
                                     style={{ width: col.width }}
                                 >
                                     {col.title}
@@ -104,7 +104,7 @@ export default function DataTable<T extends { id: string }>({
                                     onClick={() => onRowClick?.(record)}
                                 >
                                     {columns.map((col) => (
-                                        <td key={String(col.key)} className="px-4 py-3 text-gray-700">
+                                        <td key={String(col.key)} className="px-3 py-2.5 text-gray-700 text-[13px]">
                                             {col.render
                                                 ? col.render(getValue(record, String(col.key)), record)
                                                 : String(getValue(record, String(col.key)) ?? '-')}

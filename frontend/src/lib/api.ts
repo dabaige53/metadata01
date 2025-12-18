@@ -207,5 +207,25 @@ export const api = {
 
     // 血缘
     getLineage: (type: string, id: string) => request<unknown>(`/lineage/${type}/${id}`),
+
+    // 质量分析
+    getDuplicateMetrics: () => request<DuplicateGroup[]>('/quality/duplicates'),
 };
+
+export interface DuplicateGroup {
+    formula: string;
+    normalized_formula: string;
+    type: 'NAME_VARIANT' | 'LOCATION_VARIANT';
+    count: number;
+    items: Array<{
+        id: string;
+        name: string;
+        formula: string;
+        datasource_id: string;
+        datasource_name: string;
+        workbook_id: string;
+        workbook_name: string;
+        project_name: string;
+    }>;
+}
 
