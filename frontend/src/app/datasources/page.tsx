@@ -42,7 +42,7 @@ function DatasourcesContent() {
         // 加载数据（后端已优化，减少加载量）
         api.getDatasources(1, 200)
             .then(res => {
-                const items = Array.isArray(res) ? res : (res.items || []);
+                const items = (Array.isArray(res) ? res : (res.items || [])) as unknown as DatasourceItem[];
                 setAllData(items);
             })
             .catch(console.error)

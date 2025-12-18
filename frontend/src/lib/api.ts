@@ -209,7 +209,7 @@ export const api = {
     getLineage: (type: string, id: string) => request<unknown>(`/lineage/${type}/${id}`),
 
     // 质量分析
-    getDuplicateMetrics: () => request<DuplicateGroup[]>('/quality/duplicates'),
+    getDuplicateMetrics: () => request<PaginatedResponse<DuplicateGroup>>('/quality/duplicates'),
 };
 
 export interface DuplicateGroup {

@@ -36,7 +36,7 @@ function request(url) {
       port: parsedUrl.port,
       path: parsedUrl.pathname + parsedUrl.search,
       method: 'GET',
-      timeout: 5000,
+      timeout: 30000,
     };
 
     const req = http.request(options, (res) => {

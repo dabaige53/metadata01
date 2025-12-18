@@ -37,7 +37,9 @@ def main():
     app.run(
         host=Config.HOST,
         port=Config.PORT,
-        debug=Config.DEBUG
+        debug=Config.DEBUG,
+        threaded=False,
+        use_reloader=False
     )
 
 

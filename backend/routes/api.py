@@ -17,25 +17,45 @@ api_bp = Blueprint('api', __name__)
 
 @api_bp.route('/stats')
 def get_stats():
-    """获取全局统计数据"""
+    """获取全局统计数据 - 性能优化版"""
     session = g.db_session
+    from sqlalchemy import text
     
-    # 计算字段数量（作为指标/度量）
-    calc_fields_count = session.query(CalculatedField).count()
+    # 使用 UNION ALL 合并所有 COUNT 查询
+    # 对于 orphanedFields，使用 NOT EXISTS 子查询比 JOIN 更直观（且在 SQLite 中通常性能相当）
+    stats_rows = session.execute(text("""
+        SELECT 'databases' as key, COUNT(*) as cnt FROM databases
+        UNION ALL SELECT 'tables', COUNT(*) FROM tables
+        UNION ALL SELECT 'fields', COUNT(*) FROM fields
+        UNION ALL SELECT 'calculatedFields', COUNT(*) FROM calculated_fields
+        UNION ALL SELECT 'datasources', COUNT(*) FROM datasources
+        UNION ALL SELECT 'workbooks', COUNT(*) FROM workbooks
+        UNION ALL SELECT 'views', COUNT(*) FROM views
+        UNION ALL SELECT 'projects', COUNT(*) FROM projects
+        UNION ALL SELECT 'users', COUNT(*) FROM tableau_users
+        UNION ALL SELECT 'orphanedFields', COUNT(*) 
+                  FROM fields f 
+                  WHERE NOT EXISTS (SELECT 1 FROM field_to_view fv WHERE fv.field_id = f.id)
+    """)).fetchall()
+    
+    stats_map = {row[0]: row[1] for row in stats_rows}
+    
+    # 指标数量 = 计算字段数量
+    calc_count = stats_map.get('calculatedFields', 0)
     
     stats = {
-        'databases': session.query(Database).count(),
-        'tables': session.query(DBTable).count(),
-        'fields': session.query(Field).count(),
-        'calculatedFields': calc_fields_count,
-        'datasources': session.query(Datasource).count(),
-        'workbooks': session.query(Workbook).count(),
-        'views': session.query(View).count(),
-        'metrics': calc_fields_count,  # 指标数量 = 计算字段数量
-        'duplicateMetrics': 0,  # 暂不计算重复
-        'orphanedFields': session.query(Field).outerjoin(Field.views).filter(View.id == None).count(),
-        'projects': session.query(Project).count(),
-        'users': session.query(TableauUser).count()
+        'databases': stats_map.get('databases', 0),
+        'tables': stats_map.get('tables', 0),
+        'fields': stats_map.get('fields', 0),
+        'calculatedFields': calc_count,
+        'datasources': stats_map.get('datasources', 0),
+        'workbooks': stats_map.get('workbooks', 0),
+        'views': stats_map.get('views', 0),
+        'metrics': calc_count,
+        'duplicateMetrics': 0,
+        'orphanedFields': stats_map.get('orphanedFields', 0),
+        'projects': stats_map.get('projects', 0),
+        'users': stats_map.get('users', 0)
     }
     
     return jsonify(stats)
@@ -481,7 +501,9 @@ def get_databases():
     db_ids = [db.id for db in databases]
     if db_ids:
         # 获取每个数据库关联的字段数和数据源数
-        stats = session.execute(text("""
+        # 获取每个数据库关联的字段数和数据源数
+        from sqlalchemy import bindparam
+        stmt = text("""
             SELECT 
                 t.database_id,
                 COUNT(DISTINCT f.id) as field_count,
@@ -491,7 +513,9 @@ def get_databases():
             LEFT JOIN table_to_datasource td ON t.id = td.table_id
             WHERE t.database_id IN :db_ids
             GROUP BY t.database_id
-        """), {'db_ids': tuple(db_ids)}).fetchall()
+        """)
+        stmt = stmt.bindparams(bindparam('db_ids', expanding=True))
+        stats = session.execute(stmt, {'db_ids': list(db_ids)}).fetchall()
         stats_map = {row[0]: {'fields': row[1], 'ds': row[2]} for row in stats}
     else:
         stats_map = {}
@@ -584,14 +608,19 @@ def get_tables():
     
     # 预查询工作簿统计
     table_ids = [t.id for t in tables]
+    # 预查询工作簿统计
+    table_ids = [t.id for t in tables]
     if table_ids:
-        wb_stats = session.execute(text("""
+        from sqlalchemy import bindparam
+        stmt = text("""
             SELECT td.table_id, COUNT(DISTINCT dw.workbook_id) as wb_count
             FROM table_to_datasource td
             JOIN datasource_to_workbook dw ON td.datasource_id = dw.datasource_id
             WHERE td.table_id IN :table_ids
             GROUP BY td.table_id
-        """), {'table_ids': tuple(table_ids)}).fetchall()
+        """)
+        stmt = stmt.bindparams(bindparam('table_ids', expanding=True))
+        wb_stats = session.execute(stmt, {'table_ids': list(table_ids)}).fetchall()
         wb_map = {row[0]: row[1] for row in wb_stats}
     else:
         wb_map = {}
@@ -699,6 +728,8 @@ def get_datasources():
     """获取数据源列表 - 性能优化版"""
     session = g.db_session
     search = request.args.get('search', '')
+    sort = request.args.get('sort', '')
+    order = request.args.get('order', 'asc')
     
     from sqlalchemy.orm import selectinload
     from sqlalchemy import text
@@ -713,18 +744,34 @@ def get_datasources():
     if search: 
         query = query.filter(Datasource.name.ilike(f'%{search}%'))
     
-    datasources = query.all()
+    # 分页参数
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 50, type=int)
+    page_size = min(page_size, 200)
     
-    # 预查询视图统计（一次获取所有数据源关联的视图数）
+    # 排序
+    if sort == 'name':
+        query = query.order_by(Datasource.name.desc() if order == 'desc' else Datasource.name.asc())
+    elif sort == 'project_name':
+        query = query.order_by(Datasource.project_name.desc() if order == 'desc' else Datasource.project_name.asc())
+    total_count = query.count()
+    offset = (page - 1) * page_size
+    
+    datasources = query.limit(page_size).offset(offset).all()
+    
+    # 预查询视图统计（仅针对当前页的数据源）
     ds_ids = [ds.id for ds in datasources]
     if ds_ids:
-        view_stats = session.execute(text("""
+        from sqlalchemy import bindparam
+        stmt = text("""
             SELECT dw.datasource_id, COUNT(v.id) as view_count
             FROM datasource_to_workbook dw
             JOIN views v ON dw.workbook_id = v.workbook_id
             WHERE dw.datasource_id IN :ds_ids
             GROUP BY dw.datasource_id
-        """), {'ds_ids': tuple(ds_ids)}).fetchall()
+        """)
+        stmt = stmt.bindparams(bindparam('ds_ids', expanding=True))
+        view_stats = session.execute(stmt, {'ds_ids': list(ds_ids)}).fetchall()
         view_map = {row[0]: row[1] for row in view_stats}
     else:
         view_map = {}
@@ -732,16 +779,21 @@ def get_datasources():
     results = []
     for ds in datasources:
         data = ds.to_dict()
-        data['connected_tables'] = [t.name for t in ds.tables[:10]]
         data['table_count'] = len(ds.tables)
         data['field_count'] = len(ds.fields)
         data['workbook_count'] = len(ds.workbooks)
-        # 使用预加载的数据计算指标数量
-        data['metric_count'] = sum(1 for f in ds.fields if f.is_calculated)
         data['view_count'] = view_map.get(ds.id, 0)
+        # 优化：不返回完整的关联对象列表，仅返回数量以减少 payload
+        # 如果前端需要详情，应使用详情接口
         results.append(data)
 
-    return jsonify(results)
+    return jsonify({
+        'items': results,
+        'total': total_count,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': (total_count + page_size - 1) // page_size
+    })
 
 @api_bp.route('/datasources/<ds_id>')
 def get_datasource_detail(ds_id):
@@ -2065,74 +2117,104 @@ def get_datasource_health():
 def get_duplicate_metrics():
     """识别重复指标：相同公式但名称不同，或同名同公式但在不同位置"""
     session = g.db_session
+    from sqlalchemy import text, bindparam
     
-    # 获取所有计算字段及其基本信息
-    results = session.query(Field, CalculatedField).join(
-        CalculatedField, Field.id == CalculatedField.field_id
-    ).all()
+    # 分页参数
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 20, type=int)
+    
+    # 第一步：只查询公式和ID，避免加载全量 Field 对象
+    # 这比查询所有对象要快得多，内存占用也小
+    raw_calcs = session.query(CalculatedField.field_id, CalculatedField.formula).all()
     
     formula_groups = defaultdict(list)
     
-    for field, calc in results:
-        if not calc.formula:
+    # 在内存中进行公式标准化和分组
+    for field_id, formula in raw_calcs:
+        if not formula:
             continue
-            
-        # 公式标准化：去除多余空格，统一大小写（Tableau公式通常不区分大小写，但为了保险我们这里只去空格）
-        # 实际情况中可能需要更复杂的 AST 比较，这里先用字符串标准化
-        normalized_formula = " ".join(calc.formula.split()).strip()
-        
-        # 获取上下文信息 (数据源、工作簿)
-        ds_name = 'Unknown'
-        wb_name = 'Unknown'
-        wb_id = ''
-        proj_name = 'Unknown'
-        
-        if field.datasource:
-            ds_name = field.datasource.name
-            proj_name = field.datasource.project_name or 'Unknown'
-            # 尝试获取关联的工作簿（通常一个数据源可能属于一个工作簿）
-            if field.datasource.workbooks:
-                wb = field.datasource.workbooks[0]
-                wb_name = wb.name
-                wb_id = wb.id
-                if not proj_name or proj_name == 'Unknown':
-                    proj_name = wb.project_name
-        
-        formula_groups[normalized_formula].append({
-            'id': field.id,
-            'name': field.name,
-            'formula': calc.formula,
-            'datasource_id': field.datasource_id,
-            'datasource_name': ds_name,
-            'workbook_id': wb_id,
-            'workbook_name': wb_name,
-            'project_name': proj_name
-        })
+        normalized_formula = " ".join(formula.split()).strip()
+        formula_groups[normalized_formula].append((field_id, formula))
     
-    duplicates = []
-    
-    for formula, items in formula_groups.items():
+    # 筛选出重复项
+    duplicates_list = []
+    for norm_formula, items in formula_groups.items():
         if len(items) < 2:
             continue
-            
-        # 在同一个公式组内，检测异名重复
-        names = set(item['name'] for item in items)
-        
-        # 归类逻辑
-        # 1. 如果有多个不同的名称 -> 不同名称重复 (Duplicate Metrics)
-        # 2. 如果名称全部相同 -> 同名异地 (Location Variant)
-        
-        group_type = 'NAME_VARIANT' if len(names) > 1 else 'LOCATION_VARIANT'
-        
-        duplicates.append({
-            'formula': items[0]['formula'],
-            'normalized_formula': formula,
-            'type': group_type,
+        duplicates_list.append({
+            'normalized_formula': norm_formula,
+            'original_formula': items[0][1],
             'count': len(items),
-            'items': items
+            'item_ids': [x[0] for x in items]
         })
         
-    # 按重复数量降序排列
-    duplicates.sort(key=lambda x: x['count'], reverse=True)
+    # 排序
+    duplicates_list.sort(key=lambda x: x['count'], reverse=True)
     
-    return jsonify(duplicates)
+    # 分页
+    total = len(duplicates_list)
+    start = (page - 1) * page_size
+    end = start + page_size
+    paged_dups = duplicates_list[start:end]
+    
+    # 第二步：仅查询当前页所需的详细 Field 信息
+    if paged_dups:
+        all_needed_ids = []
+        for d in paged_dups:
+            all_needed_ids.extend(d['item_ids'])
+            
+        # 批量获取 Field 详情
+        from sqlalchemy import bindparam
+        stmt = text("SELECT id, name, datasource_id FROM fields WHERE id IN :ids")
+        stmt = stmt.bindparams(bindparam('ids', expanding=True))
+        fields_info = session.execute(stmt, {'ids': list(all_needed_ids)}).fetchall()
+        field_map = {row.id: {'name': row.name, 'ds_id': row.datasource_id} for row in fields_info}
+        
+        # 还需要获取 Datasource 名称
+        ds_ids = set(f['ds_id'] for f in field_map.values() if f['ds_id'])
+        ds_map = {}
+        if ds_ids:
+            stmt_ds = text("SELECT id, name, project_name FROM datasources WHERE id IN :ids")
+            stmt_ds = stmt_ds.bindparams(bindparam('ids', expanding=True))
+            ds_rows = session.execute(stmt_ds, {'ids': list(ds_ids)}).fetchall()
+            ds_map = {row.id: {'name': row.name, 'project': row.project_name} for row in ds_rows}
+            
+        # 组装最终结果
+        final_results = []
+        for group in paged_dups:
+            group_items = []
+            names = set()
+            
+            for fid in group['item_ids']:
+                f_info = field_map.get(fid)
+                if not f_info: 
+                    continue
+                
+                ds_info = ds_map.get(f_info.get('ds_id')) or {}
+                
+                group_items.append({
+                    'id': fid,
+                    'name': f_info['name'],
+                    'formula': group['original_formula'], # 简化，使用组内第一个公式
+                    'datasource_name': ds_info.get('name', 'Unknown'),
+                    'project_name': ds_info.get('project', 'Unknown')
+                })
+                names.add(f_info['name'])
+            
+            final_results.append({
+                'formula': group['original_formula'],
+                'normalized_formula': group['normalized_formula'],
+                'type': 'NAME_VARIANT' if len(names) > 1 else 'LOCATION_VARIANT',
+                'count': group['count'],
+                'items': group_items
+            })
+    else:
+        final_results = []
+    
+    return jsonify({
+        'items': final_results,
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': (total + page_size - 1) // page_size
+    })

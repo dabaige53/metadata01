@@ -22,7 +22,11 @@ export default function DuplicateMetricsAnalysis() {
 
     useEffect(() => {
         api.getDuplicateMetrics()
-            .then(setDuplicates)
+            .then(res => {
+                // 兼容数组（老接口）和分页对象（新接口）
+                const items = Array.isArray(res) ? res : (res.items || []);
+                setDuplicates(items);
+            })
             .catch(console.error)
             .finally(() => setLoading(false));
     }, []);
