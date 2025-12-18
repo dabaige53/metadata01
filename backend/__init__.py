@@ -1,9 +1,9 @@
 """
 Tableau 元数据治理平台 - Flask 应用
 """
-from flask import Flask, render_template
-from .config import Config
-from .models import get_engine, get_session
+from flask import Flask, g
+from backend.config import Config
+from backend.models import get_engine, get_session
 
 
 def create_app(config_class=Config):
@@ -34,14 +34,8 @@ def create_app(config_class=Config):
     from .routes import api_bp
     app.register_blueprint(api_bp, url_prefix='/api')
     
-    # 主页路由
     @app.route('/')
     def index():
-        return render_template('index.html')
-    
-    # Demo 页面路由 - Figma 设计稿还原
-    @app.route('/demo')
-    def demo():
-        return render_template('demo.html')
+        return {"status": "ok", "message": "Tableau Metadata API is running"}
     
     return app

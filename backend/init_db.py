@@ -7,8 +7,8 @@ import sys
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app.config import Config
-from app.models import Base, get_engine, init_db
+from backend.config import Config
+from backend.models import Base, get_engine, init_db
 
 
 def main():

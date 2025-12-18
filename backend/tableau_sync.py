@@ -13,9 +13,9 @@ from sqlalchemy import select
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app.config import Config
-from app.models import (
-    get_engine, get_session,
+from backend.config import Config
+from backend.models import (
+    Base, get_engine, init_db,
     Database, DBTable, DBColumn, Field, Datasource, Workbook, View,
     TableauUser, Project,
     table_to_datasource, datasource_to_workbook, field_to_view, CalculatedField, SyncLog

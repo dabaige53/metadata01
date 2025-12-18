@@ -26,19 +26,18 @@ Tableau 元数据治理平台前端 - 基于 Next.js 构建的现代化 Web 应�
 ### 启动服务
 
 ```bash
-# 后端 (8001端口)
-python run.py
+# 一键启动 (推荐)
+python3 dev.py
 
-# 前端 (3000端口)
-cd frontend
-npm run dev
+# 分步启动 (手动控制)
+# 后端: python3 run_backend.py
+# 前端: cd frontend && npm run dev
 ```
 
 ### 访问地址
 
 - **Next.js 前端**: <http://localhost:3000> ⭐ 主要使用
 - Flask 后端 API: <http://localhost:8001/api/>*
-- Flask 旧版前端: <http://localhost:8001/> (对比用)
 
 ### 运行测试
 
@@ -105,10 +104,13 @@ metadata分析/
 │   ├── next.config.ts          # Next.js 配置
 │   ├── tailwind.config.ts      # Tailwind 配置
 │   └── tsconfig.json           # TypeScript 配置
-├── app/                        # Flask 后端
+├── backend/                    # Flask 后端
 │   ├── routes/                 # API 路由
 │   ├── models.py               # 数据模型
-│   └── static/                 # 旧版前端资源
+│   ├── config.py               # 配置文件
+│   ├── tableau_sync.py         # 数据同步脚本
+│   └── init_db.py              # 数据库初始化脚本
+├── run_backend.py              # 后端启动入口
 ├── test-e2e.js                 # ⭐ E2E 基础测试脚本
 ├── test-features.js            # ⭐ 功能测试脚本
 ├── 快速启动指南.md             # ⭐ 用户指南
