@@ -39,4 +39,9 @@ def create_app(config_class=Config):
     def index():
         return render_template('index.html')
     
+    # Demo 页面路由 - Figma 设计稿还原
+    @app.route('/demo')
+    def demo():
+        return render_template('demo.html')
+    
     return app

@@ -174,28 +174,57 @@ def get_dashboard_analysis():
     
     # ===== 7. 问题检测与质量分析 =====
     
-    # 7.1 描述覆盖率细分
-    def calc_desc_rate(model):
+    # 7.1 描述覆盖率细分 (获取具体数值方便前端展示进度条)
+    def get_desc_stats(model, check_certified=False):
         total = session.query(model).count()
-        if total == 0: return 0, 0
+        if total == 0: 
+            return {
+                'with_description': 0, 'total': 0, 'coverage_rate': 0,
+                'certified': 0, 'certification_rate': 0
+            }
         has_desc = session.query(model).filter((model.description != None) & (model.description != '')).count()
-        return total, round(has_desc / total * 100, 1)
+        res = {
+            'with_description': has_desc,
+            'total': total,
+            'coverage_rate': round(has_desc / total * 100, 1)
+        }
+        if check_certified:
+            certified = session.query(model).filter(model.is_certified == True).count()
+            res['certified'] = certified
+            res['certification_rate'] = round(certified / total * 100, 1)
+        else:
+            res['certified'] = 0
+            res['certification_rate'] = 0
+        return res
 
-    _, table_desc_rate = calc_desc_rate(DBTable)
-    _, field_desc_rate = calc_desc_rate(Field)
-    _, metric_desc_rate = calc_desc_rate(CalculatedField) # 注意：这里使用 CalculatedField 关联 Field 查描述会更准，暂用简单方式
+    field_cov = get_desc_stats(Field)
+    table_cov = get_desc_stats(DBTable, check_certified=True)
     
-    # 7.2 认证率统计
-    def calc_cert_rate(model):
-        total = session.query(model).count()
-        if total == 0: return 0
-        certified = session.query(model).filter(model.is_certified == True).count()
-        return round(certified / total * 100, 1)
-        
-    ds_cert_rate = calc_cert_rate(Datasource)
-    table_cert_rate = calc_cert_rate(DBTable)
+    # 指标描述覆盖率 (CalculatedField 的描述存储在关联的 Field 中)
+    calc_total = session.query(CalculatedField).count()
+    if calc_total == 0:
+        metric_cov = {'with_description': 0, 'total': 0, 'coverage_rate': 0, 'certified': 0, 'certification_rate': 0}
+    else:
+        calc_has_desc = session.query(CalculatedField).join(
+            Field, CalculatedField.field_id == Field.id
+        ).filter((Field.description != None) & (Field.description != '')).count()
+        # CalculatedField 本身没有 is_certified 字段，认证状态通常在 Field 或 Datasource 层面
+        # 这里假设 metric_cov 不检查认证，或者认证状态由 Field 决定
+        metric_cov = {
+            'with_description': calc_has_desc,
+            'total': calc_total,
+            'coverage_rate': round(calc_has_desc / calc_total * 100, 1),
+            'certified': 0, # CalculatedField 自身没有认证字段
+            'certification_rate': 0
+        }
+    
+    # 7.2 数据源覆盖率与认证
+    ds_cov = get_desc_stats(Datasource, check_certified=True)
+    
+    # 7.3 工作簿覆盖率
+    wb_cov = get_desc_stats(Workbook)
 
-    # 7.3 过期/陈旧资产
+    # 7.4 陈旧资产统计
     thirty_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=30)
     ninety_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=90)
     
@@ -216,7 +245,6 @@ def get_dashboard_analysis():
     orphaned_tables = session.query(DBTable).outerjoin(DBTable.datasources)\
         .filter(Datasource.id == None).count()
     
-    # 计算字段无描述计数(复用)
     calc_no_desc = session.query(CalculatedField).join(
         Field, CalculatedField.field_id == Field.id
     ).filter((Field.description == None) | (Field.description == '')).count()
@@ -228,26 +256,25 @@ def get_dashboard_analysis():
         'dead_datasources': dead_ds_count,
         'duplicate_formulas': total_duplicate_formulas,
         'orphaned_tables': orphaned_tables,
-        'calc_field_no_desc': calc_no_desc
+        'calc_field_no_desc': calc_no_desc,
+        'field_coverage_rate': field_cov['coverage_rate']
     }
     
     quality_metrics = {
-        'description_coverage': {
-            'tables': table_desc_rate,
-            'fields': field_desc_rate,
-            'metrics': metric_desc_rate
-        },
-        'certification_rate': {
-            'datasources': ds_cert_rate,
-            'tables': table_cert_rate
-        }
+        'field_coverage': field_cov,
+        'table_coverage': table_cov,
+        'metric_coverage': metric_cov,
+        'datasource_coverage': ds_cov,
+        'workbook_coverage': wb_cov
     }
+
+
     
     # ===== 8. 健康度计算（改进版 - 维度细分） =====
     
     # 1. 完整性 (Completeness)
     # 综合表、字段、指标的描述覆盖率
-    completeness_score = (table_desc_rate * 0.2 + field_desc_rate * 0.5 + metric_desc_rate * 0.3)
+    completeness_score = (table_cov['coverage_rate'] * 0.2 + field_cov['coverage_rate'] * 0.5 + metric_cov['coverage_rate'] * 0.3)
     
     # 2. 时效性 (Timeliness)
     # 无过期数据源 = 100分，每发现一个严重过期(90天)扣10分，普通过期(30天)扣5分
@@ -264,7 +291,7 @@ def get_dashboard_analysis():
     
     # 5. 规范性 (Standardization) - 新增
     # 认证率作为规范性指标
-    standardization_score = (ds_cert_rate * 0.6 + table_cert_rate * 0.4)
+    standardization_score = (ds_cov['certification_rate'] * 0.6 + table_cov['certification_rate'] * 0.4)
     
     # 综合健康分 (加权平均)
     # 完整性 25%, 规范性 20%, 一致性 20%, 有效性 15%, 时效性 20%
@@ -279,6 +306,7 @@ def get_dashboard_analysis():
         'validity': int(validity_score),
         'standardization': int(standardization_score)
     }
+
     
     # ===== 9. 热点资产 Top 10（基于计算字段被引用次数） =====
     top_metrics = session.query(Field, CalculatedField).join(
