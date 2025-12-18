@@ -28,7 +28,7 @@ interface DatabaseItem {
     state?: 'active' | 'inactive';
     tables?: number;
     table_count?: number;
-    [key: string]: any;
+    [key: string]: string | number | undefined;
 }
 
 function DatabasesContent() {
@@ -47,7 +47,7 @@ function DatabasesContent() {
 
             const res = await api.getDatabases(1, 100, filters);
             const items = Array.isArray(res) ? res : (res.items || []);
-            setData(items);
+            setData(items as DatabaseItem[]);
         } catch (err) {
             console.error(err);
         } finally {
@@ -115,7 +115,7 @@ function DatabasesContent() {
                     displayData.map((db: DatabaseItem, i: number) => (
                         <div
                             key={db.id || i}
-                            onClick={() => openDrawer(db.id, 'databases')}
+                            onClick={() => openDrawer(db.id, 'databases', db.name)}
                             className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all cursor-pointer group"
                         >
                             <div className="flex justify-between items-start mb-3">

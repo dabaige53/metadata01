@@ -49,7 +49,7 @@ export default function OverviewPage() {
     }
   };
 
-  const buildDimCard = (label: string, score: number, Icon: React.ElementType, color: string) => {
+  const buildDimCard = (label: string, score: number, Icon: React.ElementType) => {
     const statusColor = score >= 90 ? 'text-green-600' : score >= 70 ? 'text-orange-500' : 'text-red-500';
     const bgClass = score >= 90 ? 'bg-green-50' : score >= 70 ? 'bg-orange-50' : 'bg-red-50';
     const barColor = score >= 90 ? 'bg-green-500' : score >= 70 ? 'bg-orange-500' : 'bg-red-500';
@@ -74,7 +74,7 @@ export default function OverviewPage() {
     );
   };
 
-  const buildCoverageBar = (title: string, barData: any) => {
+  const buildCoverageBar = (title: string, barData?: { coverage_rate?: number; with_description?: number; total?: number; certification_rate?: number; certified?: number }) => {
     const rate = barData?.coverage_rate || 0;
     const with_desc = barData?.with_description || 0;
     const total = barData?.total || 0;
@@ -135,11 +135,11 @@ export default function OverviewPage() {
 
         {/* 右侧：四个治理维度 */}
         <div className="col-span-12 md:col-span-8 lg:col-span-9 grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {buildDimCard('完整性 (Completeness)', scores.completeness, FileText, 'blue')}
-          {buildDimCard('规范性 (Standardization)', scores.standardization, Award, 'purple')}
-          {buildDimCard('时效性 (Timeliness)', scores.timeliness, Clock, 'orange')}
-          {buildDimCard('一致性 (Consistency)', scores.consistency, GitBranch, 'purple')}
-          {buildDimCard('有效性 (Validity)', scores.validity, CheckCircle, 'green')}
+          {buildDimCard('完整性 (Completeness)', scores.completeness, FileText)}
+          {buildDimCard('规范性 (Standardization)', scores.standardization, Award)}
+          {buildDimCard('时效性 (Timeliness)', scores.timeliness, Clock)}
+          {buildDimCard('一致性 (Consistency)', scores.consistency, GitBranch)}
+          {buildDimCard('有效性 (Validity)', scores.validity, CheckCircle)}
 
           {/* 资产统计条 (嵌入在维度下方) */}
           <div className="col-span-2 lg:col-span-4 bg-gray-50 rounded-lg p-3 flex justify-around items-center border border-gray-200 border-dashed mt-1">
@@ -296,7 +296,7 @@ export default function OverviewPage() {
             <table className="w-full text-left border-collapse">
               <tbody className="text-[12px]">
                 {(data.top_fields || []).map((f, i) => (
-                  <tr key={i} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 cursor-pointer transition-colors" onClick={() => openDrawer(f.id, 'fields')}>
+                  <tr key={i} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 cursor-pointer transition-colors" onClick={() => openDrawer(f.id, 'fields', f.name)}>
                     <td className="py-2.5 font-mono text-gray-400 w-6">{i + 1}</td>
                     <td className="py-2.5 font-medium text-gray-700 truncate max-w-[120px]" title={f.name}>{f.name}</td>
                     <td className="py-2.5 text-right w-16">

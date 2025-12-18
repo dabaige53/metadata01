@@ -55,12 +55,12 @@ function SearchContent() {
     const searchParams = useSearchParams();
     const query = searchParams.get('q') || '';
     const [data, setData] = useState<SearchResults | null>(null);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(query.length >= 2);
     const { openDrawer } = useDrawer();
 
     useEffect(() => {
         if (query.length >= 2) {
-            setLoading(true);
+            // Start fetching immediately - loading was initialized as true when query exists
             fetch(`/api/search?q=${encodeURIComponent(query)}`)
                 .then(res => res.json())
                 .then(setData)
@@ -127,7 +127,7 @@ function SearchContent() {
                             {items.map((item) => (
                                 <div
                                     key={item.id}
-                                    onClick={() => openDrawer(item.id, type)}
+                                    onClick={() => openDrawer(item.id, type, item.name)}
                                     className="p-4 bg-white border border-gray-200 rounded-lg cursor-pointer hover:border-indigo-300 hover:shadow-sm transition-all"
                                 >
                                     <div className="font-medium text-gray-900 mb-1 truncate">{item.name}</div>

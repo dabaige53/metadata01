@@ -6,6 +6,7 @@ import { Loader2, BookOpen } from 'lucide-react';
 import InlineFilter from '@/components/data-table/InlineFilter';
 import SortButtons from '@/components/data-table/SortButtons';
 import Pagination from '@/components/data-table/Pagination';
+import WorkbookCard from '@/components/cards/WorkbookCard';
 import { useDataTable } from '@/hooks/useDataTable';
 
 interface WorkbookItem {
@@ -18,7 +19,7 @@ interface WorkbookItem {
     viewCount?: number;
     view_count?: number;
     upstream_datasources?: string[];
-    [key: string]: any;
+    [key: string]: string | number | string[] | undefined;
 }
 
 function WorkbooksContent() {
@@ -28,7 +29,6 @@ function WorkbooksContent() {
 
     // 加载数据
     useEffect(() => {
-        setLoading(true);
         fetch('/api/workbooks?page=1&page_size=500')
             .then(res => res.json())
             .then(result => {
@@ -101,110 +101,30 @@ function WorkbooksContent() {
                 />
             )}
 
-            {/* 数据表格 */}
-            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-                <table className="w-full text-sm">
-                    <thead>
-                        <tr className="bg-gray-50 border-b border-gray-200 text-left">
-                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase tracking-wider" style={{ width: '25%' }}>工作簿</th>
-                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase tracking-wider" style={{ width: '15%' }}>项目</th>
-                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase tracking-wider" style={{ width: '12%' }}>所有者</th>
-                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase tracking-wider text-center" style={{ width: '8%' }}>视图数</th>
-                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase tracking-wider" style={{ width: '25%' }}>上游数据源</th>
-                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase tracking-wider" style={{ width: '15%' }}>状态</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {displayData.length === 0 ? (
-                            <tr>
-                                <td colSpan={6} className="text-center py-12 text-gray-400">
-                                    {totalCount === 0 ? '暂无数据' : '未找到匹配的工作簿'}
-                                </td>
-                            </tr>
-                        ) : (
-                            displayData.map((item) => {
-                                const viewCount = item.viewCount ?? item.view_count ?? 0;
-                                const projectName = item.projectName || item.project_name || item.project || '-';
-                                const upDs = item.upstream_datasources || [];
+            {/* 横向卡片列表 */}
+            <div className="space-y-3">
+                {displayData.length === 0 ? (
+                    <div className="py-20 text-center text-gray-400">
+                        {totalCount === 0 ? '暂无数据' : '未找到匹配的工作簿'}
+                    </div>
+                ) : (
+                    displayData.map((item) => (
+                        <WorkbookCard
+                            key={item.id}
+                            workbook={item}
+                            onClick={() => openDrawer(item.id, 'workbooks', item.name)}
+                        />
+                    ))
+                )}
+            </div>
 
-                                return (
-                                    <tr
-                                        key={item.id}
-                                        className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
-                                        onClick={() => openDrawer(item.id, 'workbooks')}
-                                    >
-                                        {/* 工作簿名称 */}
-                                        <td className="px-3 py-2.5">
-                                            <div className="flex items-center gap-2">
-                                                <BookOpen className="w-4 h-4 text-green-500 flex-shrink-0" />
-                                                <span className="font-medium text-gray-800 truncate text-[13px]">{item.name}</span>
-                                            </div>
-                                        </td>
-
-                                        {/* 项目 */}
-                                        <td className="px-3 py-2.5">
-                                            <span className="text-xs text-gray-600">{projectName}</span>
-                                        </td>
-
-                                        {/* 所有者 */}
-                                        <td className="px-3 py-2.5">
-                                            <span className="text-xs text-gray-600">{item.owner || '-'}</span>
-                                        </td>
-
-                                        {/* 视图数 */}
-                                        <td className="px-3 py-2.5 text-center">
-                                            <span className="font-mono text-xs text-gray-600">{viewCount}</span>
-                                        </td>
-
-                                        {/* 上游数据源 */}
-                                        <td className="px-3 py-2.5">
-                                            {upDs.length > 0 ? (
-                                                <div className="flex flex-wrap gap-1">
-                                                    {upDs.slice(0, 3).map((ds, i) => (
-                                                        <span
-                                                            key={i}
-                                                            className="text-[9px] px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-200"
-                                                        >
-                                                            {ds}
-                                                        </span>
-                                                    ))}
-                                                    {upDs.length > 3 && (
-                                                        <span className="text-[9px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">
-                                                            +{upDs.length - 3}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            ) : (
-                                                <span className="text-gray-300 text-xs">-</span>
-                                            )}
-                                        </td>
-
-                                        {/* 状态 */}
-                                        <td className="px-3 py-2.5">
-                                            <div className="flex items-center gap-1.5">
-                                                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                                                    viewCount > 0 ? 'bg-green-500' : 'bg-orange-400'
-                                                }`}></span>
-                                                <span className={`text-[10px] ${
-                                                    viewCount > 0 ? 'text-green-700' : 'text-orange-700'
-                                                }`}>
-                                                    {viewCount > 0 ? '有视图' : '空工作簿'}
-                                                </span>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })
-                        )}
-                    </tbody>
-                </table>
-
-                {/* 分页控件 */}
+            {/* 分页控件 */}
+            {displayData.length > 0 && (
                 <Pagination
                     pagination={paginationState}
                     onPageChange={handlePageChange}
                 />
-            </div>
+            )}
         </div>
     );
 }

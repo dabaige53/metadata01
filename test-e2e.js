@@ -154,7 +154,9 @@ async function runTests() {
   log('yellow', '\n【阶段 1】测试后端 API (localhost:8001)');
   log('yellow', '─────────────────────────────────────────────────────');
 
+  await testAPIEndpoint('仪表盘分析', '/api/dashboard/analysis');
   await testAPIEndpoint('统计数据', '/api/stats');
+  await testAPIEndpoint('数据库列表', '/api/databases');
   await testAPIEndpoint('字段列表', '/api/fields?page=1&page_size=50');
   await testAPIEndpoint('数据表列表', '/api/tables');
   await testAPIEndpoint('指标列表', '/api/metrics?page=1&page_size=50');

@@ -6,6 +6,7 @@ import { Loader2, Layout, FileSpreadsheet, LayoutDashboard } from 'lucide-react'
 import InlineFilter from '@/components/data-table/InlineFilter';
 import SortButtons from '@/components/data-table/SortButtons';
 import Pagination from '@/components/data-table/Pagination';
+import TableCard from '@/components/data-table/TableCard';
 import { useDataTable } from '@/hooks/useDataTable';
 
 interface ViewItem {
@@ -16,10 +17,8 @@ interface ViewItem {
     path?: string;
     workbookId?: string;
     workbookName?: string;
-    index?: number;
-    createdAt?: string;
     updatedAt?: string;
-    [key: string]: any;
+    [key: string]: string | number | undefined;
 }
 
 function ViewsContent() {
@@ -29,7 +28,6 @@ function ViewsContent() {
 
     // 加载数据
     useEffect(() => {
-        setLoading(true);
         fetch('/api/views?page=1&page_size=1000')
             .then(res => res.json())
             .then(result => {
@@ -126,21 +124,32 @@ function ViewsContent() {
             />
 
             {/* 数据表格 */}
-            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+            <TableCard
+                visibleRows={12}
+                rowHeight={48}
+
+                pagination={
+                    <Pagination
+
+                        pagination={paginationState}
+                        onPageChange={handlePageChange}
+                    />
+                }
+            >
                 <table className="w-full text-sm">
-                    <thead>
-                        <tr className="bg-gray-50 border-b border-gray-200 text-left">
-                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase tracking-wider" style={{ width: '25%' }}>视图名称</th>
-                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase tracking-wider" style={{ width: '10%' }}>类型</th>
-                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase tracking-wider" style={{ width: '20%' }}>所属工作簿</th>
-                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase tracking-wider" style={{ width: '35%' }}>路径</th>
-                            <th className="px-3 py-2 font-medium text-gray-500 text-xs uppercase tracking-wider text-center" style={{ width: '10%' }}>序号</th>
+                    <thead className="sticky top-0 bg-gray-50 z-10">
+                        <tr className="border-b border-gray-200 text-left h-12">
+                            <th className="px-3 font-medium text-gray-500 text-xs uppercase tracking-wider" style={{ width: '25%' }}>视图名称</th>
+                            <th className="px-3 font-medium text-gray-500 text-xs uppercase tracking-wider" style={{ width: '10%' }}>类型</th>
+                            <th className="px-3 font-medium text-gray-500 text-xs uppercase tracking-wider" style={{ width: '20%' }}>所属工作簿</th>
+                            <th className="px-3 font-medium text-gray-500 text-xs uppercase tracking-wider" style={{ width: '35%' }}>路径</th>
+                            <th className="px-3 font-medium text-gray-500 text-xs uppercase tracking-wider text-center" style={{ width: '10%' }}>序号</th>
                         </tr>
                     </thead>
                     <tbody>
                         {displayData.length === 0 ? (
-                            <tr>
-                                <td colSpan={5} className="text-center py-12 text-gray-400">
+                            <tr className="h-12">
+                                <td colSpan={5} className="text-center text-gray-400">
                                     {totalCount === 0 ? '暂无视图数据' : '未找到匹配的视图'}
                                 </td>
                             </tr>
@@ -148,27 +157,27 @@ function ViewsContent() {
                             displayData.map((item) => (
                                 <tr
                                     key={item.id}
-                                    onClick={() => openDrawer(item.id, 'views')}
-                                    className="border-b border-gray-50 last:border-0 hover:bg-gray-50 cursor-pointer transition-colors"
+                                    onClick={() => openDrawer(item.id, 'views', item.name)}
+                                    className="border-b border-gray-50 last:border-0 hover:bg-gray-50 cursor-pointer transition-colors h-12"
                                 >
-                                    <td className="px-3 py-2.5">
+                                    <td className="px-3">
                                         <div className="flex items-center gap-2">
                                             {getViewTypeIcon(item.viewType)}
                                             <span className="font-medium text-gray-800 text-[13px] truncate">{item.name}</span>
                                         </div>
                                     </td>
-                                    <td className="px-3 py-2.5">
+                                    <td className="px-3">
                                         {getViewTypeBadge(item.viewType)}
                                     </td>
-                                    <td className="px-3 py-2.5">
+                                    <td className="px-3">
                                         <span className="text-gray-600 text-[13px] truncate block">{item.workbookName || '-'}</span>
                                     </td>
-                                    <td className="px-3 py-2.5">
+                                    <td className="px-3">
                                         <span className="text-gray-500 font-mono text-xs truncate max-w-[200px] block" title={item.path}>
                                             {item.path || '-'}
                                         </span>
                                     </td>
-                                    <td className="px-3 py-2.5 text-center">
+                                    <td className="px-3 text-center">
                                         <span className="text-gray-500 font-mono text-xs">{item.index ?? '-'}</span>
                                     </td>
                                 </tr>
@@ -176,13 +185,7 @@ function ViewsContent() {
                         )}
                     </tbody>
                 </table>
-
-                {/* 分页 */}
-                <Pagination
-                    pagination={paginationState}
-                    onPageChange={handlePageChange}
-                />
-            </div>
+            </TableCard>
         </div>
     );
 }

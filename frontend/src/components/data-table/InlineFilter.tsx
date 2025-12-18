@@ -48,11 +48,11 @@ export default function InlineFilter({ facets, activeFilters, onFilterChange }: 
   }
 
   return (
-    <div className="inline-facets bg-gray-50 rounded-lg border border-gray-200 p-3 mb-4">
-      <div className="flex flex-wrap gap-4">
+    <div className="inline-facets bg-gray-50 rounded-lg border border-gray-200 p-3 mb-4 overflow-x-auto">
+      <div className="flex items-center gap-6 min-w-max">
         {facetEntries.map(([facetKey, counts]) => (
-          <div key={facetKey} className="facet-inline-group flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          <div key={facetKey} className="facet-inline-group flex items-center gap-2 flex-shrink-0">
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
               {FILTER_LABELS[facetKey] || facetKey}:
             </span>
             {Object.entries(counts).map(([value, count]) => {
@@ -61,11 +61,10 @@ export default function InlineFilter({ facets, activeFilters, onFilterChange }: 
               return (
                 <label
                   key={value}
-                  className={`facet-chip inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all border ${
-                    isActive
+                  className={`facet-chip inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all border whitespace-nowrap ${isActive
                       ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
                       : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-200 hover:bg-indigo-50'
-                  }`}
+                    }`}
                 >
                   <input
                     type="checkbox"
@@ -74,9 +73,8 @@ export default function InlineFilter({ facets, activeFilters, onFilterChange }: 
                     onChange={(e) => onFilterChange(facetKey, value, e.target.checked)}
                   />
                   <span>{FILTER_LABELS[value] || value}</span>
-                  <span className={`chip-cnt text-[10px] px-1.5 py-0.5 rounded ${
-                    isActive ? 'bg-indigo-200 text-indigo-800' : 'bg-gray-100 text-gray-500'
-                  }`}>
+                  <span className={`chip-cnt text-[10px] px-1.5 py-0.5 rounded ${isActive ? 'bg-indigo-200 text-indigo-800' : 'bg-gray-100 text-gray-500'
+                    }`}>
                     {count}
                   </span>
                 </label>

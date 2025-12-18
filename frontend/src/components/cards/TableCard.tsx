@@ -1,0 +1,150 @@
+import React from 'react';
+import { Table2, CheckCircle } from 'lucide-react';
+import HorizontalCard from './HorizontalCard';
+
+export interface TableCardData {
+  id: string;
+  name: string;
+  schema?: string;
+  database_name?: string;
+  databaseName?: string;
+  column_count?: number;
+  columnCount?: number;
+  field_count?: number;
+  fieldCount?: number;
+  datasource_count?: number;
+  datasourceCount?: number;
+  workbook_count?: number;
+  workbookCount?: number;
+  preview_fields?: any[];
+  previewFields?: any[];
+  description?: string;
+  is_certified?: boolean;
+  isCertified?: boolean;
+}
+
+export interface TableCardProps {
+  table: TableCardData;
+  onClick?: () => void;
+}
+
+export default function TableCard({ table, onClick }: TableCardProps) {
+  const columnCount = table.column_count || table.columnCount || 0;
+  const fieldCount = table.field_count || table.fieldCount || 0;
+  const datasourceCount = table.datasource_count || table.datasourceCount || 0;
+  const workbookCount = table.workbook_count || table.workbookCount || 0;
+  const previewFields = table.preview_fields || table.previewFields || [];
+  const databaseName = table.database_name || table.databaseName || '-';
+  const isCertified = table.is_certified || table.isCertified || false;
+
+  // 智能状态判断
+  let statusText = '使用中';
+  let statusColor: 'green' | 'orange' | 'red' = 'green';
+  if (workbookCount === 0 && datasourceCount > 0) {
+    statusText = '仅关联';
+    statusColor = 'orange';
+  } else if (workbookCount === 0 && datasourceCount === 0) {
+    statusText = '孤立';
+    statusColor = 'red';
+  }
+
+  // 构建徽章
+  const badges = [
+    {
+      text: statusText,
+      color: statusColor,
+    },
+    {
+      text: table.schema || 'public',
+      color: 'gray' as const,
+    },
+  ];
+
+  if (isCertified) {
+    badges.push({
+      text: '已认证',
+      color: 'blue' as const,
+    });
+  }
+
+  // 构建详情信息
+  const details = [
+    {
+      label: '数据库',
+      value: databaseName,
+    },
+    {
+      label: '原始列',
+      value: `${columnCount} 列`,
+    },
+    {
+      label: 'Tableau字段',
+      value: `${fieldCount} 个`,
+    },
+    {
+      label: '数据源',
+      value: `${datasourceCount} 个`,
+      highlight: datasourceCount > 0,
+    },
+    {
+      label: '工作簿',
+      value: `${workbookCount} 个`,
+      highlight: workbookCount > 0,
+    },
+  ];
+
+  // 构建标签
+  const tags = [];
+
+  if (datasourceCount === 0 && workbookCount === 0) {
+    tags.push({
+      label: '孤立表',
+      color: 'gray' as const,
+    });
+  }
+
+  if (fieldCount > columnCount) {
+    tags.push({
+      label: '包含计算字段',
+      color: 'purple' as const,
+    });
+  }
+
+  // 添加预览字段标签
+  if (previewFields.length > 0) {
+    const measureCount = previewFields.filter((f: any) => f.role === 'measure').length;
+    const dimensionCount = previewFields.length - measureCount;
+
+    if (measureCount > 0) {
+      tags.push({
+        label: `${measureCount}个度量`,
+        color: 'green' as const,
+      });
+    }
+
+    if (dimensionCount > 0) {
+      tags.push({
+        label: `${dimensionCount}个维度`,
+        color: 'blue' as const,
+      });
+    }
+  }
+
+  if (table.description) {
+    tags.push({
+      label: table.description.slice(0, 40) + (table.description.length > 40 ? '...' : ''),
+      color: 'gray' as const,
+    });
+  }
+
+  return (
+    <HorizontalCard
+      icon={<Table2 className="w-5 h-5" />}
+      title={table.name}
+      badges={badges}
+      details={details}
+      tags={tags}
+      onClick={onClick}
+    />
+  );
+}

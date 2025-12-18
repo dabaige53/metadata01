@@ -9,16 +9,18 @@ import requests
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from sqlalchemy import select
+import re
 
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from backend.config import Config
 from backend.models import (
-    Base, get_engine, init_db,
+    Base, get_engine, init_db, get_session,
     Database, DBTable, DBColumn, Field, Datasource, Workbook, View,
     TableauUser, Project,
-    table_to_datasource, datasource_to_workbook, field_to_view, CalculatedField, SyncLog
+    table_to_datasource, datasource_to_workbook, field_to_view, CalculatedField, SyncLog,
+    FieldDependency, Metric
 )
 
 
@@ -1307,6 +1309,86 @@ class MetadataSync:
             import traceback
             traceback.print_exc()
             return 0
+
+    def sync_lineage(self) -> int:
+        """同步指标与血缘关系 (DB持久化)"""
+        print("\n🕸️ 同步血缘与指标关系...")
+        count = 0
+        
+        try:
+            # 1. 清理现有依赖关系 (全量同步策略)
+            self.session.query(FieldDependency).delete()
+            self.session.query(Metric).delete() # 重新构建指标表
+            self.session.commit()
+            
+            # 2. 获取所有计算字段
+            calc_fields = self.session.query(CalculatedField, Field).join(
+                Field, CalculatedField.field_id == Field.id
+            ).all()
+            
+            # 构建字段索引 (Name -> ID lookup cache)
+            all_fields = self.session.query(Field).all()
+            field_map = {} # (datasource_id, name) -> field_id
+            global_field_map = {} # name -> field_id (fallback)
+            
+            for f in all_fields:
+                key = (f.datasource_id, f.name)
+                field_map[key] = f.id
+                global_field_map[f.name] = f.id
+            
+            for calc, field in calc_fields:
+                formula = calc.formula
+                if not formula:
+                    continue
+                    
+                # A. 识别 Metric
+                # 规则: 计算字段 且 Role=Measure
+                if field.role == 'measure':
+                    metric = Metric(
+                        id=field.id, # 复用 Field ID
+                        name=field.name,
+                        description=field.description,
+                        formula=formula,
+                        metric_type='Calculated',
+                        owner=field.datasource.owner if field.datasource else None
+                    )
+                    self.session.merge(metric)
+                
+                # B. 解析依赖 (后端持久化)
+                refs = re.findall(r'\[(.*?)\]', formula)
+                unique_refs = set(refs)
+                
+                for ref_name in unique_refs:
+                    dep_id = None
+                    
+                    # 1. 尝试同数据源匹配
+                    if field.datasource_id:
+                        dep_id = field_map.get((field.datasource_id, ref_name))
+                    
+                    # 2. 尝试全局匹配
+                    if not dep_id:
+                        dep_id = global_field_map.get(ref_name)
+                    
+                    # 3. 创建依赖记录
+                    dependency = FieldDependency(
+                        source_field_id=field.id,
+                        dependency_field_id=dep_id, 
+                        dependency_name=ref_name,
+                        dependency_type='formula'
+                    )
+                    self.session.add(dependency)
+                    count += 1
+            
+            self.session.commit()
+            print(f"  ✅ 同步 {count} 条依赖关系")
+            return count
+            
+        except Exception as e:
+            self.session.rollback()
+            print(f"  ❌ 血缘同步失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return 0
     
     def sync_all(self):
         """全量同步所有实体"""
@@ -1325,7 +1407,9 @@ class MetadataSync:
         wb_count = self.sync_workbooks()
         field_count = self.sync_fields()
         calc_count = self.sync_calculated_fields()
+        calc_count = self.sync_calculated_fields()
         ftv_count = self.sync_field_to_view()
+        lineage_count = self.sync_lineage()
         
         duration = (datetime.now() - start_time).total_seconds()
         
@@ -1338,6 +1422,7 @@ class MetadataSync:
         print(f"  数据表: {table_count}")
         print(f"  数据源: {ds_count}")
         print(f"  工作簿: {wb_count}")
+        print(f"  血缘:   {lineage_count}")
         print(f"  字段:   {field_count}")
         print(f"  计算字段: {calc_count}")
         print(f"  字段→视图: {ftv_count}")

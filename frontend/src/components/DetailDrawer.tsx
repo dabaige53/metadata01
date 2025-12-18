@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 import { api } from '@/lib/api';
 import {
@@ -8,6 +8,7 @@ import {
     Info,
     ArrowUpCircle,
     ArrowDownCircle,
+    ArrowLeft,
     AlertTriangle,
     GitBranch,
     Loader2,
@@ -21,7 +22,12 @@ import {
     Layout,
     FunctionSquare,
     List,
-    User
+    User,
+    Copy,
+    CheckCircle2,
+    ShieldCheck,
+    Flame,
+    HelpCircle
 } from 'lucide-react';
 
 interface DetailItem {
@@ -36,18 +42,16 @@ interface DetailItem {
     formula?: string;
     isCalculated?: boolean;
     description?: string;
+    is_certified?: boolean;
+    certification_note?: string;
     stats?: any;
-    // 上游资产
+    // Upstream
     upstream_column_info?: any;
     table_info?: any;
     database_info?: any;
-    upstream_tables?: any[];
-    dependencyFields?: any[];
-    tables?: any[];
-    connected_tables?: any[];
     databaseId?: string;
     databaseName?: string;
-    // 下游资产
+    // Downstream
     used_by_metrics?: any[];
     used_in_views?: any[];
     usedInViews?: any[];
@@ -56,33 +60,29 @@ interface DetailItem {
     full_fields?: any[];
     metrics?: any[];
     columns?: any[];
+    groupKey?: string; // 已不再使用
     datasources?: any[];
-    datasource_info?: any;
-    workbook_info?: any;
     views?: any[];
     used_fields?: any[];
     used_metrics?: any[];
-    // 重复指标
+    // Other
     similarMetrics?: any[];
     [key: string]: any;
 }
 
-interface AssetGroup {
-    type: string;
-    icon: React.ElementType;
-    label: string;
-    items: Array<{ id?: string; name: string; subtitle?: string }>;
-}
-
 export default function DetailDrawer() {
-    const { isOpen, closeDrawer, currentItem, openDrawer } = useDrawer();
+    const { isOpen, closeDrawer, currentItem, openDrawer, history, pushItem, goBack, goToIndex } = useDrawer();
     const [activeTab, setActiveTab] = useState('overview');
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<DetailItem | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [lineageData, setLineageData] = useState<any>(null);
     const [lineageLoading, setLineageLoading] = useState(false);
+    const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
+    const toggleGroupExpand = (groupKey: string) => {
+        setExpandedGroups(prev => ({ ...prev, [groupKey]: !prev[groupKey] }));
+    };
     useEffect(() => {
         if (isOpen && currentItem) {
             loadData(currentItem.id, currentItem.type);
@@ -121,26 +121,117 @@ export default function DetailDrawer() {
         }
     };
 
-    const handleAssetClick = (id: string | undefined, type: string) => {
+    const handleAssetClick = (id: string | undefined, type: string, name?: string) => {
         if (!id) return;
-        openDrawer(id, type);
+        pushItem(id, type, name);
     };
 
     if (!isOpen) return null;
 
-    const tabs = [
-        { id: 'overview', label: '概览', icon: Info },
-        { id: 'upstream', label: '上游资产', icon: ArrowUpCircle },
-        { id: 'downstream', label: '下游资产', icon: ArrowDownCircle },
-    ];
+    // ========== 动态生成具体的 Tabs ==========
+    const getTabs = () => {
+        const tabs = [{ id: 'overview', label: '概览', icon: Info }];
+        if (!data || !currentItem) return tabs;
 
-    if (data?.similarMetrics && data.similarMetrics.length > 0) {
-        tabs.push({ id: 'duplicates', label: `重复指标 (${data.similarMetrics.length})`, icon: AlertTriangle });
-    }
+        const type = currentItem.type;
 
-    if (currentItem && ['fields', 'metrics', 'datasources', 'tables'].includes(currentItem.type)) {
-        tabs.push({ id: 'lineage', label: '血缘图', icon: GitBranch });
-    }
+        // 根据不同类型添加具体的关联资产 Tab
+        if (type === 'databases') {
+            if (data.tables && data.tables.length > 0) {
+                tabs.push({ id: 'tables', label: `数据表 (${data.tables.length})`, icon: Table2 });
+            }
+        }
+
+        if (type === 'tables') {
+            if (data.database_info || data.databaseName) {
+                tabs.push({ id: 'db', label: '所属数据库', icon: Database });
+            }
+            if (data.columns && data.columns.length > 0) {
+                tabs.push({ id: 'columns', label: `原始列 (${data.columns.length})`, icon: List });
+            }
+            if (data.datasources && data.datasources.length > 0) {
+                tabs.push({ id: 'datasources', label: `关联数据源 (${data.datasources.length})`, icon: Layers });
+            }
+        }
+
+        if (type === 'fields' || type === 'metrics') {
+            const table = data.table_info;
+            if (table) tabs.push({ id: 'table', label: '所属数据表', icon: Table2 });
+
+            const deps = data.dependencyFields || [];
+            if (deps.length > 0) tabs.push({ id: 'deps', label: `依赖字段 (${deps.length})`, icon: Columns });
+
+            const m_down = data.used_by_metrics || [];
+            if (m_down.length > 0) tabs.push({ id: 'impact_metrics', label: `影响指标 (${m_down.length})`, icon: FunctionSquare });
+
+            const v_down = data.used_in_views || data.usedInViews || [];
+            if (v_down.length > 0) tabs.push({ id: 'views', label: `关联视图 (${v_down.length})`, icon: Layout });
+
+            const wb_down = data.usedInWorkbooks || [];
+            if (wb_down.length > 0) tabs.push({ id: 'workbooks', label: `引用工作簿 (${wb_down.length})`, icon: BookOpen });
+        }
+
+        if (type === 'datasources') {
+            if (data.tables && data.tables.length > 0) {
+                tabs.push({ id: 'tables', label: `原始表 (${data.tables.length})`, icon: Table2 });
+            }
+            if (data.workbooks && data.workbooks.length > 0) {
+                tabs.push({ id: 'workbooks', label: `关联工作簿 (${data.workbooks.length})`, icon: BookOpen });
+            }
+            if (data.full_fields && data.full_fields.length > 0) {
+                tabs.push({ id: 'fields', label: `包含字段 (${data.full_fields.length})`, icon: Columns });
+            }
+            if (data.metrics && data.metrics.length > 0) {
+                tabs.push({ id: 'metrics', label: `包含指标 (${data.metrics.length})`, icon: FunctionSquare });
+            }
+        }
+
+        if (type === 'workbooks') {
+            if (data.views && data.views.length > 0) {
+                tabs.push({ id: 'views', label: `视图/看板 (${data.views.length})`, icon: Layout });
+            }
+            if (data.datasources && data.datasources.length > 0) {
+                tabs.push({ id: 'datasources', label: `使用数据源 (${data.datasources.length})`, icon: Layers });
+            }
+            if (data.used_fields && data.used_fields.length > 0) {
+                tabs.push({ id: 'fields', label: `使用字段 (${data.used_fields.length})`, icon: Columns });
+            }
+            if (data.used_metrics && data.used_metrics.length > 0) {
+                tabs.push({ id: 'metrics', label: `使用指标 (${data.used_metrics.length})`, icon: FunctionSquare });
+            }
+        }
+
+        if (type === 'projects' || type === 'users') {
+            if (data.datasources && data.datasources.length > 0) {
+                tabs.push({ id: 'datasources', label: `数据源 (${data.datasources.length})`, icon: Layers });
+            }
+            if (data.workbooks && data.workbooks.length > 0) {
+                tabs.push({ id: 'workbooks', label: `工作簿 (${data.workbooks.length})`, icon: BookOpen });
+            }
+        }
+
+        // 重复指标
+        if (data.similarMetrics && data.similarMetrics.length > 0) {
+            tabs.push({ id: 'duplicates', label: `重复指标 (${data.similarMetrics.length})`, icon: AlertTriangle });
+        }
+
+        // 血缘
+        if (['fields', 'metrics', 'datasources', 'tables'].includes(type)) {
+            tabs.push({ id: 'lineage', label: '血缘图', icon: GitBranch });
+        }
+
+        return tabs;
+    };
+
+    const tabs = getTabs();
+
+    const getModuleIcon = (type: string) => {
+        const icons: Record<string, React.ElementType> = {
+            databases: Database, tables: Table2, fields: Columns, metrics: FunctionSquare,
+            datasources: Layers, workbooks: BookOpen, projects: FileText, users: User, views: Layout
+        };
+        return icons[type] || Info;
+    };
 
     const getModuleName = (type: string) => {
         const names: Record<string, string> = {
@@ -150,234 +241,51 @@ export default function DetailDrawer() {
         return names[type] || type;
     };
 
-    // ========== 渲染上游资产 ==========
-    const renderUpstreamTab = () => {
-        if (!data || !currentItem) return <div className="text-center text-gray-400 py-8">无上游资产</div>;
-        const upstreamItems: AssetGroup[] = [];
-        const type = currentItem.type;
-
-        // 字段的上游: 表、原始列
-        if (type === 'fields') {
-            if (data.table_info) {
-                upstreamItems.push({
-                    type: 'tables', icon: Table2, label: '所属数据表',
-                    items: [{ id: data.table_info.id, name: data.table_info.name, subtitle: data.table_info.schema || undefined }]
-                });
-            }
-            if (data.upstream_column_info) {
-                upstreamItems.push({
-                    type: 'columns', icon: List, label: '原始数据库列',
-                    items: [{ name: data.upstream_column_info.name, subtitle: data.upstream_column_info.remote_type }]
-                });
-            }
-        }
-
-        // 指标的上游: 依赖字段
-        if (type === 'metrics') {
-            const deps = data.dependencyFields || [];
-            if (deps.length) {
-                upstreamItems.push({
-                    type: 'fields', icon: Columns, label: '依赖的字段',
-                    items: deps.map((d: any) => ({ id: d.id, name: d.name, subtitle: d.role === 'measure' ? '度量' : '维度' }))
-                });
-            }
-        }
-
-        // 数据源的上游: 表
-        if (type === 'datasources') {
-            const tables = data.tables || data.connected_tables || [];
-            if (tables.length) {
-                upstreamItems.push({
-                    type: 'tables', icon: Table2, label: '连接的数据表',
-                    items: tables.map((t: any) => typeof t === 'string' ? { name: t } : { id: t.id, name: t.name, subtitle: t.database_name || t.schema })
-                });
-            }
-        }
-
-        // 表的上游: 数据库
-        if (type === 'tables') {
-            if (data.database_info) {
-                upstreamItems.push({
-                    type: 'databases', icon: Database, label: '所属数据库',
-                    items: [{ id: data.database_info.id, name: data.database_info.name, subtitle: data.database_info.connection_type }]
-                });
-            } else if (data.databaseId || data.databaseName) {
-                upstreamItems.push({
-                    type: 'databases', icon: Database, label: '所属数据库',
-                    items: [{ id: data.databaseId, name: data.databaseName || '-' }]
-                });
-            }
-        }
-
-        if (upstreamItems.length === 0) return <div className="text-center text-gray-400 py-8">无上游资产</div>;
+    /**
+     * 通用的资产列表部分渲染函数
+     */
+    const renderAssetSection = (title: string, icon: React.ElementType, items: any[], type: string, colorClass: string) => {
+        if (!items || items.length === 0) return null;
+        const groupKey = `section-${title}`;
 
         return (
-            <div className="bg-blue-50 rounded-lg border border-blue-100 p-4">
-                <h3 className="text-xs font-bold text-blue-900 mb-3 flex items-center gap-2">
-                    <ArrowUpCircle className="w-3.5 h-3.5 text-blue-600" /> 上游资产 (数据来源)
+            <div className={`bg-${colorClass}-50/50 rounded-lg border border-${colorClass}-100 p-4`}>
+                <h3 className={`text-xs font-bold text-${colorClass}-900 mb-3 flex items-center gap-2`}>
+                    {icon && React.createElement(icon, { className: `w-3.5 h-3.5 text-${colorClass}-600` })} {title}
                 </h3>
-                <div className="space-y-3">
-                    {upstreamItems.map((group, gi) => (
-                        <div key={gi}>
-                            <div className="text-[10px] text-blue-600 font-medium mb-1.5 flex items-center gap-1">
-                                <group.icon className="w-3 h-3" /> {group.label}
+                <div className="space-y-1">
+                    {(expandedGroups[groupKey] ? items : items.slice(0, 10)).map((asset: any, ai: number) => (
+                        <div key={ai} onClick={() => handleAssetClick(asset.id, type, asset.name)}
+                            className={`flex items-center justify-between bg-white p-2 rounded border border-${colorClass}-100 ${asset.id ? 'cursor-pointer hover:border-${colorClass}-300 hover:bg-${colorClass}-50' : ''} transition-all shadow-sm`}>
+                            <div className="flex flex-col min-w-0">
+                                <span className="text-[13px] text-gray-700 font-medium truncate">{asset.name}</span>
+                                {asset.subtitle && <span className="text-[10px] text-gray-400">{asset.subtitle}</span>}
+                                {(asset.remote_type || asset.dataType) && (
+                                    <span className="text-[10px] font-mono text-gray-400 capitalize">
+                                        {asset.remote_type || asset.dataType}
+                                    </span>
+                                )}
                             </div>
-                            <div className="space-y-1">
-                                {group.items.slice(0, 5).map((asset, ai) => (
-                                    <div key={ai} onClick={() => handleAssetClick(asset.id, group.type)}
-                                        className={`flex items-center justify-between bg-white p-2 rounded border border-blue-100 ${asset.id ? 'cursor-pointer hover:border-blue-300' : ''} transition-colors`}>
-                                        <div className="flex flex-col min-w-0">
-                                            <span className="text-xs text-gray-700 font-medium truncate">{asset.name}</span>
-                                            {asset.subtitle && <span className="text-[10px] text-gray-400">{asset.subtitle}</span>}
-                                        </div>
-                                        {asset.id && <ChevronRight className="w-3 h-3 text-gray-400 flex-shrink-0" />}
-                                    </div>
-                                ))}
-                                {group.items.length > 5 && <div className="text-[10px] text-blue-500 pl-2">+{group.items.length - 5} 更多...</div>}
-                            </div>
+                            {asset.id && <ChevronRight className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />}
                         </div>
                     ))}
+                    {items.length > 10 && (
+                        <button
+                            onClick={() => toggleGroupExpand(groupKey)}
+                            className={`text-[10px] text-${colorClass}-600 pl-2 hover:underline cursor-pointer font-medium mt-2`}
+                        >
+                            {expandedGroups[groupKey] ? '收起' : `显示更多 (+${items.length - 10})`}
+                        </button>
+                    )}
                 </div>
             </div>
         );
     };
 
-    // ========== 渲染下游资产 ==========
-    const renderDownstreamTab = () => {
-        if (!data || !currentItem) return <div className="text-center text-gray-400 py-8">无下游资产</div>;
-        const downstreamItems: AssetGroup[] = [];
-        const type = currentItem.type;
-
-        // 字段的下游: 指标、视图
-        if (type === 'fields') {
-            const metrics = data.used_by_metrics || [];
-            if (metrics.length) {
-                downstreamItems.push({ type: 'metrics', icon: FunctionSquare, label: '使用此字段的指标', items: metrics.map((m: any) => ({ id: m.id, name: m.name })) });
-            }
-            const views = data.used_in_views || [];
-            if (views.length) {
-                downstreamItems.push({ type: 'views', icon: Layout, label: '使用此字段的视图', items: views.map((v: any) => ({ id: v.id, name: v.name, subtitle: v.workbook_name || v.workbookName })) });
-            }
-        }
-
-        // 指标的下游: 视图、工作簿
-        if (type === 'metrics') {
-            const views = data.usedInViews || [];
-            if (views.length) {
-                downstreamItems.push({ type: 'views', icon: Layout, label: '使用此指标的视图', items: views.map((v: any) => ({ id: v.id, name: v.name, subtitle: v.workbook_name || v.workbookName })) });
-            }
-            const workbooks = data.usedInWorkbooks || [];
-            if (workbooks.length) {
-                downstreamItems.push({ type: 'workbooks', icon: BookOpen, label: '使用此指标的工作簿', items: workbooks.map((wb: any) => ({ id: wb.id, name: wb.name, subtitle: wb.owner ? `Owner: ${wb.owner}` : undefined })) });
-            }
-        }
-
-        // 数据源的下游: 工作簿、字段、指标
-        if (type === 'datasources') {
-            const workbooks = data.workbooks || [];
-            if (workbooks.length) {
-                downstreamItems.push({ type: 'workbooks', icon: BookOpen, label: '使用此数据源的工作簿', items: workbooks.map((wb: any) => ({ id: wb.id, name: wb.name, subtitle: wb.owner ? `Owner: ${wb.owner}` : undefined })) });
-            }
-            const fields = data.full_fields || [];
-            if (fields.length) {
-                downstreamItems.push({ type: 'fields', icon: Columns, label: '包含的字段', items: fields.slice(0, 10).map((f: any) => ({ id: f.id, name: f.name, subtitle: f.role === 'measure' ? '度量' : '维度' })) });
-            }
-            const metrics = data.metrics || [];
-            if (metrics.length) {
-                downstreamItems.push({ type: 'metrics', icon: FunctionSquare, label: '包含的指标', items: metrics.slice(0, 10).map((m: any) => ({ id: m.id, name: m.name })) });
-            }
-        }
-
-        // 表的下游: 数据源、列、字段
-        if (type === 'tables') {
-            const columns = data.columns || [];
-            if (columns.length) {
-                downstreamItems.push({ type: 'columns', icon: List, label: '原始数据库列', items: columns.slice(0, 10).map((c: any) => ({ name: c.name, subtitle: c.remote_type })) });
-            }
-            const datasources = data.datasources || [];
-            if (datasources.length) {
-                downstreamItems.push({ type: 'datasources', icon: Layers, label: '使用此表的数据源', items: datasources.map((ds: any) => ({ id: ds.id, name: ds.name })) });
-            }
-        }
-
-        // 工作簿的下游: 视图、字段、指标
-        if (type === 'workbooks') {
-            const views = data.views || [];
-            if (views.length) {
-                downstreamItems.push({ type: 'views', icon: Layout, label: '包含的视图', items: views.map((v: any) => ({ id: v.id, name: v.name, subtitle: v.view_type })) });
-            }
-            const usedFields = data.used_fields || [];
-            if (usedFields.length) {
-                downstreamItems.push({ type: 'fields', icon: Columns, label: '使用的字段', items: usedFields.slice(0, 10).map((f: any) => ({ id: f.id, name: f.name })) });
-            }
-            const usedMetrics = data.used_metrics || [];
-            if (usedMetrics.length) {
-                downstreamItems.push({ type: 'metrics', icon: FunctionSquare, label: '使用的指标', items: usedMetrics.slice(0, 10).map((m: any) => ({ id: m.id, name: m.name })) });
-            }
-        }
-
-        // 项目的下游: 数据源、工作簿
-        if (type === 'projects') {
-            const datasources = data.datasources || [];
-            if (datasources.length) {
-                downstreamItems.push({ type: 'datasources', icon: Layers, label: '项目内数据源', items: datasources.map((ds: any) => ({ id: ds.id, name: ds.name, subtitle: ds.is_certified ? '✓ 已认证' : `${ds.field_count || 0} 字段` })) });
-            }
-            const workbooks = data.workbooks || [];
-            if (workbooks.length) {
-                downstreamItems.push({ type: 'workbooks', icon: BookOpen, label: '项目内工作簿', items: workbooks.map((wb: any) => ({ id: wb.id, name: wb.name, subtitle: `${wb.view_count || 0} 视图` })) });
-            }
-        }
-
-        // 用户的下游: 数据源、工作簿
-        if (type === 'users') {
-            const datasources = data.datasources || [];
-            if (datasources.length) {
-                downstreamItems.push({ type: 'datasources', icon: Layers, label: '拥有的数据源', items: datasources.map((ds: any) => ({ id: ds.id, name: ds.name })) });
-            }
-            const workbooks = data.workbooks || [];
-            if (workbooks.length) {
-                downstreamItems.push({ type: 'workbooks', icon: BookOpen, label: '拥有的工作簿', items: workbooks.map((wb: any) => ({ id: wb.id, name: wb.name })) });
-            }
-        }
-
-        if (downstreamItems.length === 0) return <div className="text-center text-gray-400 py-8">无下游资产</div>;
-
-        return (
-            <div className="bg-green-50 rounded-lg border border-green-100 p-4">
-                <h3 className="text-xs font-bold text-green-900 mb-3 flex items-center gap-2">
-                    <ArrowDownCircle className="w-3.5 h-3.5 text-green-600" /> 下游资产 (被谁使用)
-                </h3>
-                <div className="space-y-3">
-                    {downstreamItems.map((group, gi) => (
-                        <div key={gi}>
-                            <div className="text-[10px] text-green-600 font-medium mb-1.5 flex items-center gap-1">
-                                <group.icon className="w-3 h-3" /> {group.label} ({group.items.length})
-                            </div>
-                            <div className="space-y-1">
-                                {group.items.slice(0, 5).map((asset, ai) => (
-                                    <div key={ai} onClick={() => handleAssetClick(asset.id, group.type)}
-                                        className={`flex items-center justify-between bg-white p-2 rounded border border-green-100 ${asset.id ? 'cursor-pointer hover:border-green-300' : ''} transition-colors`}>
-                                        <div className="flex flex-col min-w-0">
-                                            <span className="text-xs text-gray-700 font-medium truncate">{asset.name}</span>
-                                            {asset.subtitle && <span className="text-[10px] text-gray-400">{asset.subtitle}</span>}
-                                        </div>
-                                        {asset.id && <ChevronRight className="w-3 h-3 text-gray-400 flex-shrink-0" />}
-                                    </div>
-                                ))}
-                                {group.items.length > 5 && <div className="text-[10px] text-green-500 pl-2">+{group.items.length - 5} 更多...</div>}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        );
-    };
-
-    // ========== 渲染重复指标 ==========
+    // ========== 重复指标渲染 ==========
     const renderDuplicatesTab = () => {
         const dups = data?.similarMetrics || [];
         if (dups.length === 0) return <div className="text-center text-gray-400 py-8">无重复指标</div>;
-
         return (
             <div className="bg-red-50 rounded-lg border border-red-100 p-4">
                 <div className="flex items-start gap-3">
@@ -385,44 +293,16 @@ export default function DetailDrawer() {
                     <div className="flex-1">
                         <h3 className="text-[13px] font-bold text-red-800 mb-1">发现重复定义的指标</h3>
                         <p className="text-[11px] text-red-600 mb-3">以下 {dups.length} 个指标使用了相同计算公式：</p>
-                        <div className="space-y-3">
-                            {dups.map((d: any, i: number) => {
-                                const views = d.usedInViews || [];
-                                const workbooks = d.usedInWorkbooks || [];
-                                return (
-                                    <div key={i} onClick={() => handleAssetClick(d.id, 'metrics')}
-                                        className="bg-white/80 p-3 rounded border border-red-100 cursor-pointer hover:bg-white transition-colors">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="text-xs font-bold text-red-900">{d.name}</span>
-                                            <span className="text-[10px] text-red-400 bg-red-100 px-1.5 rounded">ID: {d.id?.substring(0, 6) || '-'}</span>
-                                        </div>
-                                        <div className="text-[10px] text-gray-500 mb-2">数据源: {d.datasourceName || '-'}</div>
-                                        {workbooks.length > 0 && (
-                                            <div className="mt-2 pt-2 border-t border-red-100">
-                                                <div className="text-[10px] text-red-700 font-medium mb-1">使用此重复指标的工作簿:</div>
-                                                <div className="flex flex-wrap gap-1">
-                                                    {workbooks.slice(0, 3).map((wb: any, wi: number) => (
-                                                        <span key={wi} onClick={(e) => { e.stopPropagation(); handleAssetClick(wb.id, 'workbooks'); }}
-                                                            className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded cursor-pointer hover:bg-red-200">{wb.name}</span>
-                                                    ))}
-                                                    {workbooks.length > 3 && <span className="text-[10px] text-red-400">+{workbooks.length - 3} 更多</span>}
-                                                </div>
-                                            </div>
-                                        )}
-                                        {views.length > 0 && workbooks.length === 0 && (
-                                            <div className="mt-2 pt-2 border-t border-red-100">
-                                                <div className="text-[10px] text-red-700 font-medium mb-1">使用此重复指标的视图:</div>
-                                                <div className="flex flex-wrap gap-1">
-                                                    {views.slice(0, 3).map((v: any, vi: number) => (
-                                                        <span key={vi} className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded">{v.name}</span>
-                                                    ))}
-                                                    {views.length > 3 && <span className="text-[10px] text-red-400">+{views.length - 3} 更多</span>}
-                                                </div>
-                                            </div>
-                                        )}
+                        <div className="space-y-2">
+                            {dups.map((d: any, i: number) => (
+                                <div key={i} onClick={() => handleAssetClick(d.id, 'metrics', d.name)}
+                                    className="bg-white/80 p-2.5 rounded border border-red-100 cursor-pointer hover:bg-white transition-colors">
+                                    <div className="flex justify-between items-center mb-1">
+                                        <span className="text-xs font-bold text-red-900">{d.name}</span>
                                     </div>
-                                );
-                            })}
+                                    <div className="text-[10px] text-gray-500">数据源: {d.datasourceName || '-'}</div>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
@@ -430,12 +310,11 @@ export default function DetailDrawer() {
         );
     };
 
-    // ========== 渲染血缘图 ==========
+    // ========== 血缘图渲染 (保留原有逻辑) ==========
     const renderLineageTab = () => {
         if (lineageLoading) {
             return <div className="flex justify-center py-10"><Loader2 className="w-8 h-8 text-indigo-500 animate-spin" /></div>;
         }
-
         if (!lineageData) {
             return (
                 <div className="bg-white rounded-lg border p-4 text-center">
@@ -446,206 +325,377 @@ export default function DetailDrawer() {
                 </div>
             );
         }
-
         const nodeColors: Record<string, string> = {
             field: '#3b82f6', metric: '#f59e0b', table: '#7c3aed',
             datasource: '#10b981', workbook: '#e11d48', view: '#6366f1'
         };
-
         return (
             <div className="space-y-4">
                 <div className="bg-gray-50 rounded-lg border p-4 overflow-auto">
                     <div className="text-xs font-bold text-gray-700 mb-2">Mermaid 血缘图</div>
                     <pre className="text-[10px] font-mono bg-white p-2 rounded border overflow-x-auto">{lineageData.mermaid}</pre>
                 </div>
-                <div className="bg-white rounded-lg border p-4">
-                    <div className="text-xs font-bold text-gray-700 mb-2">节点列表</div>
-                    <div className="space-y-1.5">
-                        {(lineageData.nodes || []).map((n: any, i: number) => (
-                            <div key={i} onClick={() => handleAssetClick(n.id, `${n.type}s`)}
-                                className="flex items-center gap-2 p-2 bg-gray-50 rounded border cursor-pointer hover:border-indigo-300 transition-colors">
-                                <span className="w-2 h-2 rounded-full" style={{ background: nodeColors[n.type] || '#64748b' }}></span>
-                                <span className="flex-1 text-xs">{n.name}</span>
-                                <span className="text-[10px] text-gray-400">{n.type}</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
             </div>
         );
     };
 
-    // ========== 渲染概览 Tab ==========
+    // ========== 概览 Tab 重构 PRO (Description List 风格) ==========
     const renderOverviewTab = () => {
         if (!data) return null;
         const isFieldType = currentItem?.type === 'fields' || currentItem?.type === 'metrics';
 
+        // Mock数据策略: 如果后端没返回，通过现有字段计算一些 "假的" 治理状态
+        const mockQuality = (data.description ? 90 : 60);
+        const mockCertified = data.is_certified === true;
+        const mockHotness = (data.referenceCount || data.views?.length || 0) > 5 ? 'High' : 'Normal';
+
         return (
             <div className="space-y-6">
-                <div className="bg-white rounded-lg border border-gray-100 p-4 shadow-sm">
-                    <h3 className="text-xs font-bold text-gray-900 mb-3 flex items-center gap-2">
-                        <Info className="w-3.5 h-3.5 text-indigo-500" /> 基本信息
-                    </h3>
-                    <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
-                        <div className="col-span-2 sm:col-span-1 border-b border-gray-50 pb-1">
-                            <span className="text-gray-400 text-xs block mb-0.5">ID</span>
-                            <span className="font-mono text-gray-600 text-xs select-all">{data.id}</span>
+                {/* 描述信息 - 增加高亮 */}
+                {data.description ? (
+                    <div className="bg-gradient-to-br from-indigo-50 to-white rounded-lg border border-indigo-100 p-4 shadow-sm">
+                        <div className="text-xs font-bold text-indigo-900 mb-1 flex items-center gap-2">
+                            <Info className="w-3.5 h-3.5" /> 业务含义
+                            <span data-tooltip="对该资产业务逻辑、使用场景和口径的详细描述">
+                                <HelpCircle className="w-2.5 h-2.5 text-indigo-300" />
+                            </span>
                         </div>
-                        {(data.dataType || data.type) && (
-                            <div className="col-span-2 sm:col-span-1 border-b border-gray-50 pb-1">
-                                <span className="text-gray-400 text-xs block mb-0.5">类型</span>
-                                <span className="text-gray-700">{data.dataType || data.type}</span>
+                        <p className="text-sm text-gray-700 leading-relaxed font-medium">
+                            {data.description}
+                        </p>
+                    </div>
+                ) : (
+                    <div className="bg-orange-50 rounded-lg border border-orange-100 p-3 flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 text-orange-500 mt-0.5" />
+                        <div>
+                            <div className="text-xs font-bold text-orange-800">缺失描述</div>
+                            <div className="text-[11px] text-orange-600">此资产缺少业务含义描述，建议尽快补充。</div>
+                        </div>
+                    </div>
+                )}
+
+                {/* 核心属性列表 - Grid 布局 */}
+                <div>
+                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 px-1">基础属性</h3>
+                    <div className="grid grid-cols-2 gap-px bg-gray-200 rounded-lg border border-gray-200">
+                        <div className="bg-white p-3">
+                            <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                                资产类型
+                                <span data-tooltip="元数据资产的具体分类，如字段、指标、视图等">
+                                    <HelpCircle className="w-2.5 h-2.5" />
+                                </span>
                             </div>
-                        )}
+                            <div className="text-xs font-medium text-gray-800 capitalize">{data.dataType || data.type}</div>
+                        </div>
+                        <div className="bg-white p-3">
+                            <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                                所有者
+                                <span data-tooltip="该资产在 Tableau Server 上的负责人或创建者">
+                                    <HelpCircle className="w-2.5 h-2.5" />
+                                </span>
+                            </div>
+                            <div className="text-xs font-medium text-gray-800 flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
+                                {data.owner || 'Unknown'}
+                            </div>
+                        </div>
+                        <div className="bg-white p-3">
+                            <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                                项目归属
+                                <span data-tooltip="该资产所属的 Tableau 项目路径">
+                                    <HelpCircle className="w-2.5 h-2.5" />
+                                </span>
+                            </div>
+                            <div className="text-xs font-medium text-gray-800 truncate" title={data.projectName || data.project_name}>
+                                {data.projectName || data.project_name || '-'}
+                            </div>
+                        </div>
+                        <div className="bg-white p-3">
+                            <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                                引用次数
+                                <span data-tooltip="该资产被下游视图或指标引用的总次数">
+                                    <HelpCircle className="w-2.5 h-2.5" />
+                                </span>
+                            </div>
+                            <div className="text-xs font-medium text-gray-800 flex items-center gap-1">
+                                {data.referenceCount !== undefined ? data.referenceCount : (data.views?.length || 0)}
+                                {mockHotness === 'High' && <span className="text-[8px] bg-amber-50 text-amber-600 px-1 rounded border border-amber-100">🔥 Hot</span>}
+                            </div>
+                        </div>
                         {data.role && (
-                            <div className="col-span-2 sm:col-span-1 border-b border-gray-50 pb-1">
-                                <span className="text-gray-400 text-xs block mb-0.5">角色</span>
-                                <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${data.role === 'measure' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                                    {data.role === 'measure' ? '度量' : data.role === 'dimension' ? '维度' : data.role}
+                            <div className="bg-white p-3 col-span-2">
+                                <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                                    字段角色
+                                    <span data-tooltip="区分该字段是维度（分类）还是度量（数值）">
+                                        <HelpCircle className="w-2.5 h-2.5" />
+                                    </span>
+                                </div>
+                                <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${data.role === 'measure' ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'}`}>
+                                    {data.role === 'measure' ? '度量 (Measure)' : '维度 (Dimension)'}
                                 </span>
-                            </div>
-                        )}
-                        {data.isCalculated && (
-                            <div className="col-span-2 sm:col-span-1 border-b border-gray-50 pb-1">
-                                <span className="text-gray-400 text-xs block mb-0.5">字段类型</span>
-                                <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
-                                    计算字段
-                                </span>
-                            </div>
-                        )}
-                        {data.owner && (
-                            <div className="col-span-2 sm:col-span-1 border-b border-gray-50 pb-1">
-                                <span className="text-gray-400 text-xs block mb-0.5">所有者</span>
-                                <span className="text-gray-700">{data.owner}</span>
-                            </div>
-                        )}
-                        {(data.projectName || data.project_name) && (
-                            <div className="col-span-2 sm:col-span-1 border-b border-gray-50 pb-1">
-                                <span className="text-gray-400 text-xs block mb-0.5">项目</span>
-                                <span className="text-gray-700">{data.projectName || data.project_name}</span>
                             </div>
                         )}
                     </div>
                 </div>
 
                 {/* 字段名称层次 - 仅对字段/指标类型显示 */}
-                {isFieldType && (data.fullyQualifiedName || data.upstreamColumnName || data.caption) && (
-                    <div className="bg-indigo-50 rounded-lg border border-indigo-100 p-4 shadow-sm">
-                        <h3 className="text-xs font-bold text-indigo-900 mb-3 flex items-center gap-2">
-                            <Columns className="w-3.5 h-3.5 text-indigo-500" /> 名称层次
-                        </h3>
-                        <div className="space-y-2 text-xs">
+                {
+                    isFieldType && (
+                        <div className="relative pl-3 border-l-2 border-indigo-100 space-y-4 py-1">
                             {data.upstreamColumnName && (
-                                <div className="flex items-start gap-2">
-                                    <span className="text-indigo-600 font-medium w-24 flex-shrink-0">① 原始列名</span>
-                                    <span className="font-mono bg-white px-2 py-0.5 rounded border border-indigo-100 text-gray-700">{data.upstreamColumnName}</span>
+                                <div>
+                                    <div className="text-[10px] text-indigo-400 font-mono mb-0.5 flex items-center gap-1">
+                                        原始列名
+                                        <span data-tooltip="对应底层数据库中的原始物理列名称">
+                                            <HelpCircle className="w-2.5 h-2.5" />
+                                        </span>
+                                    </div>
+                                    <div className="text-xs font-mono text-gray-500 bg-gray-50 inline-block px-1.5 py-0.5 rounded border border-gray-100">
+                                        {data.upstreamColumnName}
+                                    </div>
                                 </div>
                             )}
                             {data.fullyQualifiedName && (
-                                <div className="flex items-start gap-2">
-                                    <span className="text-indigo-600 font-medium w-24 flex-shrink-0">② 完全限定名</span>
-                                    <span className="font-mono bg-white px-2 py-0.5 rounded border border-indigo-100 text-gray-700 break-all">{data.fullyQualifiedName}</span>
+                                <div>
+                                    <div className="text-[10px] text-indigo-400 font-mono mb-0.5 flex items-center gap-1">
+                                        完全限定名
+                                        <span data-tooltip="该资产在 Tableau 内部的唯一完全限定路径">
+                                            <HelpCircle className="w-2.5 h-2.5" />
+                                        </span>
+                                    </div>
+                                    <div className="text-xs font-mono text-gray-600 break-all leading-tight">
+                                        {data.fullyQualifiedName}
+                                    </div>
                                 </div>
                             )}
-                            {data.caption && data.caption !== data.name && (
-                                <div className="flex items-start gap-2">
-                                    <span className="text-indigo-600 font-medium w-24 flex-shrink-0">③ 显示标题</span>
-                                    <span className="bg-white px-2 py-0.5 rounded border border-indigo-100 text-gray-700">{data.caption}</span>
+                            <div>
+                                <div className="text-[10px] text-indigo-400 font-mono mb-0.5 flex items-center gap-1">
+                                    显示名称
+                                    <span data-tooltip="该资产在报表界面上呈现给用户的别名">
+                                        <HelpCircle className="w-2.5 h-2.5" />
+                                    </span>
                                 </div>
-                            )}
-                            <div className="flex items-start gap-2">
-                                <span className="text-indigo-600 font-medium w-24 flex-shrink-0">④ 当前名称</span>
-                                <span className="bg-white px-2 py-0.5 rounded border border-indigo-100 text-gray-900 font-medium">{data.name}</span>
+                                <div className="text-sm font-bold text-gray-800">{data.caption || data.name}</div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )
+                }
 
-                {data.formula && (
-                    <div className="bg-white rounded-lg border border-gray-100 p-4 shadow-sm">
-                        <div className="text-xs text-gray-400 mb-1">计算公式</div>
-                        <div className="bg-gray-50 rounded p-2 font-mono text-xs text-gray-700 break-all border border-gray-100">
-                            {data.formula}
+                {/* 计算公式展示 */}
+                {
+                    data.formula && (
+                        <div className="group relative">
+                            <div className="flex items-center justify-between mb-1">
+                                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider px-1 flex items-center gap-1">
+                                    计算公式
+                                    <span title="Tableau 计算字段的逻辑表达式">
+                                        <HelpCircle className="w-2.5 h-2.5" />
+                                    </span>
+                                </h3>
+                                <button
+                                    onClick={() => navigator.clipboard.writeText(data.formula || '')}
+                                    className="text-[10px] text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Copy className="w-3 h-3" /> 复制
+                                </button>
+                            </div>
+                            <div className="bg-slate-800 rounded-lg p-3 font-mono text-xs text-green-400 break-all leading-relaxed shadow-inner">
+                                {data.formula}
+                            </div>
                         </div>
-                    </div>
-                )}
-
-                {data.description && (
-                    <div className="bg-white rounded-lg border border-gray-100 p-4 shadow-sm">
-                        <div className="text-xs text-gray-400 mb-1">描述</div>
-                        <p className="text-sm text-gray-600">
-                            {data.description}
-                        </p>
-                    </div>
-                )}
-            </div>
+                    )
+                }
+            </div >
         );
     };
 
     const renderContent = () => {
+        if (!data || !currentItem) return null;
+        const type = currentItem.type;
+
         switch (activeTab) {
             case 'overview': return renderOverviewTab();
-            case 'upstream': return renderUpstreamTab();
-            case 'downstream': return renderDownstreamTab();
             case 'duplicates': return renderDuplicatesTab();
             case 'lineage': return renderLineageTab();
+
+            // 数据库相关
+            case 'tables':
+                return renderAssetSection(activeTab === 'tables' ? '包含的数据表' : '来源物理表', Table2, data.tables || [], 'tables', 'blue');
+
+            // 表相关
+            case 'db':
+                return renderAssetSection('所属数据库', Database, data.database_info ? [data.database_info] : (data.databaseName ? [{ id: data.databaseId, name: data.databaseName }] : []), 'databases', 'blue');
+            case 'columns':
+                return renderAssetSection('数据库原始列', List, data.columns || [], 'columns', 'gray');
+
+            // 字段/指标相关
+            case 'table':
+                return renderAssetSection('所属数据表', Table2, data.table_info ? [data.table_info] : [], 'tables', 'blue');
+            case 'deps':
+                return renderAssetSection('依赖的基础字段', Columns, data.dependencyFields || [], 'fields', 'indigo');
+            case 'impact_metrics':
+                return renderAssetSection('下游受影响的指标', FunctionSquare, data.used_by_metrics || [], 'metrics', 'amber');
+
+            // 业务消费端
+            case 'views':
+                const viewItems = (data.used_in_views || data.usedInViews || data.views || []).map((v: any) => ({
+                    ...v,
+                    subtitle: v.workbook_name || v.workbookName || v.view_type
+                }));
+                return renderAssetSection('关联视图/仪表板', Layout, viewItems, 'views', 'green');
+            case 'workbooks':
+                const wbItems = (data.usedInWorkbooks || data.workbooks || []).map((wb: any) => ({
+                    ...wb,
+                    subtitle: wb.owner ? `Owner: ${wb.owner}` : (wb.projectName || undefined)
+                }));
+                return renderAssetSection('引用此资产的工作簿', BookOpen, wbItems, 'workbooks', 'red');
+
+            // 架构容器相关
+            case 'datasources':
+                return renderAssetSection('关联数据源', Layers, data.datasources || [], 'datasources', 'indigo');
+            case 'fields':
+                const fieldItems = (data.full_fields || data.used_fields || []).map((f: any) => ({
+                    ...f,
+                    subtitle: f.role === 'measure' ? '度量' : '维度'
+                }));
+                return renderAssetSection('包含/使用的字段', Columns, fieldItems, 'fields', 'blue');
+            case 'metrics':
+                return renderAssetSection('包含/使用的指标', FunctionSquare, data.metrics || data.used_metrics || [], 'metrics', 'amber');
+
             default: return null;
         }
     };
 
+    // ========== Header 渲染 ==========
+    const renderHeader = () => {
+        const Icon = currentItem ? getModuleIcon(currentItem.type) : Info;
+        const mockQuality = (data?.description ? 98 : 65);
+        const mockCertified = data?.is_certified === true;
+        const mockRef = (data?.referenceCount || data?.views?.length || 0);
+
+        return (
+            <div className="bg-white border-b border-gray-100">
+                {/* 顶部面包屑 (动态生成) */}
+                <div className="px-6 pt-4 flex items-center text-[10px] text-gray-400">
+                    <div className="flex items-center overflow-x-auto scrollbar-hide py-1">
+                        <span className="flex-shrink-0">Datamap</span>
+                        {history.map((item, index) => (
+                            <div key={`${item.id}-${index}`} className="flex items-center flex-shrink-0">
+                                <ChevronRight className="w-3 h-3 mx-1 flex-shrink-0" />
+                                <span
+                                    className={`capitalize whitespace-nowrap cursor-pointer transition-colors ${index === history.length - 1 ? 'text-gray-600 font-medium' : 'hover:text-indigo-600 text-gray-400'}`}
+                                    onClick={() => index < history.length - 1 && goToIndex(index)}
+                                >
+                                    {item.name || getModuleName(item.type)}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="px-6 py-5">
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="flex gap-4">
+                            <div className={`p-3 rounded-xl shadow-sm border ${mockCertified ? 'bg-green-50 border-green-100 text-green-600' : 'bg-indigo-50 border-indigo-100 text-indigo-600'}`}>
+                                <Icon className="w-8 h-8" />
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-900 leading-tight mb-2">{data?.name || '资产详情'}</h2>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <div className="group flex items-center gap-1 font-mono text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+                                        <span className="select-all break-all">{data?.id || '-'}</span>
+                                        <button
+                                            onClick={() => navigator.clipboard.writeText(data?.id || '')}
+                                            className="text-gray-400 hover:text-indigo-600 transition-colors"
+                                            title="复制 ID"
+                                        >
+                                            <Copy className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                    {mockCertified && (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-green-50 text-green-700 px-2 py-0.5 rounded-full border border-green-100">
+                                            <CheckCircle2 className="w-3 h-3" /> 已认证
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 状态 Badges */}
+                        <div className="flex flex-col items-end gap-2">
+                            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${mockQuality >= 80 ? 'bg-green-50 border-green-100 text-green-700' : 'bg-orange-50 border-orange-100 text-orange-700'}`}>
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                                质量分: {mockQuality}
+                            </div>
+                            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gray-100 bg-gray-50 text-xs font-medium text-gray-600">
+                                <Flame className="w-3.5 h-3.5 text-orange-500" />
+                                热度: {mockRef > 5 ? 'High' : 'Normal'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Tabs */}
+                <div className="flex px-6 space-x-6 overflow-x-auto scrollbar-hide">
+                    {tabs.map((tab) => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`flex items-center gap-2 py-3 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === tab.id
+                                ? 'border-indigo-600 text-indigo-600'
+                                : 'border-transparent text-gray-400 hover:text-gray-600 hover:border-gray-200'
+                                }`}
+                        >
+                            <tab.icon className="w-4 h-4" />
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
     return (
         <>
-            <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 transition-opacity" onClick={closeDrawer} />
-            <div className={`fixed inset-y-0 right-0 w-[600px] bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+            <div className="fixed inset-0 bg-gray-900/20 backdrop-blur-[2px] z-40 transition-opacity" onClick={closeDrawer} />
+            <div className={`fixed inset-y-0 right-0 w-[640px] bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-out border-l border-gray-100 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
                 <div className="h-full flex flex-col">
-                    {/* Header */}
-                    <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-                        <div>
-                            {loading ? (
-                                <div className="h-6 w-32 bg-gray-100 animate-pulse rounded"></div>
-                            ) : (
-                                <>
-                                    <h2 className="text-lg font-semibold text-gray-900 line-clamp-1">{data?.name || '详情'}</h2>
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide mt-0.5">
-                                        {currentItem ? getModuleName(currentItem.type) : ''} 详情
-                                    </p>
-                                </>
-                            )}
-                        </div>
-                        <button onClick={closeDrawer} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                            <X className="w-5 h-5 text-gray-500" />
+
+                    {/* Navigation Buttons */}
+                    <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+                        {history.length > 1 && (
+                            <button
+                                onClick={goBack}
+                                className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400 hover:text-indigo-600 group flex items-center gap-1"
+                                title="返回"
+                            >
+                                <ArrowLeft className="w-5 h-5" />
+                                <span className="text-[10px] font-bold pr-1 hidden group-hover:inline">返回</span>
+                            </button>
+                        )}
+                        <button onClick={closeDrawer} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400 hover:text-red-500">
+                            <X className="w-5 h-5" />
                         </button>
                     </div>
 
-                    {/* Tabs */}
-                    <div className="flex px-6 border-b border-gray-100 overflow-x-auto scrollbar-hide">
-                        {tabs.map((tab) => (
-                            <button
-                                key={tab.id}
-                                onClick={() => setActiveTab(tab.id)}
-                                className={`flex items-center gap-2 px-4 py-3 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === tab.id
-                                    ? 'border-indigo-500 text-indigo-600'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                                    }`}
-                            >
-                                <tab.icon className="w-3.5 h-3.5" />
-                                {tab.label}
-                            </button>
-                        ))}
-                    </div>
+                    {/* New Header */}
+                    {renderHeader()}
 
                     {/* Content */}
-                    <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+                    <div className="flex-1 overflow-y-auto p-6 bg-white custom-scrollbar">
                         {loading ? (
-                            <div className="flex justify-center py-10">
+                            <div className="flex flex-col items-center justify-center py-20 gap-3">
                                 <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+                                <span className="text-xs text-gray-400">Loading asset details...</span>
                             </div>
                         ) : error ? (
-                            <div className="text-center py-10 text-red-500">
+                            <div className="text-center py-20 text-red-500">
+                                <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
                                 {error}
                             </div>
                         ) : (
-                            renderContent()
+                            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                {renderContent()}
+                            </div>
                         )}
                     </div>
                 </div>
@@ -653,4 +703,3 @@ export default function DetailDrawer() {
         </>
     );
 }
-

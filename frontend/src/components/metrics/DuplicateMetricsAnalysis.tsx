@@ -21,7 +21,6 @@ export default function DuplicateMetricsAnalysis() {
     const { openDrawer } = useDrawer();
 
     useEffect(() => {
-        setLoading(true);
         api.getDuplicateMetrics()
             .then(setDuplicates)
             .catch(console.error)

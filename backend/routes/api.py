@@ -7,7 +7,7 @@ from sqlalchemy import func, case
 from ..models import (
     Database, DBTable, DBColumn, Field, Datasource, Workbook, View,
     CalculatedField, Metric, MetricVariant, MetricDuplicate,
-    TableauUser, Project
+    TableauUser, Project, FieldDependency
 )
 
 api_bp = Blueprint('api', __name__)
@@ -44,86 +44,157 @@ def get_stats():
 import re
 from collections import defaultdict
 
-# ==================== 辅助函数：指标索引构建 ====================
+# ==================== 辅助函数：指标索引构建（优化版） ====================
+
+def get_field_usage_by_name(session, field_name):
+    """
+    按需查询：获取指定字段被哪些指标引用
+    替代 build_metric_index 的 field_usage 功能
+    """
+    deps = session.query(FieldDependency, Field).join(
+        Field, FieldDependency.source_field_id == Field.id
+    ).filter(FieldDependency.dependency_name == field_name).all()
+    
+    result = []
+    for dep, source_field in deps:
+        result.append({
+            'id': source_field.id,
+            'name': source_field.name,
+            'datasourceId': source_field.datasource_id
+        })
+    return result
+
+
+def get_metric_dependencies(session, metric_id):
+    """
+    按需查询：获取指定指标依赖的字段列表
+    替代 build_metric_index 的 metric_deps 功能
+    """
+    deps = session.query(FieldDependency).filter(
+        FieldDependency.source_field_id == metric_id
+    ).all()
+    
+    return [{'name': d.dependency_name, 'id': d.dependency_field_id} for d in deps]
+
+
+def get_duplicate_formulas(session, formula):
+    """
+    按需查询：获取与给定公式相同的其他指标
+    替代 build_metric_index 的 formula_map 功能
+    """
+    if not formula:
+        return []
+        
+    formula_clean = formula.strip()
+    duplicates = session.query(Field, CalculatedField).join(
+        CalculatedField, Field.id == CalculatedField.field_id
+    ).filter(CalculatedField.formula == formula_clean).all()
+    
+    return [{
+        'id': f.id,
+        'name': f.name,
+        'datasourceId': f.datasource_id,
+        'formula': c.formula
+    } for f, c in duplicates]
+
+
 def build_metric_index(session):
     """
-    构建指标和字段的全局索引，用于快速查找引用关系。
-    返回:
-    1. field_id_map: {field_name: field_obj} (辅助查找)
-    2. field_usage: {field_name: [metric_info]} (字段被哪些指标使用)
-    3. metric_deps: {metric_id: [field_info]} (指标依赖哪些字段)
-    4. formula_map: {formula: [metric_info]} (公式重复检测)
+    构建指标和字段的全局索引 (基于数据库持久化数据)
+    注意：此函数加载全量数据，仅在必要时调用（如列表页需要批量计算）
+    对于详情页，请使用 get_field_usage_by_name / get_metric_dependencies 等按需查询函数
     """
-    # 预加载所有字段，建立 Name -> ID 映射 (注意：重名问题暂取第一个，实际应结合 DataSource)
+    # 建立 Name -> ID 映射
     all_fields = session.query(Field).all()
     field_id_map = {f.name: {'id': f.id, 'name': f.name, 'datasourceId': f.datasource_id} for f in all_fields}
-
-    # 获取所有计算字段 (Metrics)
-    results = session.query(Field, CalculatedField).join(
+    
+    # 1. 构建公式索引 (Duplicate Detection)
+    calc_results = session.query(Field, CalculatedField).join(
         CalculatedField, Field.id == CalculatedField.field_id
     ).all()
     
-    field_usage = defaultdict(list)  # field_name -> [metric_info]
-    metric_deps = defaultdict(list)  # metric_id -> [field_info]
-    formula_map = defaultdict(list)  # formula -> [metric_info]
+    formula_map = defaultdict(list)
+    calc_field_map = {}  # field_id -> formula
     
-    for field, calc in results:
-        m_info = {
-            'id': field.id, 
-            'name': field.name, 
-            'datasourceId': field.datasource_id,
-            'formula': calc.formula
-        }
-        
+    for field, calc in calc_results:
         if calc.formula:
             formula_clean = calc.formula.strip()
-            # 存入公式索引，用于查重
+            m_info = {
+                'id': field.id, 
+                'name': field.name, 
+                'datasourceId': field.datasource_id,
+                'formula': formula_clean
+            }
             formula_map[formula_clean].append(m_info)
-            
-            # 解析依赖: [Sales] -> Sales
-            refs = re.findall(r'\[(.*?)\]', formula_clean)
-            unique_refs = list(set(refs))
-            
-            deps = []
-            for ref_name in unique_refs:
-                # 记录该字段被当前指标使用
-                field_usage[ref_name].append(m_info)
-                
-                # 记录当前指标依赖该字段 (尝试解析为 ID)
-                if ref_name in field_id_map:
-                    deps.append(field_id_map[ref_name])
-                else:
-                    deps.append({'name': ref_name, 'id': None}) # 未找到对应 ID
-            # 写入指标依赖索引
-            metric_deps[field.id] = deps
-            
+            calc_field_map[field.id] = formula_clean
+
+    # 2. 构建血缘索引 (基于 FieldDependency 表)
+    field_usage = defaultdict(list)  # field_name -> [metric_info]
+    metric_deps = defaultdict(list)  # metric_id -> [field_info]
+    
+    dependencies = session.query(FieldDependency, Field).join(
+        Field, FieldDependency.source_field_id == Field.id
+    ).all()
+    
+    for dep, source_field in dependencies:
+        m_info = {
+            'id': source_field.id,
+            'name': source_field.name,
+            'datasourceId': source_field.datasource_id,
+            'formula': calc_field_map.get(source_field.id, '')
+        }
+        
+        if dep.dependency_name:
+            field_usage[dep.dependency_name].append(m_info)
+        
+        dep_info = {'name': dep.dependency_name, 'id': dep.dependency_field_id}
+        metric_deps[source_field.id].append(dep_info)
+    
     return field_usage, metric_deps, formula_map, field_id_map
 
 # ==================== 仪表盘分析接口 ====================
 
 @api_bp.route('/dashboard/analysis')
 def get_dashboard_analysis():
-    """获取仪表盘分析数据 - 基于真实数据的深度聚合分析"""
+    """获取仪表盘分析数据 - 性能优化版（合并查询）"""
     session = g.db_session
     import datetime
+    from sqlalchemy import text
     
-    # ===== 1. 基础统计 =====
-    total_fields = session.query(Field).count()
-    total_calc_fields = session.query(CalculatedField).count()
-    total_tables = session.query(DBTable).count()
-    total_datasources = session.query(Datasource).count()
-    total_workbooks = session.query(Workbook).count()
-    total_views = session.query(View).count()
+    # ===== 1. 基础统计 - 合并为单条查询 =====
     
-    # ===== 2. 字段来源分布 =====
-    from_datasource = session.query(Field).filter(Field.datasource_id != None).count()
-    from_table = session.query(Field).filter(Field.table_id != None).count()
-    from_workbook = session.query(Field).filter(Field.workbook_id != None).count()
-    orphan_fields = session.query(Field).filter(
-        Field.datasource_id == None,
-        Field.table_id == None,
-        Field.workbook_id == None
-    ).count()
+    # 使用 UNION ALL 合并多个 COUNT 查询为一次数据库往返
+    basic_stats = session.execute(text("""
+        SELECT 'fields' as entity, COUNT(*) as cnt FROM fields
+        UNION ALL SELECT 'calc_fields', COUNT(*) FROM calculated_fields
+        UNION ALL SELECT 'tables', COUNT(*) FROM tables
+        UNION ALL SELECT 'datasources', COUNT(*) FROM datasources
+        UNION ALL SELECT 'workbooks', COUNT(*) FROM workbooks
+        UNION ALL SELECT 'views', COUNT(*) FROM views
+    """)).fetchall()
+    
+    stats_map = {row[0]: row[1] for row in basic_stats}
+    total_fields = stats_map.get('fields', 0)
+    total_calc_fields = stats_map.get('calc_fields', 0)
+    total_tables = stats_map.get('tables', 0)
+    total_datasources = stats_map.get('datasources', 0)
+    total_workbooks = stats_map.get('workbooks', 0)
+    total_views = stats_map.get('views', 0)
+    
+    # ===== 2. 字段来源分布 - 使用 CASE 聚合 =====
+    field_source_stats = session.execute(text("""
+        SELECT 
+            SUM(CASE WHEN datasource_id IS NOT NULL THEN 1 ELSE 0 END) as from_ds,
+            SUM(CASE WHEN table_id IS NOT NULL THEN 1 ELSE 0 END) as from_table,
+            SUM(CASE WHEN workbook_id IS NOT NULL THEN 1 ELSE 0 END) as from_wb,
+            SUM(CASE WHEN datasource_id IS NULL AND table_id IS NULL AND workbook_id IS NULL THEN 1 ELSE 0 END) as orphan
+        FROM fields
+    """)).fetchone()
+    
+    from_datasource = field_source_stats[0] or 0
+    from_table = field_source_stats[1] or 0
+    from_workbook = field_source_stats[2] or 0
+    orphan_fields = field_source_stats[3] or 0
     
     field_source_distribution = {
         'datasource': from_datasource,
@@ -172,82 +243,85 @@ def get_dashboard_analysis():
     ).group_by('level').all()
     complexity_distribution = {level: cnt for level, cnt in complexity_results}
     
-    # ===== 7. 问题检测与质量分析 =====
+    # ===== 7. 问题检测与质量分析 - 合并为单条查询 =====
     
-    # 7.1 描述覆盖率细分 (获取具体数值方便前端展示进度条)
-    def get_desc_stats(model, check_certified=False):
-        total = session.query(model).count()
-        if total == 0: 
-            return {
-                'with_description': 0, 'total': 0, 'coverage_rate': 0,
-                'certified': 0, 'certification_rate': 0
-            }
-        has_desc = session.query(model).filter((model.description != None) & (model.description != '')).count()
-        res = {
-            'with_description': has_desc,
+    # 7.1 描述覆盖率 - 使用单条 SQL 获取所有实体的描述/认证统计
+    coverage_stats = session.execute(text("""
+        SELECT 'fields' as entity, 
+               COUNT(*) as total,
+               SUM(CASE WHEN description IS NOT NULL AND description != '' THEN 1 ELSE 0 END) as with_desc,
+               0 as certified
+        FROM fields
+        UNION ALL
+        SELECT 'tables', COUNT(*), 
+               SUM(CASE WHEN description IS NOT NULL AND description != '' THEN 1 ELSE 0 END),
+               SUM(CASE WHEN is_certified = 1 THEN 1 ELSE 0 END)
+        FROM tables
+        UNION ALL
+        SELECT 'datasources', COUNT(*), 
+               SUM(CASE WHEN description IS NOT NULL AND description != '' THEN 1 ELSE 0 END),
+               SUM(CASE WHEN is_certified = 1 THEN 1 ELSE 0 END)
+        FROM datasources
+        UNION ALL
+        SELECT 'workbooks', COUNT(*), 
+               SUM(CASE WHEN description IS NOT NULL AND description != '' THEN 1 ELSE 0 END),
+               0
+        FROM workbooks
+        UNION ALL
+        SELECT 'calc_fields', 
+               (SELECT COUNT(*) FROM calculated_fields),
+               (SELECT COUNT(*) FROM calculated_fields cf 
+                JOIN fields f ON cf.field_id = f.id 
+                WHERE f.description IS NOT NULL AND f.description != ''),
+               0
+    """)).fetchall()
+    
+    cov_map = {row[0]: {'total': row[1], 'with_desc': row[2] or 0, 'certified': row[3] or 0} for row in coverage_stats}
+    
+    def build_cov_result(entity_key):
+        data = cov_map.get(entity_key, {'total': 0, 'with_desc': 0, 'certified': 0})
+        total = data['total'] or 0
+        with_desc = data['with_desc'] or 0
+        certified = data['certified'] or 0
+        return {
+            'with_description': with_desc,
             'total': total,
-            'coverage_rate': round(has_desc / total * 100, 1)
-        }
-        if check_certified:
-            certified = session.query(model).filter(model.is_certified == True).count()
-            res['certified'] = certified
-            res['certification_rate'] = round(certified / total * 100, 1)
-        else:
-            res['certified'] = 0
-            res['certification_rate'] = 0
-        return res
-
-    field_cov = get_desc_stats(Field)
-    table_cov = get_desc_stats(DBTable, check_certified=True)
-    
-    # 指标描述覆盖率 (CalculatedField 的描述存储在关联的 Field 中)
-    calc_total = session.query(CalculatedField).count()
-    if calc_total == 0:
-        metric_cov = {'with_description': 0, 'total': 0, 'coverage_rate': 0, 'certified': 0, 'certification_rate': 0}
-    else:
-        calc_has_desc = session.query(CalculatedField).join(
-            Field, CalculatedField.field_id == Field.id
-        ).filter((Field.description != None) & (Field.description != '')).count()
-        # CalculatedField 本身没有 is_certified 字段，认证状态通常在 Field 或 Datasource 层面
-        # 这里假设 metric_cov 不检查认证，或者认证状态由 Field 决定
-        metric_cov = {
-            'with_description': calc_has_desc,
-            'total': calc_total,
-            'coverage_rate': round(calc_has_desc / calc_total * 100, 1),
-            'certified': 0, # CalculatedField 自身没有认证字段
-            'certification_rate': 0
+            'coverage_rate': round(with_desc / total * 100, 1) if total > 0 else 0,
+            'certified': certified,
+            'certification_rate': round(certified / total * 100, 1) if total > 0 else 0
         }
     
-    # 7.2 数据源覆盖率与认证
-    ds_cov = get_desc_stats(Datasource, check_certified=True)
-    
-    # 7.3 工作簿覆盖率
-    wb_cov = get_desc_stats(Workbook)
+    field_cov = build_cov_result('fields')
+    table_cov = build_cov_result('tables')
+    metric_cov = build_cov_result('calc_fields')
+    ds_cov = build_cov_result('datasources')
+    wb_cov = build_cov_result('workbooks')
 
-    # 7.4 陈旧资产统计
+    # 7.4 陈旧资产统计 - 合并为单条查询
     thirty_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=30)
     ninety_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=90)
     
-    stale_ds_count = session.query(Datasource).filter(
-        Datasource.has_extract == True,
-        Datasource.extract_last_refresh_time < thirty_days_ago
-    ).count()
+    issue_stats = session.execute(text("""
+        SELECT
+            (SELECT COUNT(*) FROM datasources 
+             WHERE has_extract = 1 AND extract_last_refresh_time < :thirty_days) as stale_ds,
+            (SELECT COUNT(*) FROM datasources 
+             WHERE has_extract = 1 AND extract_last_refresh_time < :ninety_days) as dead_ds,
+            (SELECT COUNT(*) FROM fields 
+             WHERE description IS NULL OR description = '') as missing_desc,
+            (SELECT COUNT(*) FROM tables t 
+             LEFT JOIN table_to_datasource td ON t.id = td.table_id 
+             WHERE td.datasource_id IS NULL) as orphaned_tables,
+            (SELECT COUNT(*) FROM calculated_fields cf 
+             JOIN fields f ON cf.field_id = f.id 
+             WHERE f.description IS NULL OR f.description = '') as calc_no_desc
+    """), {'thirty_days': thirty_days_ago, 'ninety_days': ninety_days_ago}).fetchone()
     
-    dead_ds_count = session.query(Datasource).filter(
-        Datasource.has_extract == True, 
-        Datasource.extract_last_refresh_time < ninety_days_ago
-    ).count()
-
-    missing_desc_count = session.query(Field).filter(
-        (Field.description == None) | (Field.description == '')
-    ).count()
-
-    orphaned_tables = session.query(DBTable).outerjoin(DBTable.datasources)\
-        .filter(Datasource.id == None).count()
-    
-    calc_no_desc = session.query(CalculatedField).join(
-        Field, CalculatedField.field_id == Field.id
-    ).filter((Field.description == None) | (Field.description == '')).count()
+    stale_ds_count = issue_stats[0] or 0
+    dead_ds_count = issue_stats[1] or 0
+    missing_desc_count = issue_stats[2] or 0
+    orphaned_tables = issue_stats[3] or 0
+    calc_no_desc = issue_stats[4] or 0
     
     issues = {
         'missing_description': missing_desc_count,
@@ -386,28 +460,50 @@ def apply_sorting(query, model, sort_key, order):
 
 @api_bp.route('/databases')
 def get_databases():
-    """获取数据库列表 - 增强版"""
+    """获取数据库列表 - 性能优化版"""
     session = g.db_session
     search = request.args.get('search', '')
-    query = session.query(Database)
+    
+    from sqlalchemy.orm import selectinload
+    from sqlalchemy import text
+    
+    # 使用 selectinload 预加载 tables 关系，避免 N+1
+    query = session.query(Database).options(
+        selectinload(Database.tables)
+    )
 
-    if search: query = query.filter(Database.name.ilike(f'%{search}%'))
+    if search: 
+        query = query.filter(Database.name.ilike(f'%{search}%'))
 
     databases = query.all()
+    
+    # 预先查询所有相关统计（一次性获取所有数据库的字段和数据源统计）
+    db_ids = [db.id for db in databases]
+    if db_ids:
+        # 获取每个数据库关联的字段数和数据源数
+        stats = session.execute(text("""
+            SELECT 
+                t.database_id,
+                COUNT(DISTINCT f.id) as field_count,
+                COUNT(DISTINCT td.datasource_id) as ds_count
+            FROM tables t
+            LEFT JOIN fields f ON t.id = f.table_id
+            LEFT JOIN table_to_datasource td ON t.id = td.table_id
+            WHERE t.database_id IN :db_ids
+            GROUP BY t.database_id
+        """), {'db_ids': tuple(db_ids)}).fetchall()
+        stats_map = {row[0]: {'fields': row[1], 'ds': row[2]} for row in stats}
+    else:
+        stats_map = {}
+    
     results = []
     for db in databases:
         data = db.to_dict()
         data['table_count'] = len(db.tables)
         data['table_names'] = [t.name for t in db.tables[:10]]
-        # 统计关联的数据源数量
-        connected_ds = set()
-        total_fields = 0
-        for t in db.tables:
-            total_fields += len(t.fields) if t.fields else 0
-            for ds in t.datasources:
-                connected_ds.add(ds.id)
-        data['datasource_count'] = len(connected_ds)
-        data['total_field_count'] = total_fields
+        db_stats = stats_map.get(db.id, {'fields': 0, 'ds': 0})
+        data['datasource_count'] = db_stats['ds']
+        data['total_field_count'] = db_stats['fields']
         results.append(data)
 
     return jsonify(results)
@@ -461,39 +557,55 @@ def get_database_detail(db_id):
 
 @api_bp.route('/tables')
 def get_tables():
-    """获取数据表列表"""
+    """获取数据表列表 - 性能优化版"""
     session = g.db_session
     search = request.args.get('search', '')
     sort = request.args.get('sort', '')
     order = request.args.get('order', 'asc')
     
-    query = session.query(DBTable)
-    if search: query = query.filter(DBTable.name.ilike(f'%{search}%'))
+    from sqlalchemy.orm import selectinload
+    from sqlalchemy import text
+    
+    # 使用 selectinload 预加载关联数据
+    query = session.query(DBTable).options(
+        selectinload(DBTable.fields),
+        selectinload(DBTable.columns),
+        selectinload(DBTable.datasources),
+        selectinload(DBTable.database)
+    )
+    
+    if search: 
+        query = query.filter(DBTable.name.ilike(f'%{search}%'))
     
     if sort in ['name', 'schema']:
         query = apply_sorting(query, DBTable, sort, order)
     
     tables = query.limit(200).all()
+    
+    # 预查询工作簿统计
+    table_ids = [t.id for t in tables]
+    if table_ids:
+        wb_stats = session.execute(text("""
+            SELECT td.table_id, COUNT(DISTINCT dw.workbook_id) as wb_count
+            FROM table_to_datasource td
+            JOIN datasource_to_workbook dw ON td.datasource_id = dw.datasource_id
+            WHERE td.table_id IN :table_ids
+            GROUP BY td.table_id
+        """), {'table_ids': tuple(table_ids)}).fetchall()
+        wb_map = {row[0]: row[1] for row in wb_stats}
+    else:
+        wb_map = {}
+    
     results = []
     for t in tables:
         data = t.to_dict()
         data['field_count'] = len(t.fields)
         data['column_count'] = len(t.columns) if t.columns else 0
         data['datasource_count'] = len(t.datasources) if t.datasources else 0
-        # 统计使用此表的工作簿数量
-        workbook_ids = set()
-        for ds in t.datasources:
-            for wb in ds.workbooks:
-                workbook_ids.add(wb.id)
-        data['workbook_count'] = len(workbook_ids)
-        # 字段预览
+        data['workbook_count'] = wb_map.get(t.id, 0)
+        
+        # 字段预览（使用已预加载的数据）
         param_fields = t.fields
-        if not param_fields and t.datasources:
-            for ds in t.datasources:
-                if ds.fields:
-                    param_fields = ds.fields
-                    data['field_count_derived'] = len(ds.fields)
-                    break
         measures = [f.name for f in param_fields if f.role == 'measure'][:5]
         dimensions = [f.name for f in param_fields if f.role != 'measure'][:5]
         data['preview_fields'] = {'measures': measures, 'dimensions': dimensions}
@@ -511,9 +623,6 @@ def get_table_detail(table_id):
     table = session.query(DBTable).filter(DBTable.id == table_id).first()
     if not table:
         return jsonify({'error': 'Not found'}), 404
-
-    # 构建索引以查找字段引用
-    field_usage, _, _, _ = build_metric_index(session)
 
     data = table.to_dict()
 
@@ -552,7 +661,8 @@ def get_table_detail(table_id):
 
     for f in source_fields:
         f_data = f.to_dict()
-        f_data['used_by_metrics'] = field_usage.get(f.name, [])
+        # 按需查询字段引用情况（替代全量索引）
+        f_data['used_by_metrics'] = get_field_usage_by_name(session, f.name)
         if data['source_type'] == 'derived' and f.datasource:
             f_data['via_datasource'] = f.datasource.name
         full_fields.append(f_data)
@@ -586,12 +696,38 @@ def get_table_detail(table_id):
 
 @api_bp.route('/datasources')
 def get_datasources():
-    """获取数据源列表 - 增强版"""
+    """获取数据源列表 - 性能优化版"""
     session = g.db_session
     search = request.args.get('search', '')
-    query = session.query(Datasource)
-    if search: query = query.filter(Datasource.name.ilike(f'%{search}%'))
+    
+    from sqlalchemy.orm import selectinload
+    from sqlalchemy import text
+    
+    # 使用 selectinload 预加载关联数据
+    query = session.query(Datasource).options(
+        selectinload(Datasource.tables),
+        selectinload(Datasource.fields),
+        selectinload(Datasource.workbooks)
+    )
+    
+    if search: 
+        query = query.filter(Datasource.name.ilike(f'%{search}%'))
+    
     datasources = query.all()
+    
+    # 预查询视图统计（一次获取所有数据源关联的视图数）
+    ds_ids = [ds.id for ds in datasources]
+    if ds_ids:
+        view_stats = session.execute(text("""
+            SELECT dw.datasource_id, COUNT(v.id) as view_count
+            FROM datasource_to_workbook dw
+            JOIN views v ON dw.workbook_id = v.workbook_id
+            WHERE dw.datasource_id IN :ds_ids
+            GROUP BY dw.datasource_id
+        """), {'ds_ids': tuple(ds_ids)}).fetchall()
+        view_map = {row[0]: row[1] for row in view_stats}
+    else:
+        view_map = {}
 
     results = []
     for ds in datasources:
@@ -600,14 +736,9 @@ def get_datasources():
         data['table_count'] = len(ds.tables)
         data['field_count'] = len(ds.fields)
         data['workbook_count'] = len(ds.workbooks)
-        # 统计指标数量
-        metric_count = sum(1 for f in ds.fields if f.is_calculated)
-        data['metric_count'] = metric_count
-        # 统计视图数量
-        view_count = 0
-        for wb in ds.workbooks:
-            view_count += len(wb.views) if wb.views else 0
-        data['view_count'] = view_count
+        # 使用预加载的数据计算指标数量
+        data['metric_count'] = sum(1 for f in ds.fields if f.is_calculated)
+        data['view_count'] = view_map.get(ds.id, 0)
         results.append(data)
 
     return jsonify(results)
@@ -618,8 +749,6 @@ def get_datasource_detail(ds_id):
     session = g.db_session
     ds = session.query(Datasource).filter(Datasource.id == ds_id).first()
     if not ds: return jsonify({'error': 'Not found'}), 404
-
-    field_usage, _, _, _ = build_metric_index(session)
 
     data = ds.to_dict()
 
@@ -654,7 +783,8 @@ def get_datasource_detail(ds_id):
     metrics_list = []
     for f in ds.fields:
         f_data = f.to_dict()
-        f_data['used_by_metrics'] = field_usage.get(f.name, [])
+        # 按需查询字段引用情况
+        f_data['used_by_metrics'] = get_field_usage_by_name(session, f.name)
         if f.is_calculated:
             metrics_list.append(f_data)
         else:
@@ -698,10 +828,10 @@ def get_workbooks():
 def get_workbook_detail(wb_id):
     """获取工作簿详情 - 完整上下文"""
     session = g.db_session
-    field_usage, _, _, _ = build_metric_index(session)
     
     wb = session.query(Workbook).filter(Workbook.id == wb_id).first()
     if not wb:
+        return jsonify({'error': 'Not found'}), 404
         return jsonify({'error': 'Not found'}), 404
     
     data = wb.to_dict()
@@ -767,7 +897,6 @@ def get_views():
 def get_view_detail(view_id):
     """获取视图详情 - 完整上下文"""
     session = g.db_session
-    field_usage, _, _, _ = build_metric_index(session)
     
     view = session.query(View).filter(View.id == view_id).first()
     if not view:
@@ -976,7 +1105,7 @@ def get_field_detail(field_id):
             'reference_count': calc_field.reference_count
         }
         # 解析公式中引用的字段
-        if calc_field.formula:
+        if calc_field.formula and isinstance(calc_field.formula, str):
             refs = re.findall(r'\[(.*?)\]', calc_field.formula)
             unique_refs = list(set(refs))
             ref_fields = []
@@ -1189,7 +1318,7 @@ def get_metric_detail(metric_id):
 
     # 获取依赖字段（增强：含上游表信息）
     dependencies = []
-    if calc_field.formula:
+    if calc_field.formula and isinstance(calc_field.formula, str):
         refs = re.findall(r'\[(.*?)\]', calc_field.formula)
         unique_refs = list(set(refs))
         for ref_name in unique_refs:
@@ -1484,7 +1613,7 @@ def get_lineage_graph(item_type, item_id):
                 add_edge(field.datasource.id, field.id, '定义')
             
             # 上游：依赖字段
-            if calc.formula:
+            if calc.formula and isinstance(calc.formula, str):
                 refs = re.findall(r'\[(.*?)\]', calc.formula)
                 for ref_name in set(refs)[:5]:
                     dep_field = session.query(Field).filter(Field.name == ref_name).first()
@@ -1952,15 +2081,32 @@ def get_duplicate_metrics():
         # 实际情况中可能需要更复杂的 AST 比较，这里先用字符串标准化
         normalized_formula = " ".join(calc.formula.split()).strip()
         
+        # 获取上下文信息 (数据源、工作簿)
+        ds_name = 'Unknown'
+        wb_name = 'Unknown'
+        wb_id = ''
+        proj_name = 'Unknown'
+        
+        if field.datasource:
+            ds_name = field.datasource.name
+            proj_name = field.datasource.project_name or 'Unknown'
+            # 尝试获取关联的工作簿（通常一个数据源可能属于一个工作簿）
+            if field.datasource.workbooks:
+                wb = field.datasource.workbooks[0]
+                wb_name = wb.name
+                wb_id = wb.id
+                if not proj_name or proj_name == 'Unknown':
+                    proj_name = wb.project_name
+        
         formula_groups[normalized_formula].append({
             'id': field.id,
             'name': field.name,
             'formula': calc.formula,
             'datasource_id': field.datasource_id,
-            'datasource_name': field.datasource.name if field.datasource else 'Unknown',
-            'workbook_id': field.workbook_id,
-            'workbook_name': field.workbook.name if field.workbook else 'Unknown',
-            'project_name': field.workbook.project_name if field.workbook else (field.datasource.project_name if field.datasource else 'Unknown')
+            'datasource_name': ds_name,
+            'workbook_id': wb_id,
+            'workbook_name': wb_name,
+            'project_name': proj_name
         })
     
     duplicates = []

@@ -277,6 +277,30 @@ class Field(Base):
         }
 
 
+class FieldDependency(Base):
+    """字段依赖关系表 (DAG)"""
+    __tablename__ = 'field_dependencies'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source_field_id = Column(String(255), ForeignKey('fields.id'), nullable=False) # 下游（计算字段）
+    dependency_field_id = Column(String(255), ForeignKey('fields.id'), nullable=True) # 上游（被引用的字段）
+    dependency_name = Column(String(255)) # 被引用的字段名（如果找不到ID，存名字）
+    dependency_type = Column(String(50)) # 'formula', 'filter', etc.
+    
+    # 关系
+    source_field = relationship('Field', foreign_keys=[source_field_id], backref='upstream_dependencies')
+    dependency_field = relationship('Field', foreign_keys=[dependency_field_id], backref='downstream_impacts')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'sourceFieldId': self.source_field_id,
+            'dependencyFieldId': self.dependency_field_id,
+            'dependencyName': self.dependency_name,
+            'dependencyType': self.dependency_type
+        }
+
+
 class Datasource(Base):
     """数据源（增强版）"""
     __tablename__ = 'datasources'
