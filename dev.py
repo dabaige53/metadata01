@@ -9,6 +9,41 @@ import sys
 import time
 import signal
 
+def kill_existing_processes():
+    """关闭已占用端口 8001 和 3000 的进程"""
+    ports = [8001, 3000]
+    killed_any = False
+    
+    for port in ports:
+        try:
+            # 使用 lsof 查找占用端口的进程
+            result = subprocess.run(
+                f"lsof -ti :{port}",
+                shell=True,
+                capture_output=True,
+                text=True
+            )
+            pids = result.stdout.strip().split('\n')
+            pids = [pid for pid in pids if pid]  # 过滤空字符串
+            
+            if pids:
+                print(f"🔍 发现端口 {port} 被占用，正在关闭相关进程...")
+                for pid in pids:
+                    try:
+                        os.kill(int(pid), signal.SIGTERM)
+                        print(f"   ✓ 已终止进程 {pid}")
+                        killed_any = True
+                    except (ProcessLookupError, ValueError):
+                        pass
+        except Exception as e:
+            print(f"⚠️ 检查端口 {port} 时出错: {e}")
+    
+    if killed_any:
+        print("⏳ 等待进程完全退出...")
+        time.sleep(1)
+    else:
+        print("✓ 端口 8001 和 3000 均未被占用")
+
 def run_command(command, cwd=None, name=""):
     """运行子进程"""
     print(f"🚀 正在启动 {name}...")
@@ -24,6 +59,13 @@ def run_command(command, cwd=None, name=""):
 def main():
     root_dir = os.path.dirname(os.path.abspath(__file__))
     frontend_dir = os.path.join(root_dir, "frontend")
+    
+    # 先关闭已有进程
+    print("=" * 50)
+    print("🧹 检查并清理现有进程...")
+    print("=" * 50)
+    kill_existing_processes()
+    print()
     
     processes = []
     

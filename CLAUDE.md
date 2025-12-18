@@ -236,6 +236,51 @@ const {
 - ✅ 组件完全解耦，可复用
 - ✅ 使用 useMemo/useCallback 优化性能
 
+### 数据治理 Tab 切换设计规范
+
+每个数据资产模块应采用 Tab 切换界面展示不同治理场景：
+
+**设计原则**:
+
+- 第一个 Tab 为"资产列表"，是默认视图
+- 后续 Tab 为"治理分析"视图，聚焦特定数据质量问题
+- Tab 样式统一使用 `bg-gray-100/80 rounded-lg` 容器
+- 激活态使用 `bg-white text-indigo-600 shadow-sm`
+
+**代码模式**:
+
+```tsx
+const [activeTab, setActiveTab] = useState<'list' | 'analysis'>('list');
+
+// Tab 切换组件
+<div className="flex p-1 bg-gray-100/80 rounded-lg">
+  <button
+    onClick={() => setActiveTab('list')}
+    className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${
+      activeTab === 'list'
+        ? 'bg-white text-indigo-600 shadow-sm'
+        : 'text-gray-500 hover:text-gray-700'
+    }`}
+  >
+    资产列表
+  </button>
+  <button onClick={() => setActiveTab('analysis')} ...>
+    治理分析
+  </button>
+</div>
+```
+
+**各模块治理场景**:
+
+| 模块 | Tab 1 (默认) | Tab 2+ (治理分析) |
+|------|-------------|-------------------|
+| 指标库 ✅ | 指标列表 | 重复指标分析 |
+| 字段字典 | 字段列表 | 无描述字段 / 孤立字段 |
+| 数据表 | 数据表列表 | 未使用表 / 宽表分析 |
+| 数据源 | 数据源列表 | 未认证数据源 / 孤立数据源 |
+| 工作簿 | 工作簿列表 | 无视图工作簿 / 单源依赖分析 |
+| 视图 | 视图列表 | 无访问视图 / 复杂视图 |
+
 ### 文件命名
 
 - 组件: `PascalCase.tsx`

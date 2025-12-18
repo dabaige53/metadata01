@@ -8,6 +8,7 @@ import SortButtons from '@/components/data-table/SortButtons';
 import Pagination from '@/components/data-table/Pagination';
 import TableCard from '@/components/cards/TableCard';
 import { useDataTable } from '@/hooks/useDataTable';
+import UnusedTablesAnalysis from '@/components/tables/UnusedTablesAnalysis';
 
 interface TableItem {
     id: string;
@@ -26,12 +27,13 @@ interface TableItem {
         measures?: string[];
         dimensions?: string[];
     };
-    [key: string]: any;
+    [key: string]: unknown;
 }
 
 function TablesContent() {
     const [allData, setAllData] = useState<TableItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState<'list' | 'analysis'>('list');
     const { openDrawer } = useDrawer();
 
     // 加载数据
@@ -81,54 +83,87 @@ function TablesContent() {
 
     return (
         <div className="space-y-4">
-            {/* 页面标题 */}
+            {/* 页面标题与标签页切换 */}
             <div className="flex items-center justify-between">
-                <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                    <Table2 className="w-5 h-5 text-indigo-600" />
-                    数据表
-                    <span className="text-sm font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                        {totalCount} 项
-                    </span>
-                </h1>
+                <div className="flex items-center gap-4">
+                    <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                        <Table2 className="w-5 h-5 text-indigo-600" />
+                        数据表
+                        <span className="text-sm font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                            {totalCount} 项
+                        </span>
+                    </h1>
 
-                {/* 排序按钮 */}
-                <SortButtons
-                    sortOptions={sortOptions}
-                    currentSort={sortState}
-                    onSortChange={handleSortChange}
-                />
-            </div>
-
-            {/* 筛选器 */}
-            <InlineFilter
-                facets={facets}
-                activeFilters={activeFilters}
-                onFilterChange={handleFilterChange}
-            />
-
-            {/* 横向卡片列表 */}
-            <div className="space-y-3">
-                {displayData.length === 0 ? (
-                    <div className="py-20 text-center text-gray-400">
-                        {totalCount === 0 ? '暂无数据' : '未找到匹配的数据表'}
+                    {/* 标签页切换 */}
+                    <div className="flex p-1 bg-gray-100/80 rounded-lg">
+                        <button
+                            onClick={() => setActiveTab('list')}
+                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'list'
+                                ? 'bg-white text-indigo-600 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            数据表列表
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('analysis')}
+                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'analysis'
+                                ? 'bg-white text-indigo-600 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            表治理分析
+                        </button>
                     </div>
-                ) : (
-                    displayData.map((item) => (
-                        <TableCard
-                            key={item.id}
-                            table={item}
-                            onClick={() => openDrawer(item.id, 'tables', item.name)}
-                        />
-                    ))
+                </div>
+
+                {activeTab === 'list' && (
+                    <SortButtons
+                        sortOptions={sortOptions}
+                        currentSort={sortState}
+                        onSortChange={handleSortChange}
+                    />
                 )}
             </div>
 
-            {/* 分页控件 */}
-            {displayData.length > 0 && (
-                <Pagination
-                    pagination={paginationState}
-                    onPageChange={handlePageChange}
+            {/* 标签页内容切换 */}
+            {activeTab === 'list' && (
+                <InlineFilter
+                    facets={facets}
+                    activeFilters={activeFilters}
+                    onFilterChange={handleFilterChange}
                 />
+            )}
+
+            {activeTab === 'list' ? (
+                <>
+                    {/* 横向卡片列表 */}
+                    <div className="space-y-3">
+                        {displayData.length === 0 ? (
+                            <div className="py-20 text-center text-gray-400">
+                                {totalCount === 0 ? '暂无数据' : '未找到匹配的数据表'}
+                            </div>
+                        ) : (
+                            displayData.map((item) => (
+                                <TableCard
+                                    key={item.id}
+                                    table={item}
+                                    onClick={() => openDrawer(item.id, 'tables', item.name)}
+                                />
+                            ))
+                        )}
+                    </div>
+
+                    {/* 分页控件 */}
+                    {displayData.length > 0 && (
+                        <Pagination
+                            pagination={paginationState}
+                            onPageChange={handlePageChange}
+                        />
+                    )}
+                </>
+            ) : (
+                <UnusedTablesAnalysis />
             )}
         </div>
     );
@@ -145,3 +180,4 @@ export default function TablesPage() {
         </Suspense>
     );
 }
+

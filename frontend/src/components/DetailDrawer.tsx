@@ -70,6 +70,24 @@ interface DetailItem {
     [key: string]: any;
 }
 
+// ========== 骨架屏组件 ==========
+const DetailSkeleton = () => (
+    <div className="space-y-6 animate-pulse">
+        {/* Content Skeleton */}
+        <div className="space-y-4">
+            <div className="h-24 bg-gray-100 rounded-lg" />
+            <div className="grid grid-cols-2 gap-px bg-gray-200 rounded-lg border border-gray-200 overflow-hidden">
+                {[1, 2, 3, 4].map(i => (
+                    <div key={i} className="bg-white p-3 space-y-2">
+                        <div className="h-3 bg-gray-100 rounded w-12" />
+                        <div className="h-4 bg-gray-200 rounded w-24" />
+                    </div>
+                ))}
+            </div>
+        </div>
+    </div>
+);
+
 export default function DetailDrawer() {
     const { isOpen, closeDrawer, currentItem, openDrawer, history, pushItem, goBack, goToIndex } = useDrawer();
     const [activeTab, setActiveTab] = useState('overview');
@@ -79,17 +97,22 @@ export default function DetailDrawer() {
     const [lineageData, setLineageData] = useState<any>(null);
     const [lineageLoading, setLineageLoading] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+    const [readyToShow, setReadyToShow] = useState(false); // 控制侧边栏滑入时机
 
     const toggleGroupExpand = (groupKey: string) => {
         setExpandedGroups(prev => ({ ...prev, [groupKey]: !prev[groupKey] }));
     };
+
     useEffect(() => {
         if (isOpen && currentItem) {
+            // 数据开始加载时立即开始滑入
+            setTimeout(() => setReadyToShow(true), 50);
             loadData(currentItem.id, currentItem.type);
             setActiveTab('overview');
             setLineageData(null);
         } else {
             setData(null);
+            setReadyToShow(false);
         }
     }, [isOpen, currentItem]);
 
@@ -215,8 +238,8 @@ export default function DetailDrawer() {
             tabs.push({ id: 'duplicates', label: `重复指标 (${data.similarMetrics.length})`, icon: AlertTriangle });
         }
 
-        // 血缘
-        if (['fields', 'metrics', 'datasources', 'tables'].includes(type)) {
+        // 血缘 - 支持所有核心资产模块
+        if (['fields', 'metrics', 'datasources', 'tables', 'databases', 'workbooks', 'views'].includes(type)) {
             tabs.push({ id: 'lineage', label: '血缘图', icon: GitBranch });
         }
 
@@ -249,14 +272,15 @@ export default function DetailDrawer() {
         const groupKey = `section-${title}`;
 
         return (
-            <div className={`bg-${colorClass}-50/50 rounded-lg border border-${colorClass}-100 p-4`}>
+            <div className={`bg-${colorClass}-50/50 rounded-lg border border-${colorClass}-100 p-4 animate-in slide-in-up`}>
                 <h3 className={`text-xs font-bold text-${colorClass}-900 mb-3 flex items-center gap-2`}>
                     {icon && React.createElement(icon, { className: `w-3.5 h-3.5 text-${colorClass}-600` })} {title}
                 </h3>
                 <div className="space-y-1">
                     {(expandedGroups[groupKey] ? items : items.slice(0, 10)).map((asset: any, ai: number) => (
                         <div key={ai} onClick={() => handleAssetClick(asset.id, type, asset.name)}
-                            className={`flex items-center justify-between bg-white p-2 rounded border border-${colorClass}-100 ${asset.id ? 'cursor-pointer hover:border-${colorClass}-300 hover:bg-${colorClass}-50' : ''} transition-all shadow-sm`}>
+                            style={{ animationDelay: `${ai * 30}ms` }}
+                            className={`flex items-center justify-between bg-white p-2 rounded border border-${colorClass}-100 ${asset.id ? 'cursor-pointer hover:border-${colorClass}-300 hover:bg-${colorClass}-50 hover:scale-[1.01] active:scale-[0.99]' : ''} transition-all shadow-sm animate-in fade-in slide-in-up fill-mode-backwards`}>
                             <div className="flex flex-col min-w-0">
                                 <span className="text-[13px] text-gray-700 font-medium truncate">{asset.name}</span>
                                 {asset.subtitle && <span className="text-[10px] text-gray-400">{asset.subtitle}</span>}
@@ -350,10 +374,10 @@ export default function DetailDrawer() {
         const mockHotness = (data.referenceCount || data.views?.length || 0) > 5 ? 'High' : 'Normal';
 
         return (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-in slide-in-up">
                 {/* 描述信息 - 增加高亮 */}
                 {data.description ? (
-                    <div className="bg-gradient-to-br from-indigo-50 to-white rounded-lg border border-indigo-100 p-4 shadow-sm">
+                    <div className="bg-gradient-to-br from-indigo-50 to-white rounded-lg border border-indigo-100 p-4 shadow-sm hover:shadow-md transition-shadow duration-300">
                         <div className="text-xs font-bold text-indigo-900 mb-1 flex items-center gap-2">
                             <Info className="w-3.5 h-3.5" /> 业务含义
                             <span data-tooltip="对该资产业务逻辑、使用场景和口径的详细描述">
@@ -568,6 +592,10 @@ export default function DetailDrawer() {
     // ========== Header 渲染 ==========
     const renderHeader = () => {
         const Icon = currentItem ? getModuleIcon(currentItem.type) : Info;
+        // 使用 currentItem 信息作为兜底，实现立即渲染
+        const displayId = data?.id || currentItem?.id || '-';
+        const displayName = data?.name || currentItem?.name || '资产详情';
+
         const mockQuality = (data?.description ? 98 : 65);
         const mockCertified = data?.is_certified === true;
         const mockRef = (data?.referenceCount || data?.views?.length || 0);
@@ -599,12 +627,12 @@ export default function DetailDrawer() {
                                 <Icon className="w-8 h-8" />
                             </div>
                             <div>
-                                <h2 className="text-xl font-bold text-gray-900 leading-tight mb-2">{data?.name || '资产详情'}</h2>
+                                <h2 className="text-xl font-bold text-gray-900 leading-tight mb-2">{displayName}</h2>
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <div className="group flex items-center gap-1 font-mono text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
-                                        <span className="select-all break-all">{data?.id || '-'}</span>
+                                        <span className="select-all break-all">{displayId}</span>
                                         <button
-                                            onClick={() => navigator.clipboard.writeText(data?.id || '')}
+                                            onClick={() => navigator.clipboard.writeText(displayId)}
                                             className="text-gray-400 hover:text-indigo-600 transition-colors"
                                             title="复制 ID"
                                         >
@@ -656,8 +684,11 @@ export default function DetailDrawer() {
 
     return (
         <>
-            <div className="fixed inset-0 bg-gray-900/20 backdrop-blur-[2px] z-40 transition-opacity" onClick={closeDrawer} />
-            <div className={`fixed inset-y-0 right-0 w-[640px] bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-out border-l border-gray-100 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+            <div
+                className={`fixed inset-0 bg-gray-900/20 backdrop-blur-[2px] z-40 transition-opacity duration-500 ${isOpen && readyToShow ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                onClick={closeDrawer}
+            />
+            <div className={`fixed inset-y-0 right-0 w-[640px] bg-white shadow-2xl z-50 transform transition-transform duration-[800ms] ease-[cubic-bezier(0.16,1,0.3,1)] border-l border-gray-100 ${isOpen && readyToShow ? 'translate-x-0' : 'translate-x-full'}`}>
                 <div className="h-full flex flex-col">
 
                     {/* Navigation Buttons */}
@@ -682,21 +713,20 @@ export default function DetailDrawer() {
 
                     {/* Content */}
                     <div className="flex-1 overflow-y-auto p-6 bg-white custom-scrollbar">
-                        {loading ? (
-                            <div className="flex flex-col items-center justify-center py-20 gap-3">
-                                <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
-                                <span className="text-xs text-gray-400">Loading asset details...</span>
-                            </div>
-                        ) : error ? (
-                            <div className="text-center py-20 text-red-500">
-                                <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                                {error}
-                            </div>
-                        ) : (
-                            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                {renderContent()}
-                            </div>
-                        )}
+                        <div className="transition-opacity duration-300 ease-out">
+                            {loading ? (
+                                <DetailSkeleton />
+                            ) : error ? (
+                                <div className="text-center py-20 text-red-500">
+                                    <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                                    <span className="text-sm font-medium">{error}</span>
+                                </div>
+                            ) : (
+                                <div key={currentItem?.id} className="animate-in fade-in duration-300" style={{ animationDelay: '100ms', animationFillMode: 'backwards' }}>
+                                    {renderContent()}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
