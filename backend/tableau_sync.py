@@ -446,6 +446,9 @@ class TableauMetadataClient:
                     id
                     name
                     description
+                    dataType
+                    role
+                    isCalculated
                 }
             }
         }

@@ -210,8 +210,20 @@ export default function DetailDrawer() {
             if (data.columns && data.columns.length > 0) {
                 tabs.push({ id: 'columns', label: `原始列 (${data.columns.length})`, icon: List });
             }
+            if (data.full_fields && data.full_fields.length > 0) {
+                tabs.push({ id: 'fields', label: `包含字段 (${data.full_fields.length})`, icon: Columns });
+            }
             if (data.datasources && data.datasources.length > 0) {
                 tabs.push({ id: 'datasources', label: `关联数据源 (${data.datasources.length})`, icon: Layers });
+            }
+        }
+
+        if (type === 'columns') {
+            if (data.table_info) {
+                tabs.push({ id: 'table', label: '所属数据表', icon: Table2 });
+            }
+            if (data.database_info) {
+                tabs.push({ id: 'db', label: '所属数据库', icon: Database });
             }
         }
 
@@ -265,6 +277,18 @@ export default function DetailDrawer() {
         }
 
         if (type === 'views') {
+            // 所属工作簿
+            if (data.workbook_info) {
+                tabs.push({ id: 'workbook', label: '所属工作簿', icon: BookOpen });
+            }
+            // 使用的字段
+            if (data.used_fields && data.used_fields.length > 0) {
+                tabs.push({ id: 'fields', label: `使用字段 (${data.used_fields.length})`, icon: Columns });
+            }
+            // 使用的指标
+            if (data.used_metrics && data.used_metrics.length > 0) {
+                tabs.push({ id: 'metrics', label: `使用指标 (${data.used_metrics.length})`, icon: FunctionSquare });
+            }
             // 访问统计 tab
             tabs.push({ id: 'usage', label: '访问统计', icon: BarChart3 });
         }
@@ -726,6 +750,9 @@ export default function DetailDrawer() {
                     subtitle: wb.owner ? `Owner: ${wb.owner}` : (wb.projectName || undefined)
                 }));
                 return renderAssetSection('引用此资产的工作簿', BookOpen, wbItems, 'workbooks', 'red');
+            case 'workbook':
+                // Views 模块：所属工作簿（单个）
+                return renderAssetSection('所属工作簿', BookOpen, data.workbook_info ? [data.workbook_info] : [], 'workbooks', 'red');
 
             // 架构容器相关
             case 'datasources':

@@ -21,3 +21,8 @@ class Config:
     # 服务器配置
     HOST = os.environ.get('HOST', '0.0.0.0')
     PORT = int(os.environ.get('PORT', 8101))
+    
+    # Tableau 配置
+    TABLEAU_BASE_URL = os.environ.get('TABLEAU_BASE_URL', 'https://prod-apnortheast-a.online.tableau.com')
+    TABLEAU_USERNAME = os.environ.get('TABLEAU_USERNAME', '')
+    TABLEAU_PASSWORD = os.environ.get('TABLEAU_PASSWORD', '')

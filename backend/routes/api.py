@@ -26,7 +26,7 @@ def get_stats():
     stats_rows = session.execute(text("""
         SELECT 'databases' as key, COUNT(*) as cnt FROM databases
         UNION ALL SELECT 'tables', COUNT(*) FROM tables
-        UNION ALL SELECT 'fields', COUNT(*) FROM fields
+        UNION ALL SELECT 'fields', COUNT(*) FROM fields WHERE is_calculated = 0 OR is_calculated IS NULL
         UNION ALL SELECT 'calculatedFields', COUNT(*) FROM calculated_fields
         UNION ALL SELECT 'datasources', COUNT(*) FROM datasources
         UNION ALL SELECT 'workbooks', COUNT(*) FROM workbooks
@@ -514,7 +514,7 @@ def get_tables():
     """获取数据表列表 - 性能优化版"""
     session = g.db_session
     search = request.args.get('search', '')
-    sort = request.args.get('sort', '')
+    schema_filter = request.args.get('schema', '')
     sort = request.args.get('sort', '')
     order = request.args.get('order', 'asc')
     
@@ -538,10 +538,26 @@ def get_tables():
     if search: 
         query = query.filter(DBTable.name.ilike(f'%{search}%'))
     
-    if sort in ['name', 'schema']:
-        query = apply_sorting(query, DBTable, sort, order)
+    if schema_filter:
+        query = query.filter(DBTable.schema == schema_filter)
     
+    # 排序
+    if sort == 'name':
+        query = query.order_by(DBTable.name.desc() if order == 'desc' else DBTable.name.asc())
+    elif sort == 'schema':
+        query = query.order_by(DBTable.schema.desc() if order == 'desc' else DBTable.schema.asc())
+    
+    # 总数和分页
+    total_count = query.count()
     tables = query.limit(page_size).offset(offset).all()
+    
+    # Facets 统计 (schema)
+    schema_stats = session.execute(text("""
+        SELECT schema, COUNT(*) as cnt FROM tables WHERE schema IS NOT NULL GROUP BY schema
+    """)).fetchall()
+    facets = {
+        'schema': {row[0]: row[1] for row in schema_stats if row[0]}
+    }
     
     # 预查询统计数据
     table_ids = [t.id for t in tables]
@@ -600,14 +616,16 @@ def get_tables():
         }
         results.append(data)
 
+    # 内存排序 field_count
     if sort == 'field_count':
         results.sort(key=lambda x: x.get('field_count', 0), reverse=(order == 'desc'))
 
     return jsonify({
         'items': results,
-        'total': query.count(),
+        'total': total_count,
         'page': page,
-        'page_size': page_size
+        'page_size': page_size,
+        'facets': facets
     })
 
 @api_bp.route('/tables/<table_id>')
@@ -685,6 +703,33 @@ def get_table_detail(table_id):
 
     return jsonify(data)
 
+
+# ==================== 数据库列接口 ====================
+
+@api_bp.route('/columns/<column_id>')
+def get_column_detail(column_id):
+    """获取数据库原始列详情"""
+    session = g.db_session
+    column = session.query(DBColumn).filter(DBColumn.id == column_id).first()
+    if not column:
+        return jsonify({'error': 'Not found'}), 404
+
+    data = column.to_dict()
+    
+    # 补充所属表和数据库信息
+    if column.table:
+        data['table_info'] = {
+            'id': column.table.id,
+            'name': column.table.name,
+            'schema': column.table.schema
+        }
+        if column.table.database:
+            data['database_info'] = {
+                'id': column.table.database.id,
+                'name': column.table.database.name
+            }
+
+    return jsonify(data)
 
 # ==================== 数据源接口 ====================
 
@@ -1064,11 +1109,14 @@ def get_fields():
     if data_type:
         conditions.append("f.data_type = :data_type")
         params['data_type'] = data_type
-    if has_description:
         if has_description.lower() == 'true':
             conditions.append("f.description IS NOT NULL AND f.description != ''")
         elif has_description.lower() == 'false':
             conditions.append("(f.description IS NULL OR f.description = '')")
+    
+    # 默认只返回非计算字段 (计算字段属于指标模块)
+    conditions.append("(f.is_calculated = 0 OR f.is_calculated IS NULL)")
+
     if search:
         conditions.append("(f.name LIKE :search OR f.description LIKE :search)")
         params['search'] = f'%{search}%'
@@ -1332,6 +1380,7 @@ def get_metrics():
     order = request.args.get('order', 'desc')
     metric_type = request.args.get('metric_type', 'all')
     role_filter = request.args.get('role', '')
+    has_duplicate = request.args.get('hasDuplicate', '')
     
     # 分页参数
     page = request.args.get('page', 1, type=int)
@@ -1354,11 +1403,49 @@ def get_metrics():
         conditions.append("f.role = :role_filter")
         params['role_filter'] = role_filter
     
+    if has_duplicate:
+        if has_duplicate.lower() == 'true':
+            conditions.append("cf.has_duplicates = 1")
+        elif has_duplicate.lower() == 'false':
+            conditions.append("(cf.has_duplicates = 0 OR cf.has_duplicates IS NULL)")
+    
     if search:
         conditions.append("(f.name LIKE :search OR cf.formula LIKE :search)")
         params['search'] = f'%{search}%'
     
     where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+    
+    # Facets 统计
+    facets_sql = """
+        SELECT 
+            'metricType' as facet_key,
+            CASE WHEN f.role = 'measure' THEN 'business' ELSE 'technical' END as facet_value,
+            COUNT(*) as cnt
+        FROM fields f
+        INNER JOIN calculated_fields cf ON f.id = cf.field_id
+        GROUP BY facet_value
+        UNION ALL
+        SELECT 'role', f.role, COUNT(*)
+        FROM fields f
+        INNER JOIN calculated_fields cf ON f.id = cf.field_id
+        WHERE f.role IS NOT NULL
+        GROUP BY f.role
+        UNION ALL
+        SELECT 'hasDuplicate', 
+               CASE WHEN cf.has_duplicates = 1 THEN 'true' ELSE 'false' END,
+               COUNT(*)
+        FROM fields f
+        INNER JOIN calculated_fields cf ON f.id = cf.field_id
+        GROUP BY cf.has_duplicates
+    """
+    facets_rows = session.execute(text(facets_sql)).fetchall()
+    facets = {}
+    for row in facets_rows:
+        key, value, cnt = row
+        if key not in facets:
+            facets[key] = {}
+        if value:
+            facets[key][value] = cnt
     
     # 1. 统计查询
     stats_sql = f"""
@@ -1428,7 +1515,8 @@ def get_metrics():
         'total': total,
         'page': page,
         'page_size': page_size,
-        'total_pages': total_pages
+        'total_pages': total_pages,
+        'facets': facets
     })
 
 
