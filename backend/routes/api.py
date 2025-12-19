@@ -455,7 +455,12 @@ def get_databases():
         data['total_field_count'] = db_stats['fields']
         results.append(data)
 
-    return jsonify(results)
+    return jsonify({
+        'items': results,
+        'total': len(results),
+        'page': 1,
+        'page_size': len(results)
+    })
 
 
 @api_bp.route('/databases/<db_id>')
@@ -538,12 +543,15 @@ def get_tables():
     
     tables = query.limit(page_size).offset(offset).all()
     
-    # 预查询工作簿统计
+    # 预查询统计数据
     table_ids = [t.id for t in tables]
-    # 预查询工作簿统计
-    table_ids = [t.id for t in tables]
+    wb_map = {}
+    field_stats_map = {}
+    
     if table_ids:
         from sqlalchemy import bindparam
+        
+        # 预查询工作簿统计
         stmt = text("""
             SELECT td.table_id, COUNT(DISTINCT dw.workbook_id) as wb_count
             FROM table_to_datasource td
@@ -554,22 +562,42 @@ def get_tables():
         stmt = stmt.bindparams(bindparam('table_ids', expanding=True))
         wb_stats = session.execute(stmt, {'table_ids': list(table_ids)}).fetchall()
         wb_map = {row[0]: row[1] for row in wb_stats}
-    else:
-        wb_map = {}
+        
+        # 预查询字段统计（通过 table_to_datasource 关系链）
+        field_stmt = text("""
+            SELECT 
+                td.table_id,
+                COUNT(DISTINCT f.id) as field_count,
+                COUNT(DISTINCT CASE WHEN f.role = 'measure' THEN f.id END) as measure_count,
+                COUNT(DISTINCT CASE WHEN f.role != 'measure' THEN f.id END) as dimension_count
+            FROM table_to_datasource td
+            JOIN fields f ON td.datasource_id = f.datasource_id
+            WHERE td.table_id IN :table_ids
+            GROUP BY td.table_id
+        """)
+        field_stmt = field_stmt.bindparams(bindparam('table_ids', expanding=True))
+        field_stats = session.execute(field_stmt, {'table_ids': list(table_ids)}).fetchall()
+        field_stats_map = {row[0]: {'field_count': row[1], 'measure_count': row[2], 'dimension_count': row[3]} for row in field_stats}
     
     results = []
     for t in tables:
         data = t.to_dict()
-        data['field_count'] = len(t.fields)
+        
+        # 使用预查询的统计数据，如果没有则回退到直接关联
+        stats = field_stats_map.get(t.id, {})
+        direct_field_count = len(t.fields) if t.fields else 0
+        data['field_count'] = stats.get('field_count', direct_field_count)
         data['column_count'] = len(t.columns) if t.columns else 0
         data['datasource_count'] = len(t.datasources) if t.datasources else 0
         data['workbook_count'] = wb_map.get(t.id, 0)
         
-        # 字段预览（使用已预加载的数据）
-        param_fields = t.fields
-        measures = [f.name for f in param_fields if f.role == 'measure'][:5]
-        dimensions = [f.name for f in param_fields if f.role != 'measure'][:5]
-        data['preview_fields'] = {'measures': measures, 'dimensions': dimensions}
+        # 字段预览（使用预查询的统计）
+        measure_count = stats.get('measure_count', 0)
+        dimension_count = stats.get('dimension_count', 0)
+        data['preview_fields'] = {
+            'measures': [f'度量字段 ({measure_count}个)'] if measure_count > 0 else [],
+            'dimensions': [f'维度字段 ({dimension_count}个)'] if dimension_count > 0 else []
+        }
         results.append(data)
 
     if sort == 'field_count':
@@ -810,7 +838,12 @@ def get_workbooks():
         data['upstream_datasources'] = [ds.name for ds in wb.datasources]
         results.append(data)
         
-    return jsonify(results)
+    return jsonify({
+        'items': results,
+        'total': len(results),
+        'page': 1,
+        'page_size': len(results)
+    })
 
 
 @api_bp.route('/workbooks/<wb_id>')
@@ -937,6 +970,66 @@ def get_view_detail(view_id):
     data['used_metrics'] = metrics_data
     
     return jsonify(data)
+
+
+@api_bp.route('/views/<view_id>/usage-stats')
+def get_view_usage_stats(view_id):
+    """获取视图访问统计（含今日/本周增量）"""
+    session = g.db_session
+    from sqlalchemy import text
+    from datetime import datetime, timedelta
+    
+    view = session.query(View).filter(View.id == view_id).first()
+    if not view:
+        return jsonify({'error': 'Not found'}), 404
+    
+    current_count = view.total_view_count or 0
+    
+    # 计算今日和本周增量
+    now = datetime.utcnow()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_ago = now - timedelta(days=7)
+    
+    # 查询历史记录
+    history_stmt = text("""
+        SELECT total_view_count, recorded_at 
+        FROM view_usage_history 
+        WHERE view_id = :view_id 
+        ORDER BY recorded_at DESC
+    """)
+    history = session.execute(history_stmt, {'view_id': view_id}).fetchall()
+    
+    # 计算增量
+    daily_delta = 0
+    weekly_delta = 0
+    
+    if history:
+        # 找到今天之前的最近一条记录
+        for h in history:
+            count, recorded_at = h[0], h[1]
+            if isinstance(recorded_at, str):
+                recorded_at = datetime.fromisoformat(recorded_at.replace('Z', '+00:00'))
+            if recorded_at < today_start:
+                daily_delta = current_count - count
+                break
+        
+        # 找到一周前的最近一条记录
+        for h in history:
+            count, recorded_at = h[0], h[1]
+            if isinstance(recorded_at, str):
+                recorded_at = datetime.fromisoformat(recorded_at.replace('Z', '+00:00'))
+            if recorded_at < week_ago:
+                weekly_delta = current_count - count
+                break
+    
+    return jsonify({
+        'viewId': view_id,
+        'viewName': view.name,
+        'totalViewCount': current_count,
+        'dailyDelta': daily_delta,
+        'weeklyDelta': weekly_delta,
+        'history': [{'count': h[0], 'recordedAt': h[1]} for h in history[:10]]  # 最近10条
+    })
 
 
 # ==================== 字段接口 ====================
@@ -1344,6 +1437,8 @@ def get_metric_detail(metric_id):
     """获取单条指标详情 - 高性能版（使用预计算字段和索引）"""
     session = g.db_session
     from sqlalchemy.orm import joinedload, selectinload
+    # Ensure explicit import if needed, though usually top-level is fine
+    from ..models import FieldDependency
 
     result = session.query(Field, CalculatedField).join(
         CalculatedField, Field.id == CalculatedField.field_id
@@ -1358,52 +1453,6 @@ def get_metric_detail(metric_id):
     field, calc_field = result
     
     # 1. 查找相似指标 (使用 formula_hash 快速查重)
-    similar = []
-    if calc_field.formula_hash:
-        similar_results = session.query(Field, CalculatedField).join(
-            CalculatedField, Field.id == CalculatedField.field_id
-        ).filter(
-            CalculatedField.formula_hash == calc_field.formula_hash,
-            Field.id != field.id
-        ).all()
-        
-        for s_field, s_calc in similar_results:
-            similar.append({
-                'id': s_field.id,
-                'name': s_field.name,
-                'datasource_name': s_field.datasource.name if s_field.datasource else 'Unknown',
-                'usage_count': s_field.usage_count or 0
-            })
-
-    # 2. 获取依赖字段 (Lineage)
-    dependencies = []
-    deps = session.query(FieldDependencies).filter(FieldDependencies.source_field_id == field.id).all()
-    for d in deps:
-        dependencies.append({
-            'name': d.dependency_name,
-            'id': d.dependency_field_id
-        })
-
-    # 3. 数据源及上游表信息
-    datasource_info = None
-    upstream_tables = []
-    if field.datasource:
-        datasource_info = {
-            'id': field.datasource.id,
-            'name': field.datasource.name,
-            'project_name': field.datasource.project_name,
-            'owner': field.datasource.owner,
-            'is_certified': field.datasource.is_certified
-        }
-        for t in field.datasource.tables:
-            upstream_tables.append({
-                'id': t.id,
-                'name': t.name,
-                'schema': t.schema,
-                'database_name': t.database.name if t.database else None
-            })
-
-    # 2. 查找相似指标 (使用 formula_hash 快速查重)
     similar = []
     if calc_field.formula_hash:
         similar_results = session.query(Field, CalculatedField).join(
@@ -1444,30 +1493,39 @@ def get_metric_detail(metric_id):
                 'usedInWorkbooks': list(dup_workbooks.values())
             })
 
-    # 3. 获取依赖字段 (Lineage)
+    # 2. 获取依赖字段 (Lineage)
     dependencies = []
-    if calc_field.formula and isinstance(calc_field.formula, str):
-        refs = re.findall(r'\[(.*?)\]', calc_field.formula)
-        unique_refs = list(set(refs))
-        for ref_name in unique_refs:
-            ref_field = session.query(Field).filter(Field.name == ref_name).first()
-            if ref_field:
-                dep_info = {
-                    'id': ref_field.id,
-                    'name': ref_field.name,
-                    'data_type': ref_field.data_type,
-                    'role': ref_field.role,
-                    'is_calculated': ref_field.is_calculated
-                }
-                # 追溯到表
-                if ref_field.table:
-                    dep_info['table_name'] = ref_field.table.name
-                    dep_info['table_id'] = ref_field.table.id
-                elif ref_field.datasource and ref_field.datasource.tables:
-                    dep_info['upstream_tables'] = [t.name for t in ref_field.datasource.tables[:3]]
-                dependencies.append(dep_info)
-            else:
-                dependencies.append({'name': ref_name, 'id': None})
+    # Explicitly using FieldDependency imported locally to avoid any NameError
+    try:
+        deps = session.query(FieldDependency).filter(FieldDependency.source_field_id == field.id).all()
+        for d in deps:
+            dependencies.append({
+                'name': d.dependency_name,
+                'id': d.dependency_field_id
+            })
+    except Exception as e:
+        print(f"Error fetching dependencies: {e}")
+        # Add a dummy dependency to see if it works
+        dependencies.append({'name': 'Error: ' + str(e), 'id': None})
+
+    # 3. 数据源及上游表信息
+    datasource_info = None
+    upstream_tables = []
+    if field.datasource:
+        datasource_info = {
+            'id': field.datasource.id,
+            'name': field.datasource.name,
+            'project_name': field.datasource.project_name,
+            'owner': field.datasource.owner,
+            'is_certified': field.datasource.is_certified
+        }
+        for t in field.datasource.tables:
+            upstream_tables.append({
+                'id': t.id,
+                'name': t.name,
+                'schema': t.schema,
+                'database_name': t.database.name if t.database else None
+            })
 
     # 4. 获取被引用情况（视图和工作簿）
     views_data = []
@@ -1691,449 +1749,116 @@ def global_search():
 
 @api_bp.route('/lineage/graph/<item_type>/<item_id>')
 def get_lineage_graph(item_type, item_id):
-    """获取血缘关系 - 返回 Mermaid 图形化格式（上下最多 2 层）"""
+    """获取血缘关系 - 返回 Mermaid 图形化格式"""
     session = g.db_session
-
-    # 为避免巨大图，限制每层返回数量（可通过 query 参数调小/调大，但强制上限）
-    limit_level1 = request.args.get('limit1', 10, type=int)
-    limit_level2 = request.args.get('limit2', 10, type=int)
-    limit_level1 = max(1, min(limit_level1, 30))
-    limit_level2 = max(1, min(limit_level2, 30))
-
-    nodes_by_key = {}
-    edges_set = set()
+    nodes = []
     edges = []
-
-    def add_node(node_id, name, node_type, is_center=False):
-        if not node_id:
-            return
-        key = (node_type, node_id)
-        existing = nodes_by_key.get(key)
-        if existing:
-            # 如果后续发现是中心节点，提升样式
-            if is_center and existing.get('style') != 'center':
-                existing['style'] = 'center'
-            return
-        nodes_by_key[key] = {
-            'id': node_id,
-            'name': name or '-',
-            'type': node_type,
-            'style': 'center' if is_center else node_type
-        }
-
-    def add_edge(from_id, to_id, label=''):
-        if not from_id or not to_id:
-            return
-        key = (from_id, to_id, label or '')
-        if key in edges_set:
-            return
-        edges_set.add(key)
-        edges.append({'from': from_id, 'to': to_id, 'label': label or ''})
-
-    def node_code(node_id: str) -> str:
-        # Mermaid 节点 ID 不建议以数字开头；统一加前缀并截断
-        return f"n{(node_id or '')[:8]}"
-
-    def fetchone_dict(stmt: str, params: dict, expanding_params=None):
-        from sqlalchemy import text, bindparam
-        t = text(stmt)
-        if expanding_params:
-            for k in expanding_params:
-                t = t.bindparams(bindparam(k, expanding=True))
-        row = session.execute(t, params).mappings().first()
-        return dict(row) if row else None
     
-    def fetchall_dict(stmt: str, params: dict, expanding_params=None):
-        from sqlalchemy import text, bindparam
-        t = text(stmt)
-        if expanding_params:
-            for k in expanding_params:
-                t = t.bindparams(bindparam(k, expanding=True))
-        rows = session.execute(t, params).mappings().all()
-        return [dict(r) for r in rows]
-
-    # ========== 数据库 ==========
-    if item_type == 'database':
-        db = session.query(Database).filter(Database.id == item_id).first()
-        if not db:
-            return jsonify({'error': 'Not found'}), 404
-        add_node(db.id, db.name, 'database', is_center=True)
-
-        tables = fetchall_dict(
-            """
-            SELECT id, name, schema, database_id
-            FROM tables
-            WHERE database_id = :db_id
-            ORDER BY name
-            LIMIT :limit1
-            """,
-            {'db_id': db.id, 'limit1': limit_level1}
-        )
-        table_ids = []
-        for t in tables:
-            add_node(t['id'], t.get('name'), 'table')
-            add_edge(db.id, t['id'], '包含')
-            table_ids.append(t['id'])
-
-        if table_ids:
-            # 下游第二层：表 -> 数据源（去重后限制）
-            ds_rows = fetchall_dict(
-                """
-                SELECT td.table_id AS table_id, ds.id AS datasource_id, ds.name AS datasource_name
-                FROM table_to_datasource td
-                JOIN datasources ds ON ds.id = td.datasource_id
-                WHERE td.table_id IN :table_ids
-                ORDER BY ds.name
-                LIMIT :limit2
-                """,
-                {'table_ids': list(table_ids), 'limit2': limit_level2},
-                expanding_params=['table_ids']
-            )
-            for r in ds_rows:
-                add_node(r['datasource_id'], r.get('datasource_name'), 'datasource')
-                add_edge(r['table_id'], r['datasource_id'], '来源')
-
-    # ========== 数据表 ==========
-    elif item_type == 'table':
-        table = session.query(DBTable).filter(DBTable.id == item_id).first()
-        if not table:
-            return jsonify({'error': 'Not found'}), 404
-        add_node(table.id, table.name, 'table', is_center=True)
-
-        # 上游第一层：数据库
-        if table.database_id:
-            db = session.query(Database).filter(Database.id == table.database_id).first()
-            if db:
-                add_node(db.id, db.name, 'database')
-                add_edge(db.id, table.id, '包含')
-
-        # 下游第一层：数据源
-        ds_rows = fetchall_dict(
-            """
-            SELECT ds.id AS datasource_id, ds.name AS datasource_name
-            FROM table_to_datasource td
-            JOIN datasources ds ON ds.id = td.datasource_id
-            WHERE td.table_id = :table_id
-            ORDER BY ds.name
-            LIMIT :limit1
-            """,
-            {'table_id': table.id, 'limit1': limit_level1}
-        )
-        ds_ids = []
-        for r in ds_rows:
-            add_node(r['datasource_id'], r.get('datasource_name'), 'datasource')
-            add_edge(table.id, r['datasource_id'], '来源')
-            ds_ids.append(r['datasource_id'])
-
-        # 下游第二层：数据源 -> 工作簿
-        if ds_ids:
-            wb_rows = fetchall_dict(
-                """
-                SELECT dw.datasource_id AS datasource_id, wb.id AS workbook_id, wb.name AS workbook_name
-                FROM datasource_to_workbook dw
-                JOIN workbooks wb ON wb.id = dw.workbook_id
-                WHERE dw.datasource_id IN :ds_ids
-                ORDER BY wb.name
-                LIMIT :limit2
-                """,
-                {'ds_ids': list(ds_ids), 'limit2': limit_level2},
-                expanding_params=['ds_ids']
-            )
-            for r in wb_rows:
-                add_node(r['workbook_id'], r.get('workbook_name'), 'workbook')
-                add_edge(r['datasource_id'], r['workbook_id'], '使用')
-
-    # ========== 数据源 ==========
+    def add_node(id, name, type, is_center=False):
+        style = 'center' if is_center else type
+        nodes.append({'id': id, 'name': name, 'type': type, 'style': style})
+    
+    def add_edge(from_id, to_id, label=''):
+        edges.append({'from': from_id, 'to': to_id, 'label': label})
+    
+    if item_type == 'field':
+        field = session.query(Field).filter(Field.id == item_id).first()
+        if field:
+            add_node(field.id, field.name, 'field', is_center=True)
+            
+            # 上游：表
+            if field.table:
+                add_node(field.table.id, field.table.name, 'table')
+                add_edge(field.table.id, field.id, '包含')
+            
+            # 上游：数据源
+            if field.datasource:
+                add_node(field.datasource.id, field.datasource.name, 'datasource')
+                add_edge(field.datasource.id, field.id, '定义')
+            
+            # 下游：视图
+            for view in field.views[:10]:
+                add_node(view.id, view.name, 'view')
+                add_edge(field.id, view.id, '使用于')
+                if view.workbook:
+                    add_node(view.workbook_id, view.workbook.name, 'workbook')
+                    add_edge(view.id, view.workbook_id, '属于')
+    
+    elif item_type == 'metric':
+        result = session.query(Field, CalculatedField).join(
+            CalculatedField, Field.id == CalculatedField.field_id
+        ).filter(Field.id == item_id).first()
+        
+        if result:
+            field, calc = result
+            add_node(field.id, field.name, 'metric', is_center=True)
+            
+            # 上游：数据源
+            if field.datasource:
+                add_node(field.datasource.id, field.datasource.name, 'datasource')
+                add_edge(field.datasource.id, field.id, '定义')
+            
+            # 上游：依赖字段
+            if calc.formula and isinstance(calc.formula, str):
+                refs = re.findall(r'\[(.*?)\]', calc.formula)
+                for ref_name in set(refs)[:5]:
+                    dep_field = session.query(Field).filter(Field.name == ref_name).first()
+                    if dep_field:
+                        add_node(dep_field.id, dep_field.name, 'field')
+                        add_edge(dep_field.id, field.id, '依赖')
+            
+            # 下游：视图
+            for view in field.views[:5]:
+                add_node(view.id, view.name, 'view')
+                add_edge(field.id, view.id, '使用于')
+    
     elif item_type == 'datasource':
         ds = session.query(Datasource).filter(Datasource.id == item_id).first()
-        if not ds:
-            return jsonify({'error': 'Not found'}), 404
-        add_node(ds.id, ds.name, 'datasource', is_center=True)
-
-        # 上游第一层：表
-        upstream_tables = fetchall_dict(
-            """
-            SELECT t.id AS table_id, t.name AS table_name, t.schema AS schema, t.database_id AS database_id, db.name AS database_name
-            FROM table_to_datasource td
-            JOIN tables t ON t.id = td.table_id
-            LEFT JOIN databases db ON db.id = t.database_id
-            WHERE td.datasource_id = :ds_id
-            ORDER BY t.name
-            LIMIT :limit1
-            """,
-            {'ds_id': ds.id, 'limit1': limit_level1}
-        )
-
-        db_ids = set()
-        for t in upstream_tables:
-            add_node(t['table_id'], t.get('table_name'), 'table')
-            add_edge(t['table_id'], ds.id, '来源')
-            if t.get('database_id'):
-                db_ids.add((t.get('database_id'), t.get('database_name')))
-
-        # 上游第二层：数据库 -> 表
-        for db_id, db_name in list(db_ids)[:limit_level2]:
-            add_node(db_id, db_name, 'database')
-        for t in upstream_tables:
-            if t.get('database_id'):
-                add_edge(t['database_id'], t['table_id'], '包含')
-
-        # 下游第一层：工作簿
-        downstream_wbs = fetchall_dict(
-            """
-            SELECT wb.id AS workbook_id, wb.name AS workbook_name
-            FROM datasource_to_workbook dw
-            JOIN workbooks wb ON wb.id = dw.workbook_id
-            WHERE dw.datasource_id = :ds_id
-            ORDER BY wb.name
-            LIMIT :limit1
-            """,
-            {'ds_id': ds.id, 'limit1': limit_level1}
-        )
-        wb_ids = []
-        for wb in downstream_wbs:
-            add_node(wb['workbook_id'], wb.get('workbook_name'), 'workbook')
-            add_edge(ds.id, wb['workbook_id'], '使用')
-            wb_ids.append(wb['workbook_id'])
-
-        # 下游第二层：工作簿 -> 视图
-        if wb_ids:
-            view_rows = fetchall_dict(
-                """
-                SELECT v.id AS view_id, v.name AS view_name, v.workbook_id AS workbook_id
-                FROM views v
-                WHERE v.workbook_id IN :wb_ids
-                ORDER BY v.name
-                LIMIT :limit2
-                """,
-                {'wb_ids': list(wb_ids), 'limit2': limit_level2},
-                expanding_params=['wb_ids']
-            )
-            for v in view_rows:
-                add_node(v['view_id'], v.get('view_name'), 'view')
-                add_edge(v['workbook_id'], v['view_id'], '包含')
-
-    # ========== 工作簿 ==========
-    elif item_type == 'workbook':
-        wb = session.query(Workbook).filter(Workbook.id == item_id).first()
-        if not wb:
-            return jsonify({'error': 'Not found'}), 404
-        add_node(wb.id, wb.name, 'workbook', is_center=True)
-
-        # 上游第一层：数据源
-        ds_rows = fetchall_dict(
-            """
-            SELECT ds.id AS datasource_id, ds.name AS datasource_name
-            FROM datasource_to_workbook dw
-            JOIN datasources ds ON ds.id = dw.datasource_id
-            WHERE dw.workbook_id = :wb_id
-            ORDER BY ds.name
-            LIMIT :limit1
-            """,
-            {'wb_id': wb.id, 'limit1': limit_level1}
-        )
-        ds_ids = []
-        for r in ds_rows:
-            add_node(r['datasource_id'], r.get('datasource_name'), 'datasource')
-            add_edge(r['datasource_id'], wb.id, '使用')
-            ds_ids.append(r['datasource_id'])
-
-        # 上游第二层：表 -> 数据源
-        if ds_ids:
-            table_rows = fetchall_dict(
-                """
-                SELECT td.datasource_id AS datasource_id, t.id AS table_id, t.name AS table_name
-                FROM table_to_datasource td
-                JOIN tables t ON t.id = td.table_id
-                WHERE td.datasource_id IN :ds_ids
-                ORDER BY t.name
-                LIMIT :limit2
-                """,
-                {'ds_ids': list(ds_ids), 'limit2': limit_level2},
-                expanding_params=['ds_ids']
-            )
-            for r in table_rows:
-                add_node(r['table_id'], r.get('table_name'), 'table')
-                add_edge(r['table_id'], r['datasource_id'], '来源')
-
-        # 下游第一层：视图
-        view_rows = fetchall_dict(
-            """
-            SELECT id AS view_id, name AS view_name, workbook_id AS workbook_id
-            FROM views
-            WHERE workbook_id = :wb_id
-            ORDER BY name
-            LIMIT :limit1
-            """,
-            {'wb_id': wb.id, 'limit1': limit_level1}
-        )
-        for v in view_rows:
-            add_node(v['view_id'], v.get('view_name'), 'view')
-            add_edge(wb.id, v['view_id'], '包含')
-
-    # ========== 视图 ==========
-    elif item_type == 'view':
-        view = session.query(View).filter(View.id == item_id).first()
-        if not view:
-            return jsonify({'error': 'Not found'}), 404
-        add_node(view.id, view.name, 'view', is_center=True)
-
-        # 上游第一层：所属工作簿
-        if view.workbook_id:
-            wb = session.query(Workbook).filter(Workbook.id == view.workbook_id).first()
-            if wb:
-                add_node(wb.id, wb.name, 'workbook')
-                add_edge(wb.id, view.id, '包含')
-
-                # 上游第二层：数据源（通过工作簿）
-                ds_rows = fetchall_dict(
-                    """
-                    SELECT ds.id AS datasource_id, ds.name AS datasource_name
-                    FROM datasource_to_workbook dw
-                    JOIN datasources ds ON ds.id = dw.datasource_id
-                    WHERE dw.workbook_id = :wb_id
-                    ORDER BY ds.name
-                    LIMIT :limit2
-                    """,
-                    {'wb_id': wb.id, 'limit2': limit_level2}
-                )
-                for r in ds_rows:
-                    add_node(r['datasource_id'], r.get('datasource_name'), 'datasource')
-                    add_edge(r['datasource_id'], wb.id, '使用')
-
-    # ========== 字段 / 指标 ==========
-    elif item_type in ('field', 'metric'):
-        # metric 在系统中本质是 is_calculated 的 Field
-        field = session.query(Field).filter(Field.id == item_id).first()
-        if not field:
-            return jsonify({'error': 'Not found'}), 404
-        if item_type == 'metric':
-            calc = session.query(CalculatedField).filter(CalculatedField.field_id == field.id).first()
-            if not calc:
-                return jsonify({'error': 'Not found'}), 404
-        add_node(field.id, field.name, 'metric' if item_type == 'metric' else 'field', is_center=True)
-
-        # 上游第一层：数据源
-        if field.datasource_id:
-            ds = session.query(Datasource).filter(Datasource.id == field.datasource_id).first()
-            if ds:
-                add_node(ds.id, ds.name, 'datasource')
-                add_edge(ds.id, field.id, '定义')
-
-                # 如果字段没有直接关联表，则通过数据源追溯上游表（作为第二层）
-                if not field.table_id:
-                    upstream_tables = fetchall_dict(
-                        """
-                        SELECT t.id AS table_id, t.name AS table_name
-                        FROM table_to_datasource td
-                        JOIN tables t ON t.id = td.table_id
-                        WHERE td.datasource_id = :ds_id
-                        ORDER BY t.name
-                        LIMIT :limit2
-                        """,
-                        {'ds_id': ds.id, 'limit2': limit_level2}
-                    )
-                    for t in upstream_tables:
-                        add_node(t['table_id'], t.get('table_name'), 'table')
-                        add_edge(t['table_id'], ds.id, '来源')
-
-        # 上游第一层：所属表（如有）
-        if field.table_id:
-            table = session.query(DBTable).filter(DBTable.id == field.table_id).first()
-            if table:
+        if ds:
+            add_node(ds.id, ds.name, 'datasource', is_center=True)
+            
+            # 上游：表
+            for table in ds.tables[:10]:
                 add_node(table.id, table.name, 'table')
-                add_edge(table.id, field.id, '来源')
-
-                # 上游第二层：数据库
-                if table.database_id:
-                    db = session.query(Database).filter(Database.id == table.database_id).first()
-                    if db:
-                        add_node(db.id, db.name, 'database')
-                        add_edge(db.id, table.id, '包含')
-
-        # 上游第一层（仅 metric）：依赖字段
-        if item_type == 'metric':
-            dep_rows = fetchall_dict(
-                """
-                SELECT fd.dependency_field_id AS field_id, COALESCE(f.name, fd.dependency_name) AS field_name
-                FROM field_dependencies fd
-                LEFT JOIN fields f ON f.id = fd.dependency_field_id
-                WHERE fd.source_field_id = :field_id
-                ORDER BY field_name
-                LIMIT :limit1
-                """,
-                {'field_id': field.id, 'limit1': limit_level1}
-            )
-            for r in dep_rows:
-                if not r.get('field_id'):
-                    continue
-                add_node(r['field_id'], r.get('field_name'), 'field')
-                add_edge(r['field_id'], field.id, '依赖')
-
-        # 下游第一层：使用该字段/指标的视图
-        view_rows = fetchall_dict(
-            """
-            SELECT v.id AS view_id, v.name AS view_name, v.workbook_id AS workbook_id, wb.name AS workbook_name
-            FROM field_to_view fv
-            JOIN views v ON v.id = fv.view_id
-            LEFT JOIN workbooks wb ON wb.id = v.workbook_id
-            WHERE fv.field_id = :field_id
-            ORDER BY v.name
-            LIMIT :limit1
-            """,
-            {'field_id': field.id, 'limit1': limit_level1}
-        )
-        workbook_ids = {}
-        for v in view_rows:
-            add_node(v['view_id'], v.get('view_name'), 'view')
-            add_edge(field.id, v['view_id'], '使用于')
-            if v.get('workbook_id'):
-                workbook_ids[v['workbook_id']] = v.get('workbook_name') or '-'
-
-        # 下游第二层：视图 -> 工作簿（影响分析维度）
-        for wb_id, wb_name in list(workbook_ids.items())[:limit_level2]:
-            add_node(wb_id, wb_name, 'workbook')
-        for v in view_rows:
-            if v.get('workbook_id'):
-                add_edge(v['view_id'], v['workbook_id'], '属于')
-
-    else:
-        return jsonify({'error': 'Unsupported type'}), 400
-
-    nodes = list(nodes_by_key.values())
-
+                add_edge(table.id, ds.id, '来源')
+            
+            # 下游：工作簿
+            for wb in ds.workbooks[:10]:
+                add_node(wb.id, wb.name, 'workbook')
+                add_edge(ds.id, wb.id, '使用')
+    
     # 生成 Mermaid 代码
     mermaid_code = "graph LR\n"
-
-    # 样式定义（尽量使用 Mermaid 原生安全形状）
+    
+    # 样式定义
     style_map = {
-        'database': '[({})]',    # cylinder
+        'field': '([{}])',
+        'metric': '{{{}}}',
         'table': '[{}]',
-        'datasource': '[[{}]]',
-        'workbook': '(({}))',
-        'view': '([{}])',
-        'field': '({})',
-        'metric': '{{{}}}'
+        'datasource': '[({})]',
+        'workbook': '(({}))' ,
+        'view': '>{}]'
     }
-
-    # 节点声明
+    
+    node_ids = set()
     for node in nodes:
-        mid = node_code(node['id'])
-        shape = style_map.get(node['type'], '[{}]')
-        label = (node.get('name') or '-')[:24].replace('\n', ' ')
-        mermaid_code += f"    {mid}{shape.format(label)}\n"
-
-    # 边声明
+        nid = node['id'][:8]  # 简化 ID
+        if nid not in node_ids:
+            node_ids.add(nid)
+            shape = style_map.get(node['type'], '[{}]')
+            mermaid_code += f"    {nid}{shape.format(node['name'][:20])}\n"
+    
     for edge in edges:
-        from_id = node_code(edge['from'])
-        to_id = node_code(edge['to'])
-        label = (edge.get('label') or '').replace('\n', ' ')
-        if label:
-            mermaid_code += f"    {from_id} -->|{label}| {to_id}\n"
-        else:
-            mermaid_code += f"    {from_id} --> {to_id}\n"
-
-    return jsonify({'nodes': nodes, 'edges': edges, 'mermaid': mermaid_code})
+        from_id = edge['from'][:8]
+        to_id = edge['to'][:8]
+        label = edge['label']
+        mermaid_code += f"    {from_id} -->|{label}| {to_id}\n"
+    
+    return jsonify({
+        'nodes': nodes,
+        'edges': edges,
+        'mermaid': mermaid_code
+    })
 
 
 @api_bp.route('/governance/merge', methods=['POST'])

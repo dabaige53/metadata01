@@ -27,7 +27,9 @@ import {
     CheckCircle2,
     ShieldCheck,
     Flame,
-    HelpCircle
+    HelpCircle,
+    TrendingUp,
+    BarChart3
 } from 'lucide-react';
 
 interface DetailItem {
@@ -98,6 +100,13 @@ export default function DetailDrawer() {
     const [lineageLoading, setLineageLoading] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
     const [readyToShow, setReadyToShow] = useState(false); // 控制侧边栏滑入时机
+    const [usageStats, setUsageStats] = useState<{
+        totalViewCount: number;
+        dailyDelta: number;
+        weeklyDelta: number;
+        history: Array<{ count: number; recordedAt: string }>;
+    } | null>(null);
+    const [usageLoading, setUsageLoading] = useState(false);
 
     const toggleGroupExpand = (groupKey: string) => {
         setExpandedGroups(prev => ({ ...prev, [groupKey]: !prev[groupKey] }));
@@ -195,6 +204,9 @@ export default function DetailDrawer() {
         }
 
         if (type === 'tables') {
+            if (data.database_info || data.databaseName) {
+                tabs.push({ id: 'db', label: '所属数据库', icon: Database });
+            }
             if (data.columns && data.columns.length > 0) {
                 tabs.push({ id: 'columns', label: `原始列 (${data.columns.length})`, icon: List });
             }
@@ -204,9 +216,11 @@ export default function DetailDrawer() {
         }
 
         if (type === 'fields' || type === 'metrics') {
+            const table = data.table_info;
+            if (table) tabs.push({ id: 'table', label: '所属数据表', icon: Table2 });
+
             const deps = data.dependencyFields || [];
-            // 上游且只有一个：放到概览；多个依赖才单独开 Tab
-            if (deps.length > 1) tabs.push({ id: 'deps', label: `依赖字段 (${deps.length})`, icon: Columns });
+            if (deps.length > 0) tabs.push({ id: 'deps', label: `依赖字段 (${deps.length})`, icon: Columns });
 
             const m_down = data.used_by_metrics || [];
             if (m_down.length > 0) tabs.push({ id: 'impact_metrics', label: `影响指标 (${m_down.length})`, icon: FunctionSquare });
@@ -219,8 +233,7 @@ export default function DetailDrawer() {
         }
 
         if (type === 'datasources') {
-            // 上游且只有一个：放到概览；多个上游表才单独开 Tab
-            if (data.tables && data.tables.length > 1) {
+            if (data.tables && data.tables.length > 0) {
                 tabs.push({ id: 'tables', label: `原始表 (${data.tables.length})`, icon: Table2 });
             }
             if (data.workbooks && data.workbooks.length > 0) {
@@ -238,8 +251,7 @@ export default function DetailDrawer() {
             if (data.views && data.views.length > 0) {
                 tabs.push({ id: 'views', label: `视图/看板 (${data.views.length})`, icon: Layout });
             }
-            // 上游且只有一个：放到概览；多个上游数据源才单独开 Tab
-            if (data.datasources && data.datasources.length > 1) {
+            if (data.datasources && data.datasources.length > 0) {
                 tabs.push({ id: 'datasources', label: `使用数据源 (${data.datasources.length})`, icon: Layers });
             }
             if (data.used_fields && data.used_fields.length > 0) {
@@ -248,6 +260,13 @@ export default function DetailDrawer() {
             if (data.used_metrics && data.used_metrics.length > 0) {
                 tabs.push({ id: 'metrics', label: `使用指标 (${data.used_metrics.length})`, icon: FunctionSquare });
             }
+            // 访问统计 tab
+            tabs.push({ id: 'usage', label: '访问统计', icon: BarChart3 });
+        }
+
+        if (type === 'views') {
+            // 访问统计 tab
+            tabs.push({ id: 'usage', label: '访问统计', icon: BarChart3 });
         }
 
         if (type === 'projects' || type === 'users') {
@@ -391,94 +410,120 @@ export default function DetailDrawer() {
         );
     };
 
+    // ========== 访问统计 Tab ==========
+
+    const loadUsageStats = async () => {
+        if (!currentItem) return;
+        setUsageLoading(true);
+        try {
+            // 对于 views 类型，直接获取该视图的统计
+            // 对于 workbooks 类型，获取其下所有视图的统计
+            if (currentItem.type === 'views') {
+                const stats = await api.getViewUsageStats(currentItem.id);
+                setUsageStats(stats);
+            } else if (currentItem.type === 'workbooks' && data?.views) {
+                // 工作簿：汇总所有视图统计
+                let total = 0;
+                for (const v of data.views) {
+                    total += v.totalViewCount || 0;
+                }
+                setUsageStats({
+                    totalViewCount: total,
+                    dailyDelta: 0,
+                    weeklyDelta: 0,
+                    history: []
+                });
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setUsageLoading(false);
+        }
+    };
+
+    const renderUsageTab = () => {
+        if (usageLoading) {
+            return <div className="flex justify-center py-10"><Loader2 className="w-8 h-8 text-indigo-500 animate-spin" /></div>;
+        }
+        if (!usageStats) {
+            return (
+                <div className="bg-white rounded-lg border p-4 text-center">
+                    <button onClick={loadUsageStats}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-medium transition-colors inline-flex items-center gap-2">
+                        <BarChart3 className="w-4 h-4" /> 加载访问统计
+                    </button>
+                </div>
+            );
+        }
+
+        const isUnused = usageStats.totalViewCount === 0;
+        const isHot = usageStats.totalViewCount > 100;
+
+        return (
+            <div className="space-y-4 animate-in slide-in-up">
+                {/* 统计卡片 */}
+                <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-gradient-to-br from-indigo-50 to-white rounded-lg border border-indigo-100 p-4 text-center">
+                        <div className="text-2xl font-bold text-indigo-700">{usageStats.totalViewCount}</div>
+                        <div className="text-[10px] text-gray-500 mt-1">总访问次数</div>
+                    </div>
+                    <div className="bg-gradient-to-br from-green-50 to-white rounded-lg border border-green-100 p-4 text-center">
+                        <div className="text-2xl font-bold text-green-700 flex items-center justify-center gap-1">
+                            {usageStats.dailyDelta > 0 && <TrendingUp className="w-4 h-4" />}
+                            {usageStats.dailyDelta > 0 ? '+' : ''}{usageStats.dailyDelta}
+                        </div>
+                        <div className="text-[10px] text-gray-500 mt-1">今日增量</div>
+                    </div>
+                    <div className="bg-gradient-to-br from-amber-50 to-white rounded-lg border border-amber-100 p-4 text-center">
+                        <div className="text-2xl font-bold text-amber-700 flex items-center justify-center gap-1">
+                            {usageStats.weeklyDelta > 0 && <TrendingUp className="w-4 h-4" />}
+                            {usageStats.weeklyDelta > 0 ? '+' : ''}{usageStats.weeklyDelta}
+                        </div>
+                        <div className="text-[10px] text-gray-500 mt-1">本周增量</div>
+                    </div>
+                </div>
+
+                {/* 状态标签 */}
+                {isUnused && (
+                    <div className="bg-gray-50 rounded-lg border border-gray-200 p-3 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-gray-400" />
+                        <span className="text-xs text-gray-600">此视图暂无访问记录，可能未被使用</span>
+                    </div>
+                )}
+                {isHot && (
+                    <div className="bg-orange-50 rounded-lg border border-orange-200 p-3 flex items-center gap-2">
+                        <Flame className="w-4 h-4 text-orange-500" />
+                        <span className="text-xs text-orange-700 font-medium">热门视图：访问量超过 100 次</span>
+                    </div>
+                )}
+
+                {/* 历史趋势 */}
+                {usageStats.history.length > 0 && (
+                    <div className="bg-gray-50 rounded-lg border p-4">
+                        <div className="text-xs font-bold text-gray-700 mb-3">历史记录</div>
+                        <div className="space-y-2">
+                            {usageStats.history.slice(0, 5).map((h, i) => (
+                                <div key={i} className="flex justify-between text-xs">
+                                    <span className="text-gray-500">{new Date(h.recordedAt).toLocaleString('zh-CN')}</span>
+                                    <span className="font-mono text-gray-700">{h.count} 次</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     // ========== 概览 Tab 重构 PRO (Description List 风格) ==========
     const renderOverviewTab = () => {
         if (!data) return null;
         const isFieldType = currentItem?.type === 'fields' || currentItem?.type === 'metrics';
-        const currentType = currentItem?.type;
 
         // Mock数据策略: 如果后端没返回，通过现有字段计算一些 "假的" 治理状态
         const mockQuality = (data.description ? 90 : 60);
         const mockCertified = data.is_certified === true;
         const mockHotness = (data.referenceCount || data.views?.length || 0) > 5 ? 'High' : 'Normal';
-
-        // 上游：只有一个时，放到概览里展示（减少 Tab 噪音）
-        const upstreamOverviewSections: React.ReactNode[] = [];
-        if (currentType === 'tables') {
-            const dbItem = data.database_info
-                ? [{ ...data.database_info, subtitle: data.database_info.connection_type ? `Type: ${data.database_info.connection_type}` : undefined }]
-                : (data.databaseName ? [{ id: data.databaseId, name: data.databaseName }] : []);
-            if (dbItem.length === 1) {
-                upstreamOverviewSections.push(renderAssetSection('所属数据库', Database, dbItem, 'databases', 'blue'));
-            }
-        }
-        if (currentType === 'fields' || currentType === 'metrics') {
-            if (data.datasource_info?.id) {
-                upstreamOverviewSections.push(
-                    renderAssetSection('所属数据源', Layers, [{
-                        ...data.datasource_info,
-                        subtitle: data.datasource_info.project_name || data.datasource_info.owner || undefined
-                    }], 'datasources', 'indigo')
-                );
-            }
-
-            // 优先使用 table_info；否则（部分字段仅挂在数据源上）用 upstream_tables 单表回退
-            if (data.table_info?.id) {
-                upstreamOverviewSections.push(
-                    renderAssetSection('所属数据表', Table2, [{
-                        ...data.table_info,
-                        subtitle: [data.table_info.database_name, data.table_info.schema].filter(Boolean).join(' / ') || undefined
-                    }], 'tables', 'blue')
-                );
-            } else if (Array.isArray(data.upstream_tables) && data.upstream_tables.length === 1) {
-                const t = data.upstream_tables[0];
-                upstreamOverviewSections.push(
-                    renderAssetSection('上游数据表', Table2, [{
-                        ...t,
-                        subtitle: [t.database_name, t.schema].filter(Boolean).join(' / ') || undefined
-                    }], 'tables', 'blue')
-                );
-            }
-
-            // 指标依赖：仅一个时放概览，多个才开 Tab
-            if (Array.isArray(data.dependencyFields) && data.dependencyFields.length === 1) {
-                upstreamOverviewSections.push(
-                    renderAssetSection('依赖字段', Columns, data.dependencyFields, 'fields', 'indigo')
-                );
-            }
-        }
-        if (currentType === 'datasources') {
-            if (Array.isArray(data.tables) && data.tables.length === 1) {
-                const t = data.tables[0];
-                upstreamOverviewSections.push(
-                    renderAssetSection('上游数据表', Table2, [{
-                        ...t,
-                        subtitle: [t.database_name || t.databaseName, t.schema].filter(Boolean).join(' / ') || undefined
-                    }], 'tables', 'blue')
-                );
-            }
-        }
-        if (currentType === 'workbooks') {
-            if (Array.isArray(data.datasources) && data.datasources.length === 1) {
-                const ds = data.datasources[0];
-                upstreamOverviewSections.push(
-                    renderAssetSection('上游数据源', Layers, [{
-                        ...ds,
-                        subtitle: ds.project_name || ds.owner || undefined
-                    }], 'datasources', 'indigo')
-                );
-            }
-        }
-        if (currentType === 'views') {
-            if (data.workbook_info?.id) {
-                upstreamOverviewSections.push(
-                    renderAssetSection('所属工作簿', BookOpen, [{
-                        ...data.workbook_info,
-                        subtitle: data.workbook_info.project_name || data.workbook_info.owner || undefined
-                    }], 'workbooks', 'red')
-                );
-            }
-        }
 
         return (
             <div className="space-y-6 animate-in slide-in-up">
@@ -569,18 +614,6 @@ export default function DetailDrawer() {
                     </div>
                 </div>
 
-                {/* 上游血缘（上游且只有一个时展示在概览） */}
-                {upstreamOverviewSections.length > 0 && (
-                    <div>
-                        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 px-1">上游血缘</h3>
-                        <div className="space-y-3">
-                            {upstreamOverviewSections.map((section, idx) => (
-                                <React.Fragment key={idx}>{section}</React.Fragment>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
                 {/* 字段名称层次 - 仅对字段/指标类型显示 */}
                 {
                     isFieldType && (
@@ -659,16 +692,11 @@ export default function DetailDrawer() {
             case 'overview': return renderOverviewTab();
             case 'duplicates': return renderDuplicatesTab();
             case 'lineage': return renderLineageTab();
+            case 'usage': return renderUsageTab();
 
             // 数据库相关
             case 'tables':
-                {
-                    const title =
-                        type === 'databases' ? '包含的数据表' :
-                            type === 'datasources' ? '上游数据表' :
-                                '关联数据表';
-                    return renderAssetSection(title, Table2, data.tables || [], 'tables', 'blue');
-                }
+                return renderAssetSection(activeTab === 'tables' ? '包含的数据表' : '来源物理表', Table2, data.tables || [], 'tables', 'blue');
 
             // 表相关
             case 'db':

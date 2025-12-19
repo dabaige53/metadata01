@@ -432,6 +432,9 @@ class View(Base):
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
     
+    # ========== 访问统计字段（REST API 同步）==========
+    total_view_count = Column(Integer, default=0)  # 总访问次数
+    
     # 关系
     workbook = relationship('Workbook', back_populates='views')
     fields = relationship('Field', secondary=field_to_view, back_populates='views')
@@ -447,6 +450,9 @@ class View(Base):
             'index': self.index,
             'workbookId': self.workbook_id,
             'workbookName': self.workbook.name if self.workbook else None,
+            'totalViewCount': self.total_view_count or 0,
+            'hitsTotal': self.total_view_count or 0,
+            'hits_total': self.total_view_count or 0,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }
@@ -569,6 +575,27 @@ class MetricDuplicate(Base):
 
 
 # ==================== 系统表 ====================
+
+class ViewUsageHistory(Base):
+    """视图访问统计历史（每次同步快照）"""
+    __tablename__ = 'view_usage_history'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    view_id = Column(String(255), ForeignKey('views.id'), nullable=False)
+    view_luid = Column(String(255))  # REST API 标识符
+    total_view_count = Column(Integer, default=0)  # 累计访问次数
+    recorded_at = Column(DateTime, default=datetime.utcnow)  # 记录时间
+    
+    # 关系
+    view = relationship('View', backref='usage_history')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'viewId': self.view_id,
+            'totalViewCount': self.total_view_count,
+            'recordedAt': self.recorded_at.isoformat() if self.recorded_at else None
+        }
 
 class SyncLog(Base):
     """同步日志"""

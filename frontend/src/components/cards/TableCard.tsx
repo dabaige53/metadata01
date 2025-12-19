@@ -21,6 +21,8 @@ export interface TableCardData {
   description?: string;
   is_certified?: boolean;
   isCertified?: boolean;
+  isEmbedded?: boolean;
+  is_embedded?: boolean;
 }
 
 export interface TableCardProps {
@@ -36,6 +38,7 @@ export default function TableCard({ table, onClick }: TableCardProps) {
   const previewFields = table.preview_fields || table.previewFields || [];
   const databaseName = table.database_name || table.databaseName || '-';
   const isCertified = table.is_certified || table.isCertified || false;
+  const isEmbedded = table.isEmbedded || table.is_embedded || false;
 
   // 智能状态判断
   let statusText = '使用中';
@@ -64,6 +67,13 @@ export default function TableCard({ table, onClick }: TableCardProps) {
     badges.push({
       text: '已认证',
       color: 'blue' as const,
+    });
+  }
+
+  if (isEmbedded) {
+    badges.push({
+      text: '嵌入式',
+      color: 'amber' as const,
     });
   }
 

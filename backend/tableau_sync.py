@@ -107,6 +107,70 @@ class TableauMetadataClient:
         else:
             raise RuntimeError(f"GraphQL 查询失败: {response.status_code} - {response.text}")
     
+    def fetch_views_usage(self) -> Dict[str, int]:
+        """从 REST API 获取视图使用统计 (REST API)"""
+        if not self.auth_token or not self.site_id:
+            raise RuntimeError("未登录，请先调用 sign_in()")
+        
+        # REST API endpoint for views
+        url = f"{self.base_url}/api/{self.api_version}/sites/{self.site_id}/views"
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-Tableau-Auth": self.auth_token
+        }
+        
+        usage_map = {}
+        page_number = 1
+        page_size = 100
+        
+        print(f"  正在调用 REST API 获取访问统计: {url}")
+        
+        while True:
+            params = {
+                "pageNumber": page_number,
+                "pageSize": page_size,
+                "includeUsageStatistics": "true"
+            }
+            
+            try:
+                response = requests.get(url, headers=headers, params=params, timeout=30)
+                
+                if response.status_code != 200:
+                    print(f"  ❌ REST API 获取失败: {response.status_code} - {response.text}")
+                    break
+                
+                data = response.json()
+                views = data.get("views", {}).get("view", [])
+                
+                if not views:
+                    break
+                
+                for view in views:
+                    luid = view.get("id")
+                    usage = view.get("usage", {})
+                    # usage 可能是 None，也可能没有 totalViewCount
+                    if usage:
+                        total_count = usage.get("totalViewCount", 0)
+                        if luid:
+                            usage_map[luid] = int(total_count)
+                
+                # Check pagination
+                pagination = data.get("pagination", {})
+                total_available = int(pagination.get("totalAvailable", 0))
+                
+                print(f"    - Page {page_number}: 获取 {len(views)} 个视图, 总进度 {len(usage_map)}/{total_available}")
+                
+                if len(usage_map) >= total_available or len(views) < page_size:
+                    break
+                    
+                page_number += 1
+                
+            except Exception as e:
+                print(f"  ❌ 获取视图统计异常: {e}")
+                break
+                
+        return usage_map    
     def fetch_databases(self) -> List[Dict]:
         """获取所有数据库（增强版）"""
         query = """
@@ -190,7 +254,7 @@ class TableauMetadataClient:
         return result.get("data", {}).get("databaseTables", [])
     
     def _fetch_tables_fallback(self) -> List[Dict]:
-        """回退：使用简化查询获取表"""
+        """回退：使用简化查询获取表（包含列信息）"""
         query = """
         {
             databaseTables {
@@ -203,6 +267,13 @@ class TableauMetadataClient:
                     id
                     name
                     connectionType
+                }
+                columns {
+                    id
+                    name
+                    remoteType
+                    description
+                    isNullable
                 }
             }
         }
@@ -350,6 +421,12 @@ class TableauMetadataClient:
                 }
                 sheets {
                     id
+                    luid
+                    name
+                }
+                dashboards {
+                    id
+                    luid
                     name
                 }
             }
@@ -1431,8 +1508,56 @@ class MetadataSync:
         print(f"  耗时: {duration:.2f} 秒")
         print("=" * 60)
         
+        # 同步视图使用统计（通过 REST API）
+        self.sync_views_usage()
+        
         # 最后：计算预存统计字段
         self.calculate_stats()
+    
+    def sync_views_usage(self) -> int:
+        """同步视图使用统计（通过 REST API）并记录历史快照"""
+        print("\n📊 同步视图使用统计 (REST API)...")
+        
+        try:
+            usage_map = self.client.fetch_views_usage()
+            
+            if not usage_map:
+                print("  ⚠️ 未获取到视图使用统计")
+                return 0
+            
+            updated = 0
+            history_count = 0
+            views = self.session.query(View).all()
+            
+            for view in views:
+                # REST API 返回的是 luid，需要匹配
+                if view.luid and view.luid in usage_map:
+                    new_count = usage_map[view.luid]
+                    
+                    # 只有当访问次数发生变化时才记录历史
+                    if view.total_view_count != new_count:
+                        # 记录历史快照
+                        from backend.models import ViewUsageHistory
+                        history = ViewUsageHistory(
+                            view_id=view.id,
+                            view_luid=view.luid,
+                            total_view_count=new_count
+                        )
+                        self.session.add(history)
+                        history_count += 1
+                    
+                    view.total_view_count = new_count
+                    updated += 1
+            
+            self.session.commit()
+            print(f"  ✅ 更新 {updated} 个视图的使用统计, 记录 {history_count} 条历史")
+            return updated
+            
+        except Exception as e:
+            print(f"  ❌ 同步视图使用统计失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return 0
     
     def calculate_stats(self):
         """计算并更新预存统计字段（同步结束后调用）"""
@@ -1518,6 +1643,15 @@ class MetadataSync:
                 UPDATE calculated_fields SET dependency_count = (
                     SELECT COUNT(*) FROM field_dependencies 
                     WHERE field_dependencies.source_field_id = calculated_fields.field_id
+                )
+            """))
+
+            # 5. 统计指标引用数 (reference_count)
+            print("  - 使用 SQL 批量更新指标引用数...")
+            self.session.execute(text("""
+                UPDATE calculated_fields SET reference_count = (
+                    SELECT COUNT(*) FROM field_dependencies 
+                    WHERE field_dependencies.dependency_field_id = calculated_fields.field_id
                 )
             """))
 

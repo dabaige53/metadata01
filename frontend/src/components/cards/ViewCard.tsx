@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, AlertTriangle, FileSpreadsheet, LayoutDashboard, Presentation } from 'lucide-react';
+import { LayoutGrid, Flame, FileSpreadsheet, LayoutDashboard, Presentation } from 'lucide-react';
 import HorizontalCard from './HorizontalCard';
 
 export interface ViewCardData {
@@ -92,8 +92,13 @@ export default function ViewCard({ view, onClick }: ViewCardProps) {
 
     if (hits === 0) {
         tags.push({
-            icon: <AlertTriangle className="w-3 h-3" />,
-            label: '无访问',
+            label: '未使用',
+            color: 'gray' as const,
+        });
+    } else if (hits > 500) {
+        tags.push({
+            icon: <Flame className="w-3 h-3" />,
+            label: '热门',
             color: 'orange' as const,
         });
     }

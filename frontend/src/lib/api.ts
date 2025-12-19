@@ -210,7 +210,20 @@ export const api = {
 
     // 质量分析
     getDuplicateMetrics: () => request<PaginatedResponse<DuplicateGroup>>('/quality/duplicates'),
+
+    // 视图使用统计
+    getViewUsageStats: (viewId: string) => request<ViewUsageStats>(`/views/${viewId}/usage-stats`),
 };
+
+export interface ViewUsageStats {
+    viewId: string;
+    viewName: string;
+    totalViewCount: number;
+    dailyDelta: number;
+    weeklyDelta: number;
+    history: Array<{ count: number; recordedAt: string }>;
+}
+
 
 export interface DuplicateGroup {
     formula: string;

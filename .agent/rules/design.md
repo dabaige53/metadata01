@@ -22,7 +22,7 @@ Tableau 元数据治理平台前端 - 基于 Next.js 构建的现代化 Web 应�
 - **语言**: TypeScript 5
 - **样式**: Tailwind CSS 4
 - **图标**: Lucide React
-- **后端 API**: Flask 3.0（运行于 localhost:8001）
+- **后端 API**: Flask 3.0（运行于 localhost:8101）
 - **数据库**: SQLite (metadata.db)
 - **Tableau 集成**: Metadata API (GraphQL) + REST API 认证
 - **UI 风格**: 参考 [ui_style.md](docs/ui_style.md)
@@ -42,8 +42,8 @@ python3 dev.py
 
 ### 访问地址
 
-- **Next.js 前端**: <http://localhost:3000> ⭐ 主要使用
-- Flask 后端 API: <http://localhost:8001/api/>*
+- **Next.js 前端**: <http://localhost:3100> ⭐ 主要使用
+- Flask 后端 API: <http://localhost:8101/api/>*
 
 ### 运行测试
 
