@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { api } from './api';
 
 export interface DrawerItem {
     id: string;
@@ -17,6 +18,8 @@ interface DrawerContextType {
     isOpen: boolean;
     currentItem: DrawerItem | null;
     history: DrawerItem[];
+    prefetch: (id: string, type: string) => void;
+    getCachedItem: (id: string, type: string) => any;
 }
 
 const DrawerContext = createContext<DrawerContextType | undefined>(undefined);
@@ -24,6 +27,24 @@ const DrawerContext = createContext<DrawerContextType | undefined>(undefined);
 export function DrawerProvider({ children }: { children: ReactNode }) {
     const [isOpen, setIsOpen] = useState(false);
     const [history, setHistory] = useState<DrawerItem[]>([]);
+    const [cache, setCache] = useState<Record<string, any>>({});
+
+    // 预加载数据 (Prefetching)
+    const prefetch = async (id: string, type: string) => {
+        const key = `${type}:${id}`;
+        if (cache[key]) return; // 如果已有缓存，直接跳过 (假设数据短期内不变)
+
+        try {
+            const data = await api.getDetail(type, id);
+            setCache(prev => ({ ...prev, [key]: data }));
+        } catch (e) {
+            console.error('Prefetch failed for', key, e);
+        }
+    };
+
+    const getCachedItem = (id: string, type: string) => {
+        return cache[`${type}:${id}`] || null;
+    };
 
     const openDrawer = (id: string, type: string, name?: string) => {
         setHistory([{ id, type, name }]);
@@ -62,7 +83,9 @@ export function DrawerProvider({ children }: { children: ReactNode }) {
             closeDrawer,
             isOpen,
             currentItem,
-            history
+            history,
+            prefetch,
+            getCachedItem
         }}>
             {children}
         </DrawerContext.Provider>

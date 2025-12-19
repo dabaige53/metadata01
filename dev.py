@@ -9,9 +9,20 @@ import sys
 import time
 import signal
 
+
 def kill_existing_processes():
     """关闭已占用端口 8001 和 3000 的进程"""
-    ports = [8001, 3000]
+    ports = [8101, 3100]
+    
+    # 额外清理 Next.js 锁文件
+    lock_file = os.path.join(os.path.dirname(__file__), "frontend/.next/dev/lock")
+    if os.path.exists(lock_file):
+        try:
+            os.remove(lock_file)
+            print("🧹 已清理 Next.js 锁文件")
+        except:
+            pass
+            
     killed_any = False
     
     for port in ports:
@@ -30,10 +41,20 @@ def kill_existing_processes():
                 print(f"🔍 发现端口 {port} 被占用，正在关闭相关进程...")
                 for pid in pids:
                     try:
+                        # 尝试 SIGTERM
                         os.kill(int(pid), signal.SIGTERM)
-                        print(f"   ✓ 已终止进程 {pid}")
+                        time.sleep(0.5)
+                        
+                        # 检查是否还在运行，如果是则 SIGKILL
+                        try:
+                            os.kill(int(pid), 0)
+                            os.kill(int(pid), signal.SIGKILL)
+                            print(f"   ✓ 已强制终止进程 {pid}")
+                        except OSError:
+                            print(f"   ✓ 已终止进程 {pid}")
+                            
                         killed_any = True
-                    except (ProcessLookupError, ValueError):
+                    except (ProcessLookupError, ValueError, OSError):
                         pass
         except Exception as e:
             print(f"⚠️ 检查端口 {port} 时出错: {e}")
@@ -42,7 +63,7 @@ def kill_existing_processes():
         print("⏳ 等待进程完全退出...")
         time.sleep(1)
     else:
-        print("✓ 端口 8001 和 3000 均未被占用")
+        print("✓ 端口 8101 和 3100 均未被占用")
 
 def run_command(command, cwd=None, name=""):
     """运行子进程"""
@@ -74,24 +95,24 @@ def main():
         backend_proc = run_command(
             "python3 run_backend.py",
             cwd=root_dir,
-            name="后端服务 (Port 8001)"
+            name="后端服务 (Port 8101)"
         )
         processes.append(backend_proc)
         
         # 等待后端启动一会
         time.sleep(2)
         
-        # 2. 启动前端 Next.js (端口 3000)
+        # 2. 启动前端 Next.js (端口 3100)
         frontend_proc = run_command(
             "npm run dev",
             cwd=frontend_dir,
-            name="前端服务 (Port 3000)"
+            name="前端服务 (Port 3100)"
         )
         processes.append(frontend_proc)
         
         print("\n✨ 系统已全面启动！")
-        print("🔗 前端地址: http://localhost:3000")
-        print("🔗 后端 API: http://localhost:8001/api")
+        print("🔗 前端地址: http://localhost:3100")
+        print("🔗 后端 API: http://localhost:8101/api")
         print("\n按 Ctrl+C 停止所有服务...\n")
         
         # 保持主进程运行

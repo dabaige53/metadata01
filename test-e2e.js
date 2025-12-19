@@ -11,8 +11,8 @@
 
 const http = require('http');
 
-const API_BASE = 'http://localhost:8001';
-const FRONTEND_BASE = 'http://localhost:3000';  // Next.js 默认端口
+const API_BASE = 'http://localhost:8101';
+const FRONTEND_BASE = 'http://localhost:3100';  // Next.js 默认端口
 
 // 颜色输出
 const colors = {

@@ -41,7 +41,7 @@ function DatasourcesContent() {
 
     // 加载数据
     useEffect(() => {
-        api.getDatasources(1, 200)
+        api.getDatasources(1, 500)
             .then(res => {
                 const items = (Array.isArray(res) ? res : (res.items || [])) as unknown as DatasourceItem[];
                 setAllData(items);

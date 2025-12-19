@@ -585,7 +585,14 @@ def get_tables():
     session = g.db_session
     search = request.args.get('search', '')
     sort = request.args.get('sort', '')
+    sort = request.args.get('sort', '')
     order = request.args.get('order', 'asc')
+    
+    # 分页参数
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 50, type=int)
+    page_size = min(page_size, 10000)
+    offset = (page - 1) * page_size
     
     from sqlalchemy.orm import selectinload
     from sqlalchemy import text
@@ -604,7 +611,7 @@ def get_tables():
     if sort in ['name', 'schema']:
         query = apply_sorting(query, DBTable, sort, order)
     
-    tables = query.limit(200).all()
+    tables = query.limit(page_size).offset(offset).all()
     
     # 预查询工作簿统计
     table_ids = [t.id for t in tables]
@@ -643,7 +650,12 @@ def get_tables():
     if sort == 'field_count':
         results.sort(key=lambda x: x.get('field_count', 0), reverse=(order == 'desc'))
 
-    return jsonify(results)
+    return jsonify({
+        'items': results,
+        'total': query.count(),
+        'page': page,
+        'page_size': page_size
+    })
 
 @api_bp.route('/tables/<table_id>')
 def get_table_detail(table_id):
@@ -747,7 +759,7 @@ def get_datasources():
     # 分页参数
     page = request.args.get('page', 1, type=int)
     page_size = request.args.get('page_size', 50, type=int)
-    page_size = min(page_size, 200)
+    page_size = min(page_size, 10000)
     
     # 排序
     if sort == 'name':
@@ -941,8 +953,22 @@ def get_workbook_detail(wb_id):
 @api_bp.route('/views')
 def get_views():
     session = g.db_session
-    query = session.query(View).limit(100)
-    return jsonify([v.to_dict() for v in query.all()])
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 50, type=int)
+    page_size = min(page_size, 10000)
+    
+    offset = (page - 1) * page_size
+    query = session.query(View)
+    total = query.count()
+    
+    views = query.limit(page_size).offset(offset).all()
+    
+    return jsonify({
+        'items': [v.to_dict() for v in views],
+        'total': total,
+        'page': page,
+        'page_size': page_size
+    })
 
 
 @api_bp.route('/views/<view_id>')
@@ -994,6 +1020,10 @@ def get_view_detail(view_id):
 def get_fields():
     """获取字段列表，支持分页和深度使用情况"""
     session = g.db_session
+    role = request.args.get('role', '')
+    data_type = request.args.get('data_type', '')
+    has_description = request.args.get('hasDescription', '')
+    
     search = request.args.get('search', '')
     sort = request.args.get('sort', '')
     order = request.args.get('order', 'desc')
@@ -1001,11 +1031,22 @@ def get_fields():
     # 分页参数
     page = request.args.get('page', 1, type=int)
     page_size = request.args.get('page_size', 50, type=int)
-    page_size = min(page_size, 200)  # 限制最大页大小
+    page_size = min(page_size, 10000)  # 限制最大页大小
     
     field_usage, _, _, _ = build_metric_index(session)
     query = session.query(Field)
     
+    # 应用筛选
+    if role:
+        query = query.filter(Field.role == role)
+    if data_type:
+        query = query.filter(Field.data_type == data_type)
+    if has_description:
+        if has_description.lower() == 'true':
+            query = query.filter(Field.description != None, Field.description != '')
+        elif has_description.lower() == 'false':
+            query = query.filter((Field.description == None) | (Field.description == ''))
+
     if search:
         query = query.filter((Field.name.ilike(f'%{search}%')) | (Field.description.ilike(f'%{search}%')))
         
@@ -1020,6 +1061,20 @@ def get_fields():
     # 计算总数
     total = query.count()
     total_pages = (total + page_size - 1) // page_size
+
+    # --- 开始：计算全局 Facet 统计 (不受分页影响) ---
+    facets = {}
+    # 1. 角色统计
+    role_counts = session.query(Field.role, func.count(Field.id)).filter(Field.id.in_(query.with_entities(Field.id))).group_by(Field.role).all()
+    facets['role'] = {str(r or 'unknown'): c for r, c in role_counts}
+    # 2. 数据类型统计
+    type_counts = session.query(Field.data_type, func.count(Field.id)).filter(Field.id.in_(query.with_entities(Field.id))).group_by(Field.data_type).all()
+    facets['data_type'] = {str(t or 'unknown'): c for t, c in type_counts}
+    # 3. 有无描述统计
+    desc_true = query.filter(Field.description != None, Field.description != '').count()
+    desc_false = total - desc_true
+    facets['hasDescription'] = {'true': desc_true, 'false': desc_false}
+    # --- 结束：计算全局 Facet 统计 ---
     
     # 分页查询
     offset = (page - 1) * page_size
@@ -1052,23 +1107,33 @@ def get_fields():
         'total': total,
         'page': page,
         'page_size': page_size,
-        'total_pages': total_pages
+        'total_pages': total_pages,
+        'facets': facets
     })
 
 
 @api_bp.route('/fields/<field_id>')
 def get_field_detail(field_id):
-    """获取单个字段详情 - 完整上下文（含上游表和列追溯）"""
+    """获取单个字段详情 - 性能优化版（使用预加载）"""
     session = g.db_session
-    field_usage, _, _, _ = build_metric_index(session)
+    from sqlalchemy.orm import selectinload
+    
+    # 使用 eager loading 一次性获取所有关联数据，避免 N+1 查询
+    # 包含了视图、工作簿、数据源、表、上游列等所有深层关系
+    field = session.query(Field).options(
+        selectinload(Field.views).selectinload(View.workbook),
+        selectinload(Field.table),
+        selectinload(Field.datasource).selectinload(Datasource.tables), # 预加载数据源及其上游表
+        selectinload(Field.workbook),
+        selectinload(Field.upstream_column).selectinload(DBColumn.table)
+    ).filter(Field.id == field_id).first()
 
-    field = session.query(Field).filter(Field.id == field_id).first()
     if not field:
         return jsonify({'error': 'Not found'}), 404
 
     data = field.to_dict()
     
-    # ========== 新增：上游列信息（血缘追溯核心） ==========
+    # ========== 上游列信息 ==========
     if field.upstream_column:
         data['upstream_column_info'] = {
             'id': field.upstream_column.id,
@@ -1080,7 +1145,7 @@ def get_field_detail(field_id):
             'table_name': field.upstream_column.table.name if field.upstream_column.table else None
         }
 
-    # 所属表信息（直接关联）
+    # 所属表信息
     if field.table:
         data['table_info'] = {
             'id': field.table.id,
@@ -1099,7 +1164,7 @@ def get_field_detail(field_id):
             'owner': field.datasource.owner,
             'is_certified': field.datasource.is_certified
         }
-        # 通过数据源追溯上游表（当字段没有直接table_id时）
+        # 通过数据源追溯上游表
         if not field.table and field.datasource.tables:
             upstream_tables = []
             for t in field.datasource.tables:
@@ -1121,19 +1186,22 @@ def get_field_detail(field_id):
             'owner': field.workbook.owner
         }
 
-    # 使用该字���的指标
-    data['used_by_metrics'] = field_usage.get(field.name, [])
+    # 使用该字段的指标 (按需查询)
+    data['used_by_metrics'] = get_field_usage_by_name(session, field.name)
 
-    # 使用该字段的视图（含工作簿信息）
+    # 使用该字段的视图（已预加载，无 N+1）
     views_data = []
     workbooks_set = {}
     for v in field.views:
+        # 这里 v.workbook 已经预加载了，不会触发新查询
+        wb_name = v.workbook.name if v.workbook else None
+        
         views_data.append({
             'id': v.id,
             'name': v.name,
             'view_type': v.view_type,
             'workbook_id': v.workbook_id,
-            'workbook_name': v.workbook.name if v.workbook else None
+            'workbook_name': wb_name
         })
         # 收集工作簿
         if v.workbook and v.workbook_id not in workbooks_set:
@@ -1218,7 +1286,7 @@ def get_metrics():
     # 分页参数
     page = request.args.get('page', 1, type=int)
     page_size = request.args.get('page_size', 50, type=int)
-    page_size = min(page_size, 200)  # 限制最大页大小
+    page_size = min(page_size, 10000)  # 限制最大页大小
     
     field_usage, metric_deps, formula_map, _ = build_metric_index(session)
     

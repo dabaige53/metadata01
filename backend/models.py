@@ -325,6 +325,12 @@ class Datasource(Base):
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
     
+    # ========== 预计算统计字段（同步时写入）==========
+    table_count = Column(Integer, default=0)
+    workbook_count = Column(Integer, default=0)
+    field_count = Column(Integer, default=0)
+    metric_count = Column(Integer, default=0)
+    
     # 关系
     tables = relationship('DBTable', secondary=table_to_datasource, back_populates='datasources')
     fields = relationship('Field', back_populates='datasource')
@@ -347,14 +353,17 @@ class Datasource(Base):
             'certifierDisplayName': self.certifier_display_name,
             'containsUnsupportedCustomSql': self.contains_unsupported_custom_sql,
             'hasActiveWarning': self.has_active_warning,
-            'tableCount': len(self.tables) if self.tables else 0,
+            'tableCount': self.table_count or 0,
+            'workbookCount': self.workbook_count or 0,
+            'fieldCount': self.field_count or 0,
+            'metricCount': self.metric_count or 0,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }
 
 
 class Workbook(Base):
-    """工作簿（增强版）"""
+    """工作簿（增强版 - 含预计算统计字段）"""
     __tablename__ = 'workbooks'
     
     id = Column(String(255), primary_key=True)
@@ -369,6 +378,12 @@ class Workbook(Base):
     has_active_warning = Column(Boolean, default=False)  # 活动警告
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
+    
+    # ========== 预计算统计字段（同步时写入）==========
+    view_count = Column(Integer, default=0)
+    datasource_count = Column(Integer, default=0)
+    field_count = Column(Integer, default=0)
+    metric_count = Column(Integer, default=0)
     
     # 关系
     views = relationship('View', back_populates='workbook')
@@ -386,8 +401,10 @@ class Workbook(Base):
             'owner': self.owner,
             'containsUnsupportedCustomSql': self.contains_unsupported_custom_sql,
             'hasActiveWarning': self.has_active_warning,
-            'viewCount': len(self.views) if self.views else 0,
-            'datasourceCount': len(self.datasources) if self.datasources else 0,
+            'viewCount': self.view_count or 0,  # 使用预计算字段
+            'datasourceCount': self.datasource_count or 0,
+            'fieldCount': self.field_count or 0,
+            'metricCount': self.metric_count or 0,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }

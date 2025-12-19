@@ -24,10 +24,13 @@ export interface WorkbookCardData {
 export interface WorkbookCardProps {
   workbook: WorkbookCardData;
   onClick?: () => void;
+  onMouseEnter?: () => void;
 }
 
-export default function WorkbookCard({ workbook, onClick }: WorkbookCardProps) {
+export default function WorkbookCard({ workbook, onClick, onMouseEnter }: WorkbookCardProps) {
   const projectName = workbook.project_name || workbook.projectName || '-';
+  // ... (skip unchanged lines) ...
+
   const viewCount = workbook.view_count || workbook.viewCount || 0;
   const datasourceCount = workbook.datasource_count || workbook.datasourceCount || 0;
   const upstreamDatasources = workbook.upstream_datasources || workbook.upstreamDatasources || [];

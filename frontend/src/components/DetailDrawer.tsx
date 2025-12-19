@@ -89,7 +89,7 @@ const DetailSkeleton = () => (
 );
 
 export default function DetailDrawer() {
-    const { isOpen, closeDrawer, currentItem, openDrawer, history, pushItem, goBack, goToIndex } = useDrawer();
+    const { isOpen, closeDrawer, currentItem, openDrawer, history, pushItem, goBack, goToIndex, prefetch, getCachedItem } = useDrawer();
     const [activeTab, setActiveTab] = useState('overview');
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<DetailItem | null>(null);
@@ -105,6 +105,21 @@ export default function DetailDrawer() {
 
     useEffect(() => {
         if (isOpen && currentItem) {
+            // 如果 ID 变化，先清除旧数据
+            if (data && data.id !== currentItem.id) {
+                // Check cache immediately before clearing!
+                const cached = getCachedItem(currentItem.id, currentItem.type);
+                if (cached) {
+                    setData(cached);
+                } else {
+                    setData(null);
+                }
+            } else if (!data) {
+                // Check cache if we have no data
+                const cached = getCachedItem(currentItem.id, currentItem.type);
+                if (cached) setData(cached);
+            }
+
             // 数据开始加载时立即开始滑入
             setTimeout(() => setReadyToShow(true), 50);
             loadData(currentItem.id, currentItem.type);
@@ -117,11 +132,25 @@ export default function DetailDrawer() {
     }, [isOpen, currentItem]);
 
     const loadData = async (id: string, type: string) => {
+        // 1. 优先使用缓存 (Instant Load)
+        const cached = getCachedItem(id, type);
+        if (cached) {
+            setData(cached);
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
         setError(null);
         try {
             const result = await api.getDetail(type, id);
             setData(result);
+            // Cache update is handled by prefetch, but here we are manual.
+            // Note: Our Context 'prefetch' updates cache. We could also update cache here if we exposed setCache, 
+            // but for simplicity, allow prefetch to handle pre-loading. 
+            // Ideally, we should update cache here too. 
+            // Since we can't easily access setCache from here, we rely on prefetch or just local state.
+            // Future improvement: expose setCache or updateCache in context.
         } catch (err) {
             console.error(err);
             setError('加载失败');
@@ -278,7 +307,9 @@ export default function DetailDrawer() {
                 </h3>
                 <div className="space-y-1">
                     {(expandedGroups[groupKey] ? items : items.slice(0, 10)).map((asset: any, ai: number) => (
-                        <div key={ai} onClick={() => handleAssetClick(asset.id, type, asset.name)}
+                        <div key={ai}
+                            onClick={() => handleAssetClick(asset.id, type, asset.name)}
+                            onMouseEnter={() => asset.id && prefetch(asset.id, type)} // 添加预加载触发器
                             style={{ animationDelay: `${ai * 30}ms` }}
                             className={`flex items-center justify-between bg-white p-2 rounded border border-${colorClass}-100 ${asset.id ? 'cursor-pointer hover:border-${colorClass}-300 hover:bg-${colorClass}-50 hover:scale-[1.01] active:scale-[0.99]' : ''} transition-all shadow-sm animate-in fade-in slide-in-up fill-mode-backwards`}>
                             <div className="flex flex-col min-w-0">
@@ -592,13 +623,18 @@ export default function DetailDrawer() {
     // ========== Header 渲染 ==========
     const renderHeader = () => {
         const Icon = currentItem ? getModuleIcon(currentItem.type) : Info;
-        // 使用 currentItem 信息作为兜底，实现立即渲染
-        const displayId = data?.id || currentItem?.id || '-';
-        const displayName = data?.name || currentItem?.name || '资产详情';
 
-        const mockQuality = (data?.description ? 98 : 65);
-        const mockCertified = data?.is_certified === true;
-        const mockRef = (data?.referenceCount || data?.views?.length || 0);
+        // 防止数据滞后：如果 data.id 与 currentItem.id 不一致，视为 stale 数据，不予使用
+        const isStale = data?.id !== currentItem?.id;
+        const safeData = isStale ? null : data;
+
+        // 使用 currentItem 信息作为兜底，实现立即渲染
+        const displayId = safeData?.id || currentItem?.id || '-';
+        const displayName = safeData?.name || currentItem?.name || '资产详情';
+
+        const mockQuality = (safeData?.description ? 98 : 65);
+        const mockCertified = safeData?.is_certified === true;
+        const mockRef = (safeData?.referenceCount || safeData?.views?.length || 0);
 
         return (
             <div className="bg-white border-b border-gray-100">
@@ -682,6 +718,10 @@ export default function DetailDrawer() {
         );
     };
 
+    // 计算当前是否处于"数据滞后"状态
+    const isStale = data?.id !== currentItem?.id;
+    const showSkeleton = loading || isStale || (isOpen && !data && !error);
+
     return (
         <>
             <div
@@ -714,7 +754,7 @@ export default function DetailDrawer() {
                     {/* Content */}
                     <div className="flex-1 overflow-y-auto p-6 bg-white custom-scrollbar">
                         <div className="transition-opacity duration-300 ease-out">
-                            {loading ? (
+                            {showSkeleton ? (
                                 <DetailSkeleton />
                             ) : error ? (
                                 <div className="text-center py-20 text-red-500">

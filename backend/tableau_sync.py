@@ -1428,6 +1428,57 @@ class MetadataSync:
         print(f"  字段→视图: {ftv_count}")
         print(f"  耗时: {duration:.2f} 秒")
         print("=" * 60)
+        
+        # 最后：计算预存统计字段
+        self.calculate_stats()
+    
+    def calculate_stats(self):
+        """计算并更新预存统计字段（同步结束后调用）"""
+        print("\n📊 计算预存统计字段...")
+        
+        try:
+            # ========== Workbook 统计 ==========
+            workbooks = self.session.query(Workbook).all()
+            for wb in workbooks:
+                wb.view_count = len(wb.views) if wb.views else 0
+                wb.datasource_count = len(wb.datasources) if wb.datasources else 0
+                
+                # 统计字段和指标（需查询视图中的字段）
+                field_ids = set()
+                metric_ids = set()
+                for v in (wb.views or []):
+                    for f in (v.fields or []):
+                        if f.is_calculated:
+                            metric_ids.add(f.id)
+                        else:
+                            field_ids.add(f.id)
+                wb.field_count = len(field_ids)
+                wb.metric_count = len(metric_ids)
+            
+            # ========== Datasource 统计 ==========
+            datasources = self.session.query(Datasource).all()
+            for ds in datasources:
+                ds.table_count = len(ds.tables) if ds.tables else 0
+                ds.workbook_count = len(ds.workbooks) if ds.workbooks else 0
+                
+                field_count = 0
+                metric_count = 0
+                for f in (ds.fields or []):
+                    if f.is_calculated:
+                        metric_count += 1
+                    else:
+                        field_count += 1
+                ds.field_count = field_count
+                ds.metric_count = metric_count
+            
+            self.session.commit()
+            print(f"  ✅ 已更新 {len(workbooks)} 个工作簿, {len(datasources)} 个数据源的统计字段")
+            
+        except Exception as e:
+            self.session.rollback()
+            print(f"  ❌ 统计计算失败: {e}")
+            import traceback
+            traceback.print_exc()
     
     def close(self):
         """关闭会话"""

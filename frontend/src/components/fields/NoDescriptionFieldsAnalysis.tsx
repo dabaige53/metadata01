@@ -41,7 +41,7 @@ export default function NoDescriptionFieldsAnalysis() {
     const { openDrawer } = useDrawer();
 
     useEffect(() => {
-        fetch('/api/fields?page=1&page_size=10000')
+        fetch('/api/fields?page=1&page_size=500')
             .then(res => res.json())
             .then(result => {
                 const items = result.items || result || [];

@@ -25,6 +25,7 @@ export interface HorizontalCardProps {
 
   // 交互
   onClick?: () => void;
+  onMouseEnter?: () => void;
 }
 
 const badgeColors = {
@@ -54,13 +55,14 @@ export default function HorizontalCard({
   details,
   tags,
   onClick,
+  onMouseEnter,
 }: HorizontalCardProps) {
   return (
     <div
       onClick={onClick}
-      className={`bg-white p-4 rounded-lg border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all ${
-        onClick ? 'cursor-pointer' : ''
-      }`}
+      onMouseEnter={onMouseEnter}
+      className={`bg-white p-4 rounded-lg border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all ${onClick ? 'cursor-pointer' : ''
+        }`}
     >
       {/* 第一行：图标 + 标题 + 徽章 */}
       <div className="flex items-center gap-3 mb-2">
@@ -71,9 +73,8 @@ export default function HorizontalCard({
             {badges.map((badge, idx) => (
               <span
                 key={idx}
-                className={`px-2 py-0.5 rounded text-xs font-medium border ${
-                  badgeColors[badge.color]
-                }`}
+                className={`px-2 py-0.5 rounded text-xs font-medium border ${badgeColors[badge.color]
+                  }`}
               >
                 {badge.text}
               </span>
@@ -106,9 +107,8 @@ export default function HorizontalCard({
           {tags.map((tag, idx) => (
             <span
               key={idx}
-              className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 ${
-                tagColors[tag.color]
-              }`}
+              className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 ${tagColors[tag.color]
+                }`}
             >
               {tag.icon}
               {tag.label}

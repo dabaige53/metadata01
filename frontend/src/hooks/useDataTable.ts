@@ -28,6 +28,10 @@ interface UseDataTableOptions<T> {
   facetFields?: string[];
   defaultPageSize?: number;
   searchFields?: (keyof T)[];
+  serverSide?: boolean;
+  totalOverride?: number;
+  facetsOverride?: FacetConfig;
+  onParamsChange?: (params: Record<string, any>) => void;
 }
 
 export function useDataTable<T extends Record<string, any>>({
@@ -36,6 +40,10 @@ export function useDataTable<T extends Record<string, any>>({
   facetFields,
   defaultPageSize = 50,
   searchFields = ['name', 'description', 'formula'],
+  serverSide = false,
+  totalOverride,
+  facetsOverride,
+  onParamsChange,
 }: UseDataTableOptions<T>) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -53,10 +61,13 @@ export function useDataTable<T extends Record<string, any>>({
     sortOrder: initialOrder,
   });
   const [currentPage, setCurrentPage] = useState(initialPage);
+  const [pageSize, setPageSize] = useState(defaultPageSize);
   const [searchTerm, setSearchTerm] = useState(initialSearch);
 
   // 计算 Facets
   const facets = useMemo<FacetConfig>(() => {
+    if (serverSide && facetsOverride) return facetsOverride;
+
     const keys = facetFields || DEFAULT_FACET_CONFIG[moduleName] || [];
     const result: FacetConfig = {};
 
@@ -127,31 +138,46 @@ export function useDataTable<T extends Record<string, any>>({
   // 应用分页
   const paginationState: PaginationState = {
     page: currentPage,
-    pageSize: defaultPageSize,
-    total: sortedData.length,
-    totalPages: Math.ceil(sortedData.length / defaultPageSize),
+    pageSize: pageSize,
+    total: serverSide ? (totalOverride ?? 0) : sortedData.length,
+    totalPages: Math.ceil((serverSide ? (totalOverride ?? 0) : sortedData.length) / pageSize),
   };
 
   const paginatedData = useMemo(() => {
-    const start = (currentPage - 1) * defaultPageSize;
-    const end = start + defaultPageSize;
+    if (serverSide) return data; // 服务器端模式下，data 已经是分页后的
+    const start = (currentPage - 1) * pageSize;
+    const end = start + pageSize;
     return sortedData.slice(start, end);
-  }, [sortedData, currentPage, defaultPageSize]);
+  }, [serverSide, data, sortedData, currentPage, pageSize]);
 
-  // 更新 URL
+  // 更新 URL 和通知父组件
   useEffect(() => {
-    const params = new URLSearchParams();
+    const params: Record<string, any> = {};
     if (sortState.sortKey) {
-      params.set('sort', sortState.sortKey);
-      params.set('order', sortState.sortOrder);
+      params.sort = sortState.sortKey;
+      params.order = sortState.sortOrder;
     }
-    if (currentPage > 1) params.set('page', currentPage.toString());
-    if (searchTerm) params.set('search', searchTerm);
+    if (currentPage > 1) params.page = currentPage.toString();
+    if (searchTerm) params.search = searchTerm;
+    if (pageSize !== 50) params.page_size = pageSize.toString();
 
-    const queryString = params.toString();
+    // 同时包含 activeFilters
+    Object.entries(activeFilters).forEach(([k, v]) => {
+      if (v && v.length > 0) params[k] = v.join(',');
+    });
+
+    const urlParams = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => urlParams.set(k, v as string));
+
+    const queryString = urlParams.toString();
     const newUrl = queryString ? `?${queryString}` : '';
     router.replace(newUrl, { scroll: false });
-  }, [sortState, currentPage, searchTerm, router]);
+
+    // 如果是服务器端模式，通知父组件参数变化以触发 API 请求
+    if (serverSide && onParamsChange) {
+      onParamsChange(params);
+    }
+  }, [sortState, currentPage, searchTerm, activeFilters, pageSize, router, serverSide]);
 
   // 处理筛选变化
   const handleFilterChange = (key: string, value: string, checked: boolean) => {
@@ -193,6 +219,12 @@ export function useDataTable<T extends Record<string, any>>({
     }
   };
 
+  // 处理页大小变化
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCurrentPage(1); // 切换每页条数重置到第一页
+  };
+
   return {
     // 数据
     displayData: paginatedData,
@@ -211,9 +243,11 @@ export function useDataTable<T extends Record<string, any>>({
     // 分页
     paginationState,
     handlePageChange,
+    handlePageSizeChange,
 
     // 搜索
     searchTerm,
     setSearchTerm,
+    setPageSize,
   };
 }

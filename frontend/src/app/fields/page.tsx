@@ -30,34 +30,38 @@ interface FieldItem {
 }
 
 function FieldsContent() {
-    const [allData, setAllData] = useState<FieldItem[]>([]);
-    const [apiTotal, setApiTotal] = useState(0);
+    const [data, setData] = useState<FieldItem[]>([]);
+    const [total, setTotal] = useState(0);
+    const [facetsData, setFacetsData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'list' | 'noDescription'>('list');
     const { openDrawer } = useDrawer();
 
-    // 加载数据
-    useEffect(() => {
-        fetch('/api/fields?page=1&page_size=10000')  // 加载更多数据以支持客户端筛选
-            .then(res => res.json())
-            .then(result => {
-                const items = result.items || result || [];
-                // 只显示基础字段（非计算字段）
-                const baseFields = items.filter((item: FieldItem) => {
-                    const isCalc = item.isCalculated ?? item.is_calculated;
-                    return !isCalc;
-                });
-                setAllData(baseFields);
-                setApiTotal(baseFields.length);
-            })
-            .catch(console.error)
-            .finally(() => setLoading(false));
-    }, []);
+    const fetchFields = async (params: Record<string, any>) => {
+        setLoading(true);
+        try {
+            const queryParams = new URLSearchParams();
+            Object.entries(params).forEach(([k, v]) => {
+                if (v != null && v !== '') queryParams.set(k, String(v));
+            });
 
-    // 使用自定义 Hook 管理表格状态
+            // 默认只获取非计算字段 (对于字段字典页面)
+            const res = await fetch(`/api/fields?${queryParams.toString()}`);
+            const result = await res.json();
+
+            setData(result.items || []);
+            setTotal(result.total || 0);
+            setFacetsData(result.facets || null);
+        } catch (error) {
+            console.error('Failed to fetch fields:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // 使用自定义 Hook 管理表格状态 (服务器端模式)
     const {
         displayData,
-        totalCount,
         facets,
         activeFilters,
         handleFilterChange,
@@ -65,12 +69,19 @@ function FieldsContent() {
         handleSortChange,
         paginationState,
         handlePageChange,
+        handlePageSizeChange,
     } = useDataTable({
         moduleName: 'fields',
-        data: allData,
+        data: data,
         facetFields: ['role', 'data_type', 'hasDescription'],
-        defaultPageSize: 50,
-        searchFields: ['name', 'formula', 'table', 'table_name', 'datasource', 'datasource_name'],
+        serverSide: true,
+        totalOverride: total,
+        facetsOverride: facetsData,
+        onParamsChange: (params) => {
+            if (activeTab === 'list') {
+                fetchFields(params);
+            }
+        },
     });
 
     // 排序选项
@@ -78,14 +89,6 @@ function FieldsContent() {
         { key: 'usageCount', label: '热度' },
         { key: 'name', label: '名称' },
     ];
-
-    if (loading) {
-        return (
-            <div className="flex justify-center py-20">
-                <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
-            </div>
-        );
-    }
 
     return (
         <div className="space-y-4">
@@ -95,8 +98,8 @@ function FieldsContent() {
                     <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                         <Columns className="w-5 h-5 text-indigo-600" />
                         字段字典
-                        <span className="text-sm font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                            {apiTotal.toLocaleString()} 项
+                        <span className="text-sm font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                            {total.toLocaleString()} 项
                         </span>
                     </h1>
 
@@ -144,10 +147,16 @@ function FieldsContent() {
             {activeTab === 'list' ? (
                 <>
                     {/* 横向卡片列表 */}
-                    <div className="space-y-3">
-                        {displayData.length === 0 ? (
+                    <div className="space-y-3 min-h-[400px] relative">
+                        {loading && (
+                            <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex justify-center items-start pt-20 z-10 transition-all">
+                                <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+                            </div>
+                        )}
+
+                        {displayData.length === 0 && !loading ? (
                             <div className="py-20 text-center text-gray-400">
-                                {totalCount === 0 ? '暂无数据' : '未找到匹配的字段'}
+                                {total === 0 ? '暂无数据' : '未找到匹配的字段'}
                             </div>
                         ) : (
                             displayData.map((item) => (
@@ -161,10 +170,11 @@ function FieldsContent() {
                     </div>
 
                     {/* 分页控件 */}
-                    {displayData.length > 0 && (
+                    {total > 0 && (
                         <Pagination
                             pagination={paginationState}
                             onPageChange={handlePageChange}
+                            onPageSizeChange={handlePageSizeChange}
                         />
                     )}
                 </>
