@@ -150,6 +150,19 @@ export function useDataTable<T extends Record<string, any>>({
     return sortedData.slice(start, end);
   }, [serverSide, data, sortedData, currentPage, pageSize]);
 
+  // 初始化请求 (仅服务器端模式)
+  useEffect(() => {
+    if (serverSide && onParamsChange) {
+      // 构建初始参数
+      const params: Record<string, any> = {};
+      if (pageSize !== 50) params.page_size = pageSize.toString();
+      params.page = '1';
+
+      // 触发初始请求
+      onParamsChange(params);
+    }
+  }, []); // 空依赖数组,仅在组件挂载时执行一次
+
   // 更新 URL 和通知父组件
   useEffect(() => {
     const params: Record<string, any> = {};

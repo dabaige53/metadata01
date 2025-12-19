@@ -195,9 +195,6 @@ export default function DetailDrawer() {
         }
 
         if (type === 'tables') {
-            if (data.database_info || data.databaseName) {
-                tabs.push({ id: 'db', label: '所属数据库', icon: Database });
-            }
             if (data.columns && data.columns.length > 0) {
                 tabs.push({ id: 'columns', label: `原始列 (${data.columns.length})`, icon: List });
             }
@@ -207,11 +204,9 @@ export default function DetailDrawer() {
         }
 
         if (type === 'fields' || type === 'metrics') {
-            const table = data.table_info;
-            if (table) tabs.push({ id: 'table', label: '所属数据表', icon: Table2 });
-
             const deps = data.dependencyFields || [];
-            if (deps.length > 0) tabs.push({ id: 'deps', label: `依赖字段 (${deps.length})`, icon: Columns });
+            // 上游且只有一个：放到概览；多个依赖才单独开 Tab
+            if (deps.length > 1) tabs.push({ id: 'deps', label: `依赖字段 (${deps.length})`, icon: Columns });
 
             const m_down = data.used_by_metrics || [];
             if (m_down.length > 0) tabs.push({ id: 'impact_metrics', label: `影响指标 (${m_down.length})`, icon: FunctionSquare });
@@ -224,7 +219,8 @@ export default function DetailDrawer() {
         }
 
         if (type === 'datasources') {
-            if (data.tables && data.tables.length > 0) {
+            // 上游且只有一个：放到概览；多个上游表才单独开 Tab
+            if (data.tables && data.tables.length > 1) {
                 tabs.push({ id: 'tables', label: `原始表 (${data.tables.length})`, icon: Table2 });
             }
             if (data.workbooks && data.workbooks.length > 0) {
@@ -242,7 +238,8 @@ export default function DetailDrawer() {
             if (data.views && data.views.length > 0) {
                 tabs.push({ id: 'views', label: `视图/看板 (${data.views.length})`, icon: Layout });
             }
-            if (data.datasources && data.datasources.length > 0) {
+            // 上游且只有一个：放到概览；多个上游数据源才单独开 Tab
+            if (data.datasources && data.datasources.length > 1) {
                 tabs.push({ id: 'datasources', label: `使用数据源 (${data.datasources.length})`, icon: Layers });
             }
             if (data.used_fields && data.used_fields.length > 0) {
@@ -398,11 +395,90 @@ export default function DetailDrawer() {
     const renderOverviewTab = () => {
         if (!data) return null;
         const isFieldType = currentItem?.type === 'fields' || currentItem?.type === 'metrics';
+        const currentType = currentItem?.type;
 
         // Mock数据策略: 如果后端没返回，通过现有字段计算一些 "假的" 治理状态
         const mockQuality = (data.description ? 90 : 60);
         const mockCertified = data.is_certified === true;
         const mockHotness = (data.referenceCount || data.views?.length || 0) > 5 ? 'High' : 'Normal';
+
+        // 上游：只有一个时，放到概览里展示（减少 Tab 噪音）
+        const upstreamOverviewSections: React.ReactNode[] = [];
+        if (currentType === 'tables') {
+            const dbItem = data.database_info
+                ? [{ ...data.database_info, subtitle: data.database_info.connection_type ? `Type: ${data.database_info.connection_type}` : undefined }]
+                : (data.databaseName ? [{ id: data.databaseId, name: data.databaseName }] : []);
+            if (dbItem.length === 1) {
+                upstreamOverviewSections.push(renderAssetSection('所属数据库', Database, dbItem, 'databases', 'blue'));
+            }
+        }
+        if (currentType === 'fields' || currentType === 'metrics') {
+            if (data.datasource_info?.id) {
+                upstreamOverviewSections.push(
+                    renderAssetSection('所属数据源', Layers, [{
+                        ...data.datasource_info,
+                        subtitle: data.datasource_info.project_name || data.datasource_info.owner || undefined
+                    }], 'datasources', 'indigo')
+                );
+            }
+
+            // 优先使用 table_info；否则（部分字段仅挂在数据源上）用 upstream_tables 单表回退
+            if (data.table_info?.id) {
+                upstreamOverviewSections.push(
+                    renderAssetSection('所属数据表', Table2, [{
+                        ...data.table_info,
+                        subtitle: [data.table_info.database_name, data.table_info.schema].filter(Boolean).join(' / ') || undefined
+                    }], 'tables', 'blue')
+                );
+            } else if (Array.isArray(data.upstream_tables) && data.upstream_tables.length === 1) {
+                const t = data.upstream_tables[0];
+                upstreamOverviewSections.push(
+                    renderAssetSection('上游数据表', Table2, [{
+                        ...t,
+                        subtitle: [t.database_name, t.schema].filter(Boolean).join(' / ') || undefined
+                    }], 'tables', 'blue')
+                );
+            }
+
+            // 指标依赖：仅一个时放概览，多个才开 Tab
+            if (Array.isArray(data.dependencyFields) && data.dependencyFields.length === 1) {
+                upstreamOverviewSections.push(
+                    renderAssetSection('依赖字段', Columns, data.dependencyFields, 'fields', 'indigo')
+                );
+            }
+        }
+        if (currentType === 'datasources') {
+            if (Array.isArray(data.tables) && data.tables.length === 1) {
+                const t = data.tables[0];
+                upstreamOverviewSections.push(
+                    renderAssetSection('上游数据表', Table2, [{
+                        ...t,
+                        subtitle: [t.database_name || t.databaseName, t.schema].filter(Boolean).join(' / ') || undefined
+                    }], 'tables', 'blue')
+                );
+            }
+        }
+        if (currentType === 'workbooks') {
+            if (Array.isArray(data.datasources) && data.datasources.length === 1) {
+                const ds = data.datasources[0];
+                upstreamOverviewSections.push(
+                    renderAssetSection('上游数据源', Layers, [{
+                        ...ds,
+                        subtitle: ds.project_name || ds.owner || undefined
+                    }], 'datasources', 'indigo')
+                );
+            }
+        }
+        if (currentType === 'views') {
+            if (data.workbook_info?.id) {
+                upstreamOverviewSections.push(
+                    renderAssetSection('所属工作簿', BookOpen, [{
+                        ...data.workbook_info,
+                        subtitle: data.workbook_info.project_name || data.workbook_info.owner || undefined
+                    }], 'workbooks', 'red')
+                );
+            }
+        }
 
         return (
             <div className="space-y-6 animate-in slide-in-up">
@@ -493,6 +569,18 @@ export default function DetailDrawer() {
                     </div>
                 </div>
 
+                {/* 上游血缘（上游且只有一个时展示在概览） */}
+                {upstreamOverviewSections.length > 0 && (
+                    <div>
+                        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 px-1">上游血缘</h3>
+                        <div className="space-y-3">
+                            {upstreamOverviewSections.map((section, idx) => (
+                                <React.Fragment key={idx}>{section}</React.Fragment>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* 字段名称层次 - 仅对字段/指标类型显示 */}
                 {
                     isFieldType && (
@@ -574,7 +662,13 @@ export default function DetailDrawer() {
 
             // 数据库相关
             case 'tables':
-                return renderAssetSection(activeTab === 'tables' ? '包含的数据表' : '来源物理表', Table2, data.tables || [], 'tables', 'blue');
+                {
+                    const title =
+                        type === 'databases' ? '包含的数据表' :
+                            type === 'datasources' ? '上游数据表' :
+                                '关联数据表';
+                    return renderAssetSection(title, Table2, data.tables || [], 'tables', 'blue');
+                }
 
             // 表相关
             case 'db':

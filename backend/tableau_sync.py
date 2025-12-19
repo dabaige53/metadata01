@@ -6,9 +6,11 @@ import os
 import sys
 import json
 import requests
+import hashlib
+from collections import defaultdict
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from sqlalchemy import select
+from sqlalchemy import select, text
 import re
 
 # 添加项目根目录到路径
@@ -1471,8 +1473,56 @@ class MetadataSync:
                 ds.field_count = field_count
                 ds.metric_count = metric_count
             
+            # ========== Field & CalculatedField 深度统计 (指标预计算优化) ==========
+            print("  - 计算字段和指标深度统计...")
+            
+            # 1. 计算字段公式哈希及查重
+            calc_fields = self.session.query(CalculatedField).all()
+            formula_map = defaultdict(list)
+            for cf in calc_fields:
+                if cf.formula:
+                    # 标准化公式并计算哈希
+                    formula_clean = cf.formula.strip()
+                    h = hashlib.md5(formula_clean.encode('utf-8')).hexdigest()
+                    cf.formula_hash = h
+                    formula_map[h].append(cf)
+            
+            # 更新查重信息
+            for h, cfs in formula_map.items():
+                is_duplicate = len(cfs) > 1
+                for cf in cfs:
+                    cf.has_duplicates = is_duplicate
+                    cf.duplicate_count = len(cfs) - 1
+            
+            # 2. 统计字段被视图引用的次数 (usage_count)
+            print("  - 使用 SQL 批量更新视图引用次数...")
+            self.session.execute(text("""
+                UPDATE fields SET usage_count = (
+                    SELECT COUNT(*) FROM field_to_view 
+                    WHERE field_to_view.field_id = fields.id
+                )
+            """))
+            
+            # 3. 统计字段被指标引用的次数 (metric_usage_count)
+            print("  - 使用 SQL 批量更新指标引用次数...")
+            self.session.execute(text("""
+                UPDATE fields SET metric_usage_count = (
+                    SELECT COUNT(*) FROM field_dependencies 
+                    WHERE field_dependencies.dependency_name = fields.name
+                )
+            """))
+            
+            # 4. 统计指标依赖数 (dependency_count)
+            print("  - 使用 SQL 批量更新指标依赖数...")
+            self.session.execute(text("""
+                UPDATE calculated_fields SET dependency_count = (
+                    SELECT COUNT(*) FROM field_dependencies 
+                    WHERE field_dependencies.source_field_id = calculated_fields.field_id
+                )
+            """))
+
             self.session.commit()
-            print(f"  ✅ 已更新 {len(workbooks)} 个工作簿, {len(datasources)} 个数据源的统计字段")
+            print(f"  ✅ 已更新 {len(workbooks)} 个工作簿, {len(datasources)} 个数据源, {len(calc_fields)} 个计算字段的统计字段")
             
         except Exception as e:
             self.session.rollback()

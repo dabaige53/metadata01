@@ -138,8 +138,9 @@ def stop_services():
     print("=" * 50)
     
     stopped_any = False
+    ports_to_check = []
     
-    # 停止后端
+    # 1. 先尝试通过 PID 文件停止
     backend_pid = read_pid(BACKEND_PID_FILE)
     if backend_pid and is_process_running(backend_pid):
         try:
@@ -151,12 +152,14 @@ def stop_services():
             stopped_any = True
         except Exception as e:
             print(f"⚠️ 停止后端服务失败: {e}")
+            ports_to_check.append(8101)
         try:
             os.remove(BACKEND_PID_FILE)
         except:
             pass
+    else:
+        ports_to_check.append(8101)
     
-    # 停止前端
     frontend_pid = read_pid(FRONTEND_PID_FILE)
     if frontend_pid and is_process_running(frontend_pid):
         try:
@@ -168,10 +171,57 @@ def stop_services():
             stopped_any = True
         except Exception as e:
             print(f"⚠️ 停止前端服务失败: {e}")
+            ports_to_check.append(3100)
         try:
             os.remove(FRONTEND_PID_FILE)
         except:
             pass
+    else:
+        ports_to_check.append(3100)
+    
+    # 2. 检查端口是否仍被占用
+    port_names = {8101: "后端 Flask", 3100: "前端 Next.js"}
+    occupied_ports = []
+    
+    for port in ports_to_check:
+        try:
+            result = subprocess.run(
+                f"lsof -ti :{port}",
+                shell=True,
+                capture_output=True,
+                text=True
+            )
+            pids = result.stdout.strip().split('\n')
+            pids = [pid for pid in pids if pid]
+            
+            if pids:
+                occupied_ports.append({
+                    'port': port,
+                    'name': port_names[port],
+                    'pids': pids
+                })
+        except Exception:
+            pass
+    
+    # 3. 如果有端口仍被占用，询问是否强制终止
+    if occupied_ports:
+        print(f"\n⚠️  发现 {len(occupied_ports)} 个端口仍被占用:")
+        for item in occupied_ports:
+            print(f"   - 端口 {item['port']} ({item['name']}): PID {', '.join(item['pids'])}")
+        
+        try:
+            response = input("\n是否强制终止这些进程？(y/N): ").strip().lower()
+            if response == 'y':
+                for item in occupied_ports:
+                    for pid in item['pids']:
+                        try:
+                            os.kill(int(pid), signal.SIGKILL)
+                            print(f"✓ 已强制终止进程 {pid} (端口 {item['port']})")
+                            stopped_any = True
+                        except Exception as e:
+                            print(f"⚠️ 终止进程 {pid} 失败: {e}")
+        except KeyboardInterrupt:
+            print("\n\n已取消强制终止")
     
     if not stopped_any:
         print("ℹ️  没有运行中的服务")
@@ -190,8 +240,83 @@ def start_services():
     print("=" * 50)
     print("🔍 检查端口可用性...")
     print("=" * 50)
-    check_port_availability()
-    print()
+    
+    # 检查端口占用情况
+    ports = [8101, 3100]
+    port_names = {8101: "后端 Flask", 3100: "前端 Next.js"}
+    has_occupied = False
+    
+    for port in ports:
+        try:
+            result = subprocess.run(
+                f"lsof -ti :{port}",
+                shell=True,
+                capture_output=True,
+                text=True
+            )
+            pids = result.stdout.strip().split('\n')
+            pids = [pid for pid in pids if pid]
+            
+            if pids:
+                has_occupied = True
+                break
+        except Exception:
+            pass
+    
+    # 如果有端口被占用，自动清理
+    if has_occupied:
+        print("⚠️  检测到端口被占用，正在自动清理...")
+        print()
+        
+        # 静默停止服务（不需要用户交互）
+        stopped_any = False
+        
+        # 尝试通过 PID 文件停止
+        for pid_file in [BACKEND_PID_FILE, FRONTEND_PID_FILE]:
+            pid = read_pid(pid_file)
+            if pid and is_process_running(pid):
+                try:
+                    if os.name != 'nt':
+                        os.killpg(os.getpgid(pid), signal.SIGTERM)
+                    else:
+                        os.kill(pid, signal.SIGTERM)
+                    stopped_any = True
+                except Exception:
+                    pass
+                try:
+                    os.remove(pid_file)
+                except:
+                    pass
+        
+        # 强制清理占用端口的进程
+        for port in ports:
+            try:
+                result = subprocess.run(
+                    f"lsof -ti :{port}",
+                    shell=True,
+                    capture_output=True,
+                    text=True
+                )
+                pids = result.stdout.strip().split('\n')
+                pids = [pid for pid in pids if pid]
+                
+                for pid in pids:
+                    try:
+                        os.kill(int(pid), signal.SIGKILL)
+                        print(f"✓ 已终止占用端口 {port} 的进程 {pid}")
+                        stopped_any = True
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        
+        if stopped_any:
+            time.sleep(1)
+            print("✓ 端口清理完成")
+        print()
+    else:
+        print("✓ 端口 8101 和 3100 均可用")
+        print()
     
     processes = []
     

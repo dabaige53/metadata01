@@ -241,6 +241,11 @@ class Field(Base):
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
     
+    # ========== 新增预计算统计字段 (指标预计算优化) ==========
+    usage_count = Column(Integer, default=0)  # 被视图使用次数
+    metric_usage_count = Column(Integer, default=0)  # 被指标引用次数
+    last_used_at = Column(DateTime)  # 最后使用时间
+    
     # 关系
     table = relationship('DBTable', back_populates='fields')
     datasource = relationship('Datasource', back_populates='fields')
@@ -271,7 +276,9 @@ class Field(Base):
             'defaultFormat': self.default_format,
             'isHidden': self.is_hidden,
             'folderName': self.folder_name,
-            'usageCount': len(self.views) if self.views else 0,
+            'usageCount': self.usage_count or 0,  # 使用预计算字段
+            'metricUsageCount': self.metric_usage_count or 0,  # 使用预计算字段
+            'realUsageCount': len(self.views) if self.views else 0, # 保留实时计算用于参考
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }
@@ -457,13 +464,22 @@ class CalculatedField(Base):
     reference_count = Column(Integer, default=0)
     complexity_score = Column(Float, default=0)
     
+    # ========== 新增预计算统计字段 (指标预计算优化) ==========
+    has_duplicates = Column(Boolean, default=False)  # 是否有重复
+    duplicate_count = Column(Integer, default=0)  # 重复数量
+    dependency_count = Column(Integer, default=0)  # 依赖字段数量
+    formula_hash = Column(String(64))  # 公式哈希(用于快速查重)
+    
     def to_dict(self):
         return {
             'fieldId': self.field_id,
             'name': self.name,
             'formula': self.formula,
             'referenceCount': self.reference_count,
-            'complexityScore': self.complexity_score
+            'complexityScore': self.complexity_score,
+            'hasDuplicates': self.has_duplicates,
+            'duplicateCount': self.duplicate_count,
+            'dependencyCount': self.dependency_count
         }
 
 
