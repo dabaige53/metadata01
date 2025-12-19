@@ -59,28 +59,28 @@ export default function TableCard({ table, onClick }: TableCardProps) {
   }
 
   // 构建徽章
-  const badges = [
+  const badges: Array<{ text: string; color: 'green' | 'blue' | 'purple' | 'red' | 'orange' | 'gray' | 'indigo' }> = [
     {
       text: statusText,
       color: statusColor,
     },
     {
       text: table.schema || 'public',
-      color: 'gray' as const,
+      color: 'gray',
     },
   ];
 
   if (isCertified) {
     badges.push({
       text: '已认证',
-      color: 'blue' as const,
+      color: 'blue',
     });
   }
 
   if (isEmbedded) {
     badges.push({
       text: '嵌入式',
-      color: 'amber' as const,
+      color: 'orange',
     });
   }
 
@@ -117,7 +117,8 @@ export default function TableCard({ table, onClick }: TableCardProps) {
       value: formatDateWithRelative(updatedAt),
       highlight: isRecent(updatedAt),
     },
-  ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
+  ].filter((item): item is { label: string; value: string; highlight?: boolean } =>
+    Boolean(item && item.value !== undefined && item.value !== null && item.value !== ''));
 
   // 构建标签
   const tags = [];
@@ -141,7 +142,7 @@ export default function TableCard({ table, onClick }: TableCardProps) {
   // API 返回的是 { measures: ['度量 (N个)'], dimensions: ['维度 (M个)'] }
   // 或者旧版返回的是 [{ role: 'measure' }, ...]
   if (Array.isArray(previewFields) && previewFields.length > 0) {
-    const measureCount = previewFields.filter((f: any) => f.role === 'measure').length;
+    const measureCount = previewFields.filter((f: any) => f && f.role === 'measure').length;
     const dimensionCount = previewFields.length - measureCount;
 
     if (measureCount > 0) {

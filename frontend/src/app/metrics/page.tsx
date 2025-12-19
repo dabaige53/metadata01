@@ -9,6 +9,8 @@ import Pagination from '@/components/data-table/Pagination';
 import MetricCard from '@/components/cards/MetricCard';
 import { useDataTable } from '@/hooks/useDataTable';
 import DuplicateMetricsAnalysis from '@/components/metrics/DuplicateMetricsAnalysis';
+import ComplexMetricsAnalysis from '@/components/metrics/ComplexMetricsAnalysis';
+import UnusedMetricsAnalysis from '@/components/metrics/UnusedMetricsAnalysis';
 
 interface MetricItem {
     id: string;
@@ -32,7 +34,7 @@ function MetricsContent() {
     const [total, setTotal] = useState(0);
     const [facetsData, setFacetsData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'list' | 'analysis'>('list');
+    const [activeTab, setActiveTab] = useState<'list' | 'duplicate' | 'complex' | 'unused'>('list');
     const { openDrawer } = useDrawer();
 
     const fetchMetrics = async (params: Record<string, any>) => {
@@ -121,13 +123,31 @@ function MetricsContent() {
                             指标列表
                         </button>
                         <button
-                            onClick={() => setActiveTab('analysis')}
-                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'analysis'
+                            onClick={() => setActiveTab('duplicate')}
+                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'duplicate'
                                 ? 'bg-white text-indigo-600 shadow-sm'
                                 : 'text-gray-500 hover:text-gray-700'
                                 }`}
                         >
-                            重复指标分析
+                            重复指标
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('complex')}
+                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'complex'
+                                ? 'bg-white text-indigo-600 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            高复杂度
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('unused')}
+                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'unused'
+                                ? 'bg-white text-indigo-600 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            未使用指标
                         </button>
                     </div>
                 </div>
@@ -184,8 +204,12 @@ function MetricsContent() {
                         />
                     )}
                 </>
-            ) : (
+            ) : activeTab === 'duplicate' ? (
                 <DuplicateMetricsAnalysis />
+            ) : activeTab === 'complex' ? (
+                <ComplexMetricsAnalysis />
+            ) : (
+                <UnusedMetricsAnalysis />
             )}
         </div>
     );

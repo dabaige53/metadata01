@@ -63,25 +63,25 @@ export default function MetricCard({ metric, onClick }: MetricCardProps) {
   const complexityColor = complexity > 10 ? 'red' : complexity > 4 ? 'orange' : 'green';
 
   // 构建徽章
-  const badges = [
+  const badges: Array<{ text: string; color: 'green' | 'blue' | 'purple' | 'red' | 'orange' | 'gray' | 'indigo' }> = [
     {
       text: isMeasure ? '度量' : '维度',
-      color: (isMeasure ? 'green' : 'blue') as const,
+      color: isMeasure ? 'green' : 'blue',
     },
     {
       text: metricType,
-      color: 'purple' as const,
+      color: 'purple',
     },
     {
       text: `复杂度:${complexityLevel}`,
-      color: complexityColor as const,
+      color: complexityColor as 'green' | 'orange' | 'red',
     },
   ];
 
   if (hasDuplicate) {
     badges.push({
       text: '存在重复',
-      color: 'red' as const,
+      color: 'red',
     });
   }
 
@@ -113,7 +113,8 @@ export default function MetricCard({ metric, onClick }: MetricCardProps) {
       value: formatDateWithRelative(updatedAt),
       highlight: isRecent(updatedAt),
     },
-  ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
+  ].filter((item): item is { label: string; value: string; highlight?: boolean } =>
+    Boolean(item && item.value !== undefined && item.value !== null && item.value !== ''));
 
   if (metric.owner) {
     details.push({

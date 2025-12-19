@@ -357,13 +357,20 @@ export default function DetailDrawer() {
                             onMouseEnter={() => asset.id && prefetch(asset.id, type)} // 添加预加载触发器
                             style={{ animationDelay: `${ai * 30}ms` }}
                             className={`flex items-center justify-between bg-white p-2 rounded border border-${colorClass}-100 ${asset.id ? 'cursor-pointer hover:border-${colorClass}-300 hover:bg-${colorClass}-50 hover:scale-[1.01] active:scale-[0.99]' : ''} transition-all shadow-sm animate-in fade-in slide-in-up fill-mode-backwards`}>
-                            <div className="flex flex-col min-w-0">
-                                <span className="text-[13px] text-gray-700 font-medium truncate">{asset.name}</span>
-                                {asset.subtitle && <span className="text-[10px] text-gray-400">{asset.subtitle}</span>}
-                                {(asset.remote_type || asset.dataType) && (
-                                    <span className="text-[10px] font-mono text-gray-400 capitalize">
-                                        {asset.remote_type || asset.dataType}
-                                    </span>
+                            <div className="flex flex-col min-w-0 flex-1 pr-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[13px] text-gray-700 font-bold truncate">{asset.name}</span>
+                                    {(asset.remote_type || asset.dataType) && (
+                                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 font-mono tracking-tight flex-shrink-0">
+                                            {asset.remote_type || asset.dataType}
+                                        </span>
+                                    )}
+                                </div>
+                                {asset.subtitle && <span className="text-[10px] text-gray-500 mt-0.5 truncate">{asset.subtitle}</span>}
+                                {asset.content && (
+                                    <div className="mt-1.5 text-[10px] font-mono text-gray-600 bg-gray-50 p-1.5 rounded border border-gray-100 line-clamp-2 break-all leading-relaxed" title={asset.content}>
+                                        {asset.content}
+                                    </div>
                                 )}
                             </div>
                             {asset.id && <ChevronRight className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />}
@@ -551,6 +558,10 @@ export default function DetailDrawer() {
         const createdAt = data.createdAt || data.created_at;
         const updatedAt = data.updatedAt || data.updated_at;
 
+        // 对于视图，从 workbook_info 中提取 owner 和 project_name
+        const ownerName = data.owner || data.workbook_info?.owner;
+        const projectName = data.projectName || data.project_name || data.workbook_info?.project_name;
+
         // Mock数据策略: 如果后端没返回，通过现有字段计算一些 "假的" 治理状态
         // [MODIFIED] Removed mock logic. Using real data or defaulting to safe values.
         // const mockQuality = (data.description ? 90 : 60);
@@ -604,7 +615,7 @@ export default function DetailDrawer() {
                             </div>
                             <div className="text-xs font-medium text-gray-800 flex items-center gap-1.5">
                                 <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
-                                {data.owner || 'Unknown'}
+                                {ownerName || '-'}
                             </div>
                         </div>
                         <div className="bg-white p-3">
@@ -614,8 +625,8 @@ export default function DetailDrawer() {
                                     <HelpCircle className="w-2.5 h-2.5" />
                                 </span>
                             </div>
-                            <div className="text-xs font-medium text-gray-800 truncate" title={data.projectName || data.project_name}>
-                                {data.projectName || data.project_name || '-'}
+                            <div className="text-xs font-medium text-gray-800 truncate" title={projectName}>
+                                {projectName || '-'}
                             </div>
                         </div>
                         <div className="bg-white p-3">
@@ -767,7 +778,23 @@ export default function DetailDrawer() {
             case 'deps':
                 return renderAssetSection('依赖的基础字段', Columns, data.dependencyFields || [], 'fields', 'indigo');
             case 'impact_metrics':
-                return renderAssetSection('下游受影响的指标', FunctionSquare, data.used_by_metrics || [], 'metrics', 'amber');
+                const impactItems = (data.used_by_metrics || []).map((m: any) => {
+                    let sourceInfo = '未知来源';
+                    if (m.datasourceName && m.datasourceName !== 'Unknown') {
+                        sourceInfo = `数据源: ${m.datasourceName}`;
+                    } else if (m.workbookName) {
+                        sourceInfo = `工作簿: ${m.workbookName}`;
+                    } else if (m.tableName) {
+                        sourceInfo = `数据表: ${m.tableName}`;
+                    }
+
+                    return {
+                        ...m,
+                        subtitle: sourceInfo,
+                        content: m.description // 只显示描述，不显示公式，因为公式太长影响体验
+                    };
+                });
+                return renderAssetSection('下游受影响的指标', FunctionSquare, impactItems, 'metrics', 'amber');
 
             // 业务消费端
             case 'views':

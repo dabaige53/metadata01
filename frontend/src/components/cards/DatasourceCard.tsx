@@ -87,10 +87,10 @@ export default function DatasourceCard({ datasource, onClick }: DatasourceCardPr
   const refreshStatus = getRefreshStatus(lastRefresh);
 
   // 构建徽章
-  const badges = [
+  const badges: Array<{ text: string; color: 'green' | 'orange' | 'red' | 'blue' | 'purple' }> = [
     {
       text: hasExtract ? 'Extract' : 'Live',
-      color: (hasExtract ? 'orange' : 'blue') as const,
+      color: hasExtract ? 'orange' : 'blue',
     },
     {
       text: refreshStatus.text,
@@ -150,7 +150,8 @@ export default function DatasourceCard({ datasource, onClick }: DatasourceCardPr
       value: formatDateWithRelative(updatedAt),
       highlight: isRecent(updatedAt),
     },
-  ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
+  ].filter((item): item is { label: string; value: string; highlight?: boolean } =>
+    Boolean(item && item.value !== undefined && item.value !== null && item.value !== ''));
 
   // 构建标签
   const tags = [];

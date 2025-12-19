@@ -9,6 +9,8 @@ import Pagination from '@/components/data-table/Pagination';
 import FieldCard from '@/components/cards/FieldCard';
 import { useDataTable } from '@/hooks/useDataTable';
 import NoDescriptionFieldsAnalysis from '@/components/fields/NoDescriptionFieldsAnalysis';
+import OrphanFieldsAnalysis from '@/components/fields/OrphanFieldsAnalysis';
+import HotFieldsAnalysis from '@/components/fields/HotFieldsAnalysis';
 
 interface FieldItem {
     id: string;
@@ -34,7 +36,7 @@ function FieldsContent() {
     const [total, setTotal] = useState(0);
     const [facetsData, setFacetsData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'list' | 'noDescription'>('list');
+    const [activeTab, setActiveTab] = useState<'list' | 'noDescription' | 'orphan' | 'hot'>('list');
     const { openDrawer } = useDrawer();
 
     const fetchFields = async (params: Record<string, any>) => {
@@ -123,6 +125,24 @@ function FieldsContent() {
                         >
                             无描述字段
                         </button>
+                        <button
+                            onClick={() => setActiveTab('orphan')}
+                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'orphan'
+                                ? 'bg-white text-indigo-600 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            孤立字段
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('hot')}
+                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'hot'
+                                ? 'bg-white text-indigo-600 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            热门字段
+                        </button>
                     </div>
                 </div>
 
@@ -178,8 +198,12 @@ function FieldsContent() {
                         />
                     )}
                 </>
-            ) : (
+            ) : activeTab === 'noDescription' ? (
                 <NoDescriptionFieldsAnalysis />
+            ) : activeTab === 'orphan' ? (
+                <OrphanFieldsAnalysis />
+            ) : (
+                <HotFieldsAnalysis />
             )}
         </div>
     );

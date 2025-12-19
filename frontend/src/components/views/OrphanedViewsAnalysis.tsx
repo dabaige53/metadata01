@@ -55,7 +55,7 @@ export default function OrphanedViewsAnalysis() {
                     return fields >= 20;
                 });
                 // 按复杂度降序
-                setComplexViews(complex.sort((a, b) => {
+                setComplexViews(complex.sort((a: ViewItem, b: ViewItem) => {
                     const fieldsA = a.field_count ?? a.fieldCount ?? 0;
                     const fieldsB = b.field_count ?? b.fieldCount ?? 0;
                     return fieldsB - fieldsA;

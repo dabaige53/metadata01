@@ -8,7 +8,8 @@ import SortButtons from '@/components/data-table/SortButtons';
 import Pagination from '@/components/data-table/Pagination';
 import ViewCard from '@/components/cards/ViewCard';
 import { useDataTable } from '@/hooks/useDataTable';
-import OrphanedViewsAnalysis from '@/components/views/OrphanedViewsAnalysis';
+import ZeroAccessViewsAnalysis from '@/components/views/ZeroAccessViewsAnalysis';
+import HotViewsAnalysis from '@/components/views/HotViewsAnalysis';
 
 interface ViewItem {
     id: string;
@@ -33,7 +34,7 @@ function ViewsContent() {
     const [total, setTotal] = useState(0);
     const [facetsData, setFacetsData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'list' | 'analysis'>('list');
+    const [activeTab, setActiveTab] = useState<'list' | 'zeroAccess' | 'hot'>('list');
     const { openDrawer } = useDrawer();
 
     const fetchViews = async (params: Record<string, any>) => {
@@ -122,13 +123,22 @@ function ViewsContent() {
                             视图列表
                         </button>
                         <button
-                            onClick={() => setActiveTab('analysis')}
-                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'analysis'
+                            onClick={() => setActiveTab('zeroAccess')}
+                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'zeroAccess'
                                 ? 'bg-white text-indigo-600 shadow-sm'
                                 : 'text-gray-500 hover:text-gray-700'
                                 }`}
                         >
-                            治理分析
+                            零访问视图
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('hot')}
+                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'hot'
+                                ? 'bg-white text-indigo-600 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            热门视图
                         </button>
                     </div>
                 </div>
@@ -185,8 +195,10 @@ function ViewsContent() {
                         />
                     )}
                 </>
+            ) : activeTab === 'zeroAccess' ? (
+                <ZeroAccessViewsAnalysis />
             ) : (
-                <OrphanedViewsAnalysis />
+                <HotViewsAnalysis />
             )}
         </div>
     );

@@ -56,14 +56,14 @@ export default function FieldCard({ field, onClick }: FieldCardProps) {
   const upstreamColumn = field.upstream_column_name ?? field.upstreamColumnName;
 
   // 构建徽章
-  const badges = [
+  const badges: Array<{ text: string; color: 'green' | 'blue' | 'gray' | 'red' | 'purple' | 'orange' | 'indigo' }> = [
     {
       text: isMeasure ? '度量' : '维度',
-      color: (isMeasure ? 'green' : 'blue') as const,
+      color: isMeasure ? 'green' : 'blue',
     },
     {
       text: dataType,
-      color: 'gray' as const,
+      color: 'gray',
     },
   ];
 
@@ -71,7 +71,7 @@ export default function FieldCard({ field, onClick }: FieldCardProps) {
   if (usageCount > 20) {
     badges.push({
       text: '热门',
-      color: 'red' as const,
+      color: 'red',
     });
   }
 
@@ -99,7 +99,8 @@ export default function FieldCard({ field, onClick }: FieldCardProps) {
       value: formatDateWithRelative(updatedAt),
       highlight: isRecent(updatedAt),
     },
-  ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
+  ].filter((item): item is { label: string; value: string; highlight?: boolean } =>
+    Boolean(item && item.value !== undefined && item.value !== null && item.value !== ''));
 
   // 如果有聚合方式，添加
   if (field.aggregation) {

@@ -71,16 +71,36 @@ def get_field_usage_by_name(session, field_name):
     按需查询：获取指定字段被哪些指标引用
     替代 build_metric_index 的 field_usage 功能
     """
-    deps = session.query(FieldDependency, Field).join(
-        Field, FieldDependency.source_field_id == Field.id
+def get_field_usage_by_name(session, field_name):
+    """
+    按需查询：获取指定字段被哪些指标引用
+    替代 build_metric_index 的 field_usage 功能
+    """
+    # Join Field, Datasource, CalculatedField, and Workbook to get rich info
+    # Use outer joins because not all fields have datasource or workbook or calc info
+    deps = session.query(Field, Datasource, CalculatedField, Workbook).join(
+        FieldDependency, Field.id == FieldDependency.source_field_id
+    ).outerjoin(
+        Datasource, Field.datasource_id == Datasource.id
+    ).outerjoin(
+        Workbook, Field.workbook_id == Workbook.id
+    ).outerjoin(
+        CalculatedField, Field.id == CalculatedField.field_id
     ).filter(FieldDependency.dependency_name == field_name).all()
     
     result = []
-    for dep, source_field in deps:
+    for f, ds, cf, wb in deps:
         result.append({
-            'id': source_field.id,
-            'name': source_field.name,
-            'datasourceId': source_field.datasource_id
+            'id': f.id,
+            'name': f.name,
+            'datasourceId': f.datasource_id,
+            'datasourceName': ds.name if ds else None,
+            'workbookId': f.workbook_id,
+            'workbookName': wb.name if wb else None,
+            'description': f.description,
+            'formula': cf.formula if cf else None,
+            'role': f.role,
+            'dataType': f.data_type
         })
     return result
 

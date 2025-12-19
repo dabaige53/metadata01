@@ -61,16 +61,19 @@ export default function ViewCard({ view, onClick }: ViewCardProps) {
     }
 
     // 构建徽章
-    const badges = [
+    const badges: Array<{ text: string; color: 'green' | 'blue' | 'purple' | 'red' | 'orange' | 'gray' | 'indigo' }> = [
         {
             text: typeLabel,
             color: typeColor,
         },
-        {
-            text: projectName,
-            color: 'gray' as const,
-        },
     ];
+
+    if (projectName) {
+        badges.push({
+            text: projectName,
+            color: 'gray',
+        });
+    }
 
     // 构建详情信息
     const details = [
@@ -101,7 +104,8 @@ export default function ViewCard({ view, onClick }: ViewCardProps) {
             value: formatDateWithRelative(updatedAt),
             highlight: isRecent(updatedAt),
         },
-    ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
+    ].filter((item): item is { label: string; value: string; highlight?: boolean } =>
+        Boolean(item && item.value !== undefined && item.value !== null && item.value !== ''));
 
     // 构建标签
     const tags = [];

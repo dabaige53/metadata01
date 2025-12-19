@@ -10,6 +10,7 @@ import Pagination from '@/components/data-table/Pagination';
 import DatasourceCard from '@/components/cards/DatasourceCard';
 import { useDataTable } from '@/hooks/useDataTable';
 import UncertifiedDatasourcesAnalysis from '@/components/datasources/UncertifiedDatasourcesAnalysis';
+import OrphanDatasourcesAnalysis from '@/components/datasources/OrphanDatasourcesAnalysis';
 
 interface DatasourceItem {
     id: string;
@@ -38,7 +39,7 @@ function DatasourcesContent() {
     const [total, setTotal] = useState(0);
     const [facetsData, setFacetsData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'list' | 'analysis'>('list');
+    const [activeTab, setActiveTab] = useState<'list' | 'uncertified' | 'orphan'>('list');
     const { openDrawer } = useDrawer();
 
     const fetchDatasources = async (params: Record<string, any>) => {
@@ -127,13 +128,22 @@ function DatasourcesContent() {
                             数据源列表
                         </button>
                         <button
-                            onClick={() => setActiveTab('analysis')}
-                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'analysis'
+                            onClick={() => setActiveTab('uncertified')}
+                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'uncertified'
                                 ? 'bg-white text-indigo-600 shadow-sm'
                                 : 'text-gray-500 hover:text-gray-700'
                                 }`}
                         >
-                            治理分析
+                            未认证分析
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('orphan')}
+                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'orphan'
+                                ? 'bg-white text-indigo-600 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            孤立数据源
                         </button>
                     </div>
                 </div>
@@ -190,8 +200,10 @@ function DatasourcesContent() {
                         />
                     )}
                 </>
-            ) : (
+            ) : activeTab === 'uncertified' ? (
                 <UncertifiedDatasourcesAnalysis />
+            ) : (
+                <OrphanDatasourcesAnalysis />
             )}
         </div>
     );

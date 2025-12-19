@@ -48,14 +48,14 @@ export default function WorkbookCard({ workbook, onClick, onMouseEnter }: Workbo
   const statusColor = viewCount === 0 ? 'gray' : viewCount > 10 ? 'purple' : 'green';
 
   // 构建徽章
-  const badges = [
+  const badges: Array<{ text: string; color: 'green' | 'blue' | 'purple' | 'red' | 'orange' | 'gray' | 'indigo' }> = [
     {
       text: status,
       color: statusColor as 'gray' | 'purple' | 'green',
     },
     {
       text: `${viewCount}个视图`,
-      color: 'blue' as const,
+      color: 'blue',
     },
   ];
 
@@ -87,7 +87,8 @@ export default function WorkbookCard({ workbook, onClick, onMouseEnter }: Workbo
       value: formatDateWithRelative(updatedAt),
       highlight: isRecent(updatedAt),
     },
-  ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
+  ].filter((item): item is { label: string; value: string; highlight?: boolean } =>
+    Boolean(item && item.value !== undefined && item.value !== null && item.value !== ''));
 
   // 添加上游数据源信息
   if (upstreamDatasources.length > 0) {
