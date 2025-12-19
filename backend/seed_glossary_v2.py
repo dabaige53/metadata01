@@ -3,9 +3,6 @@ import json
 
 base_url = "http://localhost:8101/api"
 
-# Clear existing terms if needed (optional, could just check existence)
-# For now, we rely on the API checking for duplicates by term name.
-
 terms = [
     # ========== 数据库 (Database) ==========
     {
@@ -48,6 +45,25 @@ terms = [
             { "value": "referential_integrity", "label": "引用完整性", "description": "假设所有记录都匹配或允许不匹配。" }
         ]
     },
+    # --- System Attributes for Table ---
+    {
+        "term": "Schema (模式)",
+        "definition": "数据库中的命名空间，用于组织表和其他对象。在 Tableau 中通常显示为 'dbo', 'public' 等。",
+        "category": "系统属性",
+        "element": "table"
+    },
+    {
+        "term": "Column Count (原始列数)",
+        "definition": "数据库物理表中的列总数，反映了底层表的宽度。",
+        "category": "系统属性",
+        "element": "table"
+    },
+    {
+        "term": "Field Count (字段数)",
+        "definition": "Tableau 数据源中基于此表生成的字段数量，包括自动生成的字段和计算字段。",
+        "category": "系统属性",
+        "element": "table"
+    },
 
     # ========== 字段字典 (Field) ==========
     {
@@ -78,6 +94,33 @@ terms = [
             { "value": "discrete", "label": "离散 (Blue)", "description": "形成有限的表头。" }
         ]
     },
+    # --- System Attributes for Field ---
+    {
+        "term": "Data Type (数据类型)",
+        "definition": "字段存储数据的格式。",
+        "category": "系统属性",
+        "element": "field",
+        "enums": [
+            { "value": "string", "label": "字符串", "description": "文本数据" },
+            { "value": "integer", "label": "整数", "description": "不带小数的数字" },
+            { "value": "float", "label": "浮点数", "description": "带小数的数字" },
+            { "value": "boolean", "label": "布尔值", "description": "真/假" },
+            { "value": "date", "label": "日期", "description": "日期值" },
+            { "value": "datetime", "label": "日期时间", "description": "包含时间的日期" }
+        ]
+    },
+    {
+        "term": "Formula (公式)",
+        "definition": "用于定义计算字段逻辑的表达式。仅计算字段拥有此属性。",
+        "category": "系统属性",
+        "element": "field"
+    },
+    {
+        "term": "Usage Count (热度)",
+        "definition": "该字段在所有视图和工作表中被引用的总次数。用于衡量字段的重要性。",
+        "category": "系统属性",
+        "element": "field"
+    },
 
     # ========== 指标库 (Metric) ==========
     {
@@ -97,6 +140,19 @@ terms = [
         "category": "计算逻辑",
         "element": "metric"
     },
+    # --- System Attributes for Metric ---
+    {
+        "term": "Complexity Score (复杂度评分)",
+        "definition": "系统基于计算公式的长度、嵌套层级和函数类型自动计算的评分。分数越高代表维护成本越高。",
+        "category": "系统属性",
+        "element": "metric"
+    },
+    {
+        "term": "Reference Count (引用计数)",
+        "definition": "该指标被其他计算字段依赖或引用的次数。反映了该指标作为中间层计算的重要性。",
+        "category": "系统属性",
+        "element": "metric"
+    },
 
     # ========== 数据源 (Datasource) ==========
     {
@@ -109,6 +165,25 @@ terms = [
         "term": "Data Source Filter (数据源筛选器)",
         "definition": "限制进入 Tableau 的数据量的筛选器，应用于提取或实时查询之前。",
         "category": "过滤机制",
+        "element": "datasource"
+    },
+    # --- System Attributes for Datasource ---
+    {
+        "term": "Certified (已认证)",
+        "definition": "标识该数据源已经过数据治理团队的验证，数据质量可信。在 UI 中通常显示为绿色对勾。",
+        "category": "系统属性",
+        "element": "datasource"
+    },
+    {
+        "term": "Has Extract (有提取)",
+        "definition": "标识该数据源是否创建了数据提取 (Hyper)。",
+        "category": "系统属性",
+        "element": "datasource"
+    },
+    {
+        "term": "Last Refresh (最后刷新)",
+        "definition": "数据提取最近一次成功刷新的时间。",
+        "category": "系统属性",
         "element": "datasource"
     },
 
@@ -151,6 +226,13 @@ terms = [
         "category": "可视化组件",
         "element": "view"
     },
+    # --- System Attributes for View ---
+    {
+        "term": "View Count (访问量)",
+        "definition": "该视图被用户访问的总次数（基于 Tableau Server 统计）。",
+        "category": "系统属性",
+        "element": "view"
+    },
 
     # ========== 项目 (Project) ==========
     {
@@ -163,6 +245,13 @@ terms = [
         "term": "Permissions (权限)",
         "definition": "控制用户或组对项目及其内容（查看、编辑、下载等）的访问级别。",
         "category": "安全性",
+        "element": "project"
+    },
+    # --- System Attributes for Project ---
+    {
+        "term": "Owner (所有者)",
+        "definition": "资产的负责人或创建者。拥有最高的管理权限。",
+        "category": "系统属性",
         "element": "project"
     },
 
