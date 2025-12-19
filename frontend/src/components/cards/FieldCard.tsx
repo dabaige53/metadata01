@@ -22,6 +22,9 @@ export interface FieldCardData {
   upstreamColumnName?: string;
   description?: string;
   used_by_metrics?: any[];
+  used_by_metrics_count?: number;
+  metricUsageCount?: number;
+  metric_usage_count?: number;
   used_in_views?: any[];
   usedInViews?: any[];
 }
@@ -33,12 +36,17 @@ export interface FieldCardProps {
 
 export default function FieldCard({ field, onClick }: FieldCardProps) {
   const isMeasure = field.role === 'measure';
-  const usageCount = field.usage_count || field.usageCount || 0;
-  const isCalculated = field.is_calculated || field.isCalculated || false;
-  const dataType = field.data_type || field.dataType || 'unknown';
-  const usedByMetrics = field.used_by_metrics || [];
-  const usedInViews = field.used_in_views || field.usedInViews || [];
-  const upstreamColumn = field.upstream_column_name || field.upstreamColumnName;
+  const usageCount = field.usage_count ?? field.usageCount ?? 0;
+  const metricUsageCount = field.metricUsageCount ?? field.used_by_metrics_count ?? field.metric_usage_count ?? 0;
+  const isCalculated = field.is_calculated ?? field.isCalculated ?? false;
+  const dataType = field.data_type ?? field.dataType ?? 'unknown';
+  const usedByMetrics = field.used_by_metrics ?? [];
+  const usedInViews = field.used_in_views ?? field.usedInViews ?? [];
+
+  // Use counts if arrays are empty (Server-side optimized list)
+  const finalMetricUsageCount = metricUsageCount > 0 ? metricUsageCount : usedByMetrics.length;
+  const finalViewUsageCount = usageCount > 0 ? usageCount : usedInViews.length;
+  const upstreamColumn = field.upstream_column_name ?? field.upstreamColumnName;
 
   // 构建徽章
   const badges = [
@@ -64,18 +72,18 @@ export default function FieldCard({ field, onClick }: FieldCardProps) {
   const details = [
     {
       label: '表',
-      value: field.table_name || '-',
+      value: field.table_name, // Removed default '-' to allow filtering
     },
     {
       label: '数据源',
-      value: field.datasource_name || '-',
+      value: field.datasource_name,
     },
     {
       label: '热度',
       value: `${usageCount} 次`,
       highlight: usageCount > 10,
     },
-  ];
+  ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
 
   // 如果有聚合方式，添加
   if (field.aggregation) {
@@ -88,17 +96,17 @@ export default function FieldCard({ field, onClick }: FieldCardProps) {
   // 构建标签
   const tags = [];
 
-  if (usedByMetrics.length > 0) {
+  if (finalMetricUsageCount > 0) {
     tags.push({
-      label: `${usedByMetrics.length}个指标依赖`,
+      label: `${finalMetricUsageCount}个指标依赖`,
       color: 'purple' as const,
     });
   }
 
-  if (usedInViews.length > 0) {
+  if (finalViewUsageCount > 0) {
     tags.push({
       icon: <Eye className="w-3 h-3" />,
-      label: `${usedInViews.length}个视图引用`,
+      label: `${finalViewUsageCount}个视图引用`,
       color: 'blue' as const,
     });
   }

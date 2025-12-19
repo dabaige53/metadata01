@@ -7,7 +7,7 @@ from sqlalchemy import func, case
 from ..models import (
     Database, DBTable, DBColumn, Field, Datasource, Workbook, View,
     CalculatedField, Metric, MetricVariant, MetricDuplicate,
-    TableauUser, Project, FieldDependency
+    TableauUser, Project, FieldDependency, Glossary, TermEnum
 )
 
 api_bp = Blueprint('api', __name__)
@@ -2352,3 +2352,87 @@ def get_duplicate_metrics():
         'page_size': page_size,
         'total_pages': (total + page_size - 1) // page_size
     })
+
+# ==================== 术语治理接口 ====================
+
+@api_bp.route('/glossary', methods=['GET'])
+def get_glossary():
+    """获取术语列表"""
+    session = g.db_session
+    search = request.args.get('search', '')
+    category = request.args.get('category', '')
+    element = request.args.get('element', '')
+    
+    query = session.query(Glossary)
+    
+    if search:
+        query = query.filter(
+            (Glossary.term.ilike(f'%{search}%')) | 
+            (Glossary.definition.ilike(f'%{search}%'))
+        )
+    
+    if category and category != 'all':
+        query = query.filter(Glossary.category == category)
+
+    if element and element != 'all':
+        query = query.filter(Glossary.element == element)
+        
+    # 默认按术语名称排序
+    query = query.order_by(Glossary.term.asc())
+    
+    items = query.all()
+    return jsonify({
+        'items': [item.to_dict() for item in items],
+        'total': len(items)
+    })
+
+
+@api_bp.route('/glossary', methods=['POST'])
+def create_glossary_term():
+    """创建术语 (内部管理用)"""
+    session = g.db_session
+    data = request.json
+    
+    if not data or not data.get('term') or not data.get('definition'):
+        return jsonify({'error': 'Missing required fields'}), 400
+        
+    # 检查是否存在
+    existing = session.query(Glossary).filter(Glossary.term == data['term']).first()
+    if existing:
+        return jsonify({'error': 'Term already exists'}), 409
+        
+    new_term = Glossary(
+        term=data['term'],
+        definition=data['definition'],
+        category=data.get('category', 'General'),
+        element=data.get('element', 'General')
+    )
+    session.add(new_term)
+    session.flush() # 获取 ID
+    
+    # 添加枚举值
+    if 'enums' in data and isinstance(data['enums'], list):
+        for enum_data in data['enums']:
+            new_enum = TermEnum(
+                glossary_id=new_term.id,
+                value=enum_data['value'],
+                label=enum_data.get('label', ''),
+                description=enum_data.get('description', '')
+            )
+            session.add(new_enum)
+            
+    try:
+        session.commit()
+        return jsonify(new_term.to_dict()), 201
+    except Exception as e:
+        session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/glossary/<int:id>', methods=['GET'])
+def get_glossary_detail(id):
+    """获取术语详情"""
+    session = g.db_session
+    item = session.query(Glossary).filter(Glossary.id == id).first()
+    if not item: return jsonify({'error': 'Not found'}), 404
+    return jsonify(item.to_dict())

@@ -65,17 +65,17 @@ function formatRefreshTime(dateString?: string): string {
 }
 
 export default function DatasourceCard({ datasource, onClick }: DatasourceCardProps) {
-  const projectName = datasource.project_name || datasource.projectName || '-';
-  const tableCount = datasource.table_count || datasource.tableCount || 0;
-  const fieldCount = datasource.field_count || datasource.fieldCount || 0;
-  const metricCount = datasource.metric_count || datasource.metricCount || 0;
-  const workbookCount = datasource.workbook_count || datasource.workbookCount || 0;
-  const viewCount = datasource.view_count || datasource.viewCount || 0;
-  const hasExtract = datasource.has_extract || datasource.hasExtract || false;
-  const isCertified = datasource.is_certified || datasource.isCertified || false;
-  const lastRefresh = datasource.last_refresh || datasource.lastRefresh;
-  const hasUnsupportedSql = datasource.contains_unsupported_custom_sql || datasource.containsUnsupportedCustomSql || false;
-  const hasWarning = datasource.has_active_warning || datasource.hasActiveWarning || false;
+  const projectName = datasource.project_name ?? datasource.projectName; // Allow undefined to filter
+  const tableCount = datasource.table_count ?? datasource.tableCount ?? 0;
+  const fieldCount = datasource.field_count ?? datasource.fieldCount ?? 0;
+  const metricCount = datasource.metric_count ?? datasource.metricCount ?? 0;
+  const workbookCount = datasource.workbook_count ?? datasource.workbookCount ?? 0;
+  const viewCount = datasource.view_count ?? datasource.viewCount ?? 0;
+  const hasExtract = datasource.has_extract ?? datasource.hasExtract ?? false;
+  const isCertified = datasource.is_certified ?? datasource.isCertified ?? false;
+  const lastRefresh = datasource.last_refresh ?? datasource.lastRefresh;
+  const hasUnsupportedSql = datasource.contains_unsupported_custom_sql ?? datasource.containsUnsupportedCustomSql ?? false;
+  const hasWarning = datasource.has_active_warning ?? datasource.hasActiveWarning ?? false;
 
   const refreshStatus = getRefreshStatus(lastRefresh);
 
@@ -106,7 +106,7 @@ export default function DatasourceCard({ datasource, onClick }: DatasourceCardPr
     },
     {
       label: '所有者',
-      value: datasource.owner || '-',
+      value: datasource.owner,
     },
     {
       label: '表',
@@ -134,7 +134,7 @@ export default function DatasourceCard({ datasource, onClick }: DatasourceCardPr
       label: '刷新',
       value: formatRefreshTime(lastRefresh),
     },
-  ];
+  ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
 
   // 构建标签
   const tags = [];

@@ -521,9 +521,10 @@ export default function DetailDrawer() {
         const isFieldType = currentItem?.type === 'fields' || currentItem?.type === 'metrics';
 
         // Mock数据策略: 如果后端没返回，通过现有字段计算一些 "假的" 治理状态
-        const mockQuality = (data.description ? 90 : 60);
-        const mockCertified = data.is_certified === true;
-        const mockHotness = (data.referenceCount || data.views?.length || 0) > 5 ? 'High' : 'Normal';
+        // [MODIFIED] Removed mock logic. Using real data or defaulting to safe values.
+        // const mockQuality = (data.description ? 90 : 60);
+        // const mockCertified = data.is_certified === true;
+        // const mockHotness = (data.referenceCount || data.views?.length || 0) > 5 ? 'High' : 'Normal';
 
         return (
             <div className="space-y-6 animate-in slide-in-up">
@@ -595,7 +596,7 @@ export default function DetailDrawer() {
                             </div>
                             <div className="text-xs font-medium text-gray-800 flex items-center gap-1">
                                 {data.referenceCount !== undefined ? data.referenceCount : (data.views?.length || 0)}
-                                {mockHotness === 'High' && <span className="text-[8px] bg-amber-50 text-amber-600 px-1 rounded border border-amber-100">🔥 Hot</span>}
+                                {((data.referenceCount || 0) > 5) && <span className="text-[8px] bg-amber-50 text-amber-600 px-1 rounded border border-amber-100">🔥 Hot</span>}
                             </div>
                         </div>
                         {data.role && (
@@ -754,9 +755,8 @@ export default function DetailDrawer() {
         const displayId = safeData?.id || currentItem?.id || '-';
         const displayName = safeData?.name || currentItem?.name || '资产详情';
 
-        const mockQuality = (safeData?.description ? 98 : 65);
-        const mockCertified = safeData?.is_certified === true;
-        const mockRef = (safeData?.referenceCount || safeData?.views?.length || 0);
+        const isCertified = safeData?.is_certified === true;
+        // const mockRef = (safeData?.referenceCount || safeData?.views?.length || 0);
 
         return (
             <div className="bg-white border-b border-gray-100">
@@ -781,7 +781,7 @@ export default function DetailDrawer() {
                 <div className="px-6 py-5">
                     <div className="flex items-start justify-between gap-4">
                         <div className="flex gap-4">
-                            <div className={`p-3 rounded-xl shadow-sm border ${mockCertified ? 'bg-green-50 border-green-100 text-green-600' : 'bg-indigo-50 border-indigo-100 text-indigo-600'}`}>
+                            <div className={`p-3 rounded-xl shadow-sm border ${isCertified ? 'bg-green-50 border-green-100 text-green-600' : 'bg-indigo-50 border-indigo-100 text-indigo-600'}`}>
                                 <Icon className="w-8 h-8" />
                             </div>
                             <div>
@@ -797,7 +797,7 @@ export default function DetailDrawer() {
                                             <Copy className="w-3 h-3" />
                                         </button>
                                     </div>
-                                    {mockCertified && (
+                                    {isCertified && (
                                         <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-green-50 text-green-700 px-2 py-0.5 rounded-full border border-green-100">
                                             <CheckCircle2 className="w-3 h-3" /> 已认证
                                         </span>
@@ -808,13 +808,13 @@ export default function DetailDrawer() {
 
                         {/* 状态 Badges */}
                         <div className="flex flex-col items-end gap-2">
-                            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${mockQuality >= 80 ? 'bg-green-50 border-green-100 text-green-700' : 'bg-orange-50 border-orange-100 text-orange-700'}`}>
+                            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${isCertified ? 'bg-green-50 border-green-100 text-green-700' : 'bg-gray-50 border-gray-100 text-gray-500'}`}>
                                 <ShieldCheck className="w-3.5 h-3.5" />
-                                质量分: {mockQuality}
+                                状态: {isCertified ? '已认证' : '未认证'}
                             </div>
                             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gray-100 bg-gray-50 text-xs font-medium text-gray-600">
                                 <Flame className="w-3.5 h-3.5 text-orange-500" />
-                                热度: {mockRef > 5 ? 'High' : 'Normal'}
+                                引用数: {safeData?.referenceCount ?? (safeData?.views?.length || 0)}
                             </div>
                         </div>
                     </div>

@@ -574,6 +574,57 @@ class MetricDuplicate(Base):
         }
 
 
+# ==================== 术语治理表 ====================
+
+class Glossary(Base):
+    """术语表"""
+    __tablename__ = 'glossary'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    term = Column(String(255), nullable=False, unique=True)
+    definition = Column(Text, nullable=False)
+    category = Column(String(100))  # 术语分类：技术术语、业务术语等
+    element = Column(String(50))    # 所属元素：database, table, field, etc.
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # 关系
+    enums = relationship('TermEnum', back_populates='glossary', cascade="all, delete-orphan")
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'term': self.term,
+            'definition': self.definition,
+            'category': self.category,
+            'element': self.element,
+            'enums': [e.to_dict() for e in self.enums] if self.enums else [],
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+class TermEnum(Base):
+    """术语枚举值定义"""
+    __tablename__ = 'term_enums'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    glossary_id = Column(Integer, ForeignKey('glossary.id'), nullable=False)
+    value = Column(String(255), nullable=False)
+    label = Column(String(255))  # 显示标签/中文含义
+    description = Column(Text)
+    
+    # 关系
+    glossary = relationship('Glossary', back_populates='enums')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'value': self.value,
+            'label': self.label,
+            'description': self.description
+        }
+
 # ==================== 系统表 ====================
 
 class ViewUsageHistory(Base):

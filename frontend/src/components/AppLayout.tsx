@@ -16,6 +16,7 @@ import {
     Search,
     Bell,
     HelpCircle,
+    BookText,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import DetailDrawer from '@/components/DetailDrawer';
@@ -110,6 +111,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     <NavItem href="/views" icon={LayoutDashboard} label="视图" count={stats.views} />
                     <NavItem href="/projects" icon={FolderOpen} label="项目" count={stats.projects} />
                     <NavItem href="/users" icon={Users} label="用户" count={stats.users} />
+
+                    <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mt-6 mb-2 px-2">知识库</div>
+                    <NavItem href="/glossary" icon={BookText} label="术语介绍" />
                 </div>
 
                 <div className="p-4 border-t border-gray-100">

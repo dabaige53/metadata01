@@ -28,14 +28,13 @@ export interface WorkbookCardProps {
 }
 
 export default function WorkbookCard({ workbook, onClick, onMouseEnter }: WorkbookCardProps) {
-  const projectName = workbook.project_name || workbook.projectName || '-';
-  // ... (skip unchanged lines) ...
+  const projectName = workbook.project_name ?? workbook.projectName; // Allow undefined
 
-  const viewCount = workbook.view_count || workbook.viewCount || 0;
-  const datasourceCount = workbook.datasource_count || workbook.datasourceCount || 0;
-  const upstreamDatasources = workbook.upstream_datasources || workbook.upstreamDatasources || [];
-  const hasUnsupportedSql = workbook.contains_unsupported_custom_sql || workbook.containsUnsupportedCustomSql || false;
-  const hasWarning = workbook.has_active_warning || workbook.hasActiveWarning || false;
+  const viewCount = workbook.view_count ?? workbook.viewCount ?? 0;
+  const datasourceCount = workbook.datasource_count ?? workbook.datasourceCount ?? 0;
+  const upstreamDatasources = workbook.upstream_datasources ?? workbook.upstreamDatasources ?? [];
+  const hasUnsupportedSql = workbook.contains_unsupported_custom_sql ?? workbook.containsUnsupportedCustomSql ?? false;
+  const hasWarning = workbook.has_active_warning ?? workbook.hasActiveWarning ?? false;
 
   // 工作簿状态
   const status = viewCount === 0 ? '空工作簿' : viewCount > 10 ? '大型工作簿' : '有视图';
@@ -61,7 +60,7 @@ export default function WorkbookCard({ workbook, onClick, onMouseEnter }: Workbo
     },
     {
       label: '所有者',
-      value: workbook.owner || '-',
+      value: workbook.owner,
     },
     {
       label: '视图数',
@@ -72,7 +71,7 @@ export default function WorkbookCard({ workbook, onClick, onMouseEnter }: Workbo
       label: '数据源数',
       value: `${datasourceCount} 个`,
     },
-  ];
+  ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
 
   // 添加上游数据源信息
   if (upstreamDatasources.length > 0) {

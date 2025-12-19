@@ -28,8 +28,8 @@ export interface ViewCardProps {
 }
 
 export default function ViewCard({ view, onClick }: ViewCardProps) {
-    const workbookName = view.workbook_name || view.workbookName || view.workbook || '-';
-    const projectName = view.project_name || view.projectName || view.project || '-';
+    const workbookName = view.workbook_name ?? view.workbookName ?? view.workbook; // Allow undefined
+    const projectName = view.project_name ?? view.projectName ?? view.project; // Allow undefined
     const hits = view.hits_total ?? view.hitsTotal ?? view.usage ?? 0;
     const fieldCount = view.field_count ?? view.fieldCount ?? 0;
     const viewType = (view.viewType || view.type || '').toLowerCase();
@@ -73,7 +73,7 @@ export default function ViewCard({ view, onClick }: ViewCardProps) {
         },
         {
             label: '所有者',
-            value: view.owner || '-',
+            value: view.owner,
         },
         {
             label: '字段数',
@@ -85,7 +85,7 @@ export default function ViewCard({ view, onClick }: ViewCardProps) {
             value: `${hits} 次`,
             highlight: hits > 100,
         },
-    ];
+    ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
 
     // 构建标签
     const tags = [];

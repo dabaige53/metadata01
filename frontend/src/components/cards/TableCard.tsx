@@ -16,8 +16,8 @@ export interface TableCardData {
   datasourceCount?: number;
   workbook_count?: number;
   workbookCount?: number;
-  preview_fields?: any[];
-  previewFields?: any[];
+  preview_fields?: any[] | { measures?: string[], dimensions?: string[] };
+  previewFields?: any[] | { measures?: string[], dimensions?: string[] };
   description?: string;
   is_certified?: boolean;
   isCertified?: boolean;
@@ -31,14 +31,14 @@ export interface TableCardProps {
 }
 
 export default function TableCard({ table, onClick }: TableCardProps) {
-  const columnCount = table.column_count || table.columnCount || 0;
-  const fieldCount = table.field_count || table.fieldCount || 0;
-  const datasourceCount = table.datasource_count || table.datasourceCount || 0;
-  const workbookCount = table.workbook_count || table.workbookCount || 0;
-  const previewFields = table.preview_fields || table.previewFields || [];
-  const databaseName = table.database_name || table.databaseName || '-';
-  const isCertified = table.is_certified || table.isCertified || false;
-  const isEmbedded = table.isEmbedded || table.is_embedded || false;
+  const columnCount = table.column_count ?? table.columnCount ?? 0;
+  const fieldCount = table.field_count ?? table.fieldCount ?? 0;
+  const datasourceCount = table.datasource_count ?? table.datasourceCount ?? 0;
+  const workbookCount = table.workbook_count ?? table.workbookCount ?? 0;
+  const previewFields = table.preview_fields ?? table.previewFields ?? [];
+  const databaseName = table.database_name ?? table.databaseName; // Allow undefined/null for filtering
+  const isCertified = table.is_certified ?? table.isCertified ?? false;
+  const isEmbedded = table.isEmbedded ?? table.is_embedded ?? false;
 
   // 智能状态判断
   let statusText = '使用中';
@@ -101,7 +101,7 @@ export default function TableCard({ table, onClick }: TableCardProps) {
       value: `${workbookCount} 个`,
       highlight: workbookCount > 0,
     },
-  ];
+  ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
 
   // 构建标签
   const tags = [];
@@ -121,7 +121,10 @@ export default function TableCard({ table, onClick }: TableCardProps) {
   }
 
   // 添加预览字段标签
-  if (previewFields.length > 0) {
+  // 添加预览字段标签 (兼容数组模式和对象摘要模式)
+  // API 返回的是 { measures: ['度量 (N个)'], dimensions: ['维度 (M个)'] }
+  // 或者旧版返回的是 [{ role: 'measure' }, ...]
+  if (Array.isArray(previewFields) && previewFields.length > 0) {
     const measureCount = previewFields.filter((f: any) => f.role === 'measure').length;
     const dimensionCount = previewFields.length - measureCount;
 
@@ -135,6 +138,20 @@ export default function TableCard({ table, onClick }: TableCardProps) {
     if (dimensionCount > 0) {
       tags.push({
         label: `${dimensionCount}个维度`,
+        color: 'blue' as const,
+      });
+    }
+  } else if (previewFields && !Array.isArray(previewFields)) {
+    // 对象模式
+    if (previewFields.measures && previewFields.measures.length > 0) {
+      tags.push({
+        label: previewFields.measures[0], // "度量字段 (X个)"
+        color: 'green' as const,
+      });
+    }
+    if (previewFields.dimensions && previewFields.dimensions.length > 0) {
+      tags.push({
+        label: previewFields.dimensions[0], // "维度字段 (X个)"
         color: 'blue' as const,
       });
     }

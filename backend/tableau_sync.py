@@ -780,10 +780,13 @@ class TableauMetadataClient:
                             "vizportalUrlId": wb.get("projectVizportalUrlId")
                         }
         
-        # 生成唯一 ID
+        # 生成唯一 ID (使用 MD5 保证稳定性)
         result = []
         for name, proj in projects_dict.items():
-            proj["id"] = f"project_{hash(name) & 0xffffffff:08x}"
+            # 使用 MD5 生成稳定的 ID (前8位作为 ID)
+            import hashlib
+            name_hash = hashlib.md5(name.encode('utf-8')).hexdigest()
+            proj["id"] = f"project_{name_hash[:8]}"
             result.append(proj)
         
         return result
