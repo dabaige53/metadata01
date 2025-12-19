@@ -1,6 +1,7 @@
 import React from 'react';
 import { BookOpen, AlertTriangle, Eye } from 'lucide-react';
 import HorizontalCard from './HorizontalCard';
+import { formatDateWithRelative, isRecent } from '@/lib/date';
 
 export interface WorkbookCardData {
   id: string;
@@ -19,6 +20,10 @@ export interface WorkbookCardData {
   has_active_warning?: boolean;
   hasActiveWarning?: boolean;
   description?: string;
+  created_at?: string;
+  createdAt?: string;
+  updated_at?: string;
+  updatedAt?: string;
 }
 
 export interface WorkbookCardProps {
@@ -35,6 +40,8 @@ export default function WorkbookCard({ workbook, onClick, onMouseEnter }: Workbo
   const upstreamDatasources = workbook.upstream_datasources ?? workbook.upstreamDatasources ?? [];
   const hasUnsupportedSql = workbook.contains_unsupported_custom_sql ?? workbook.containsUnsupportedCustomSql ?? false;
   const hasWarning = workbook.has_active_warning ?? workbook.hasActiveWarning ?? false;
+  const createdAt = workbook.created_at ?? workbook.createdAt;
+  const updatedAt = workbook.updated_at ?? workbook.updatedAt;
 
   // 工作簿状态
   const status = viewCount === 0 ? '空工作簿' : viewCount > 10 ? '大型工作簿' : '有视图';
@@ -70,6 +77,15 @@ export default function WorkbookCard({ workbook, onClick, onMouseEnter }: Workbo
     {
       label: '数据源数',
       value: `${datasourceCount} 个`,
+    },
+    createdAt && {
+      label: '创建',
+      value: formatDateWithRelative(createdAt),
+    },
+    updatedAt && {
+      label: '更新',
+      value: formatDateWithRelative(updatedAt),
+      highlight: isRecent(updatedAt),
     },
   ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
 

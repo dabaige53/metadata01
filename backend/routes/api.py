@@ -1167,6 +1167,7 @@ def get_fields():
             f.id, f.name, f.data_type, f.remote_type, f.description,
             f.role, f.aggregation, f.is_calculated, f.is_hidden,
             f.usage_count, f.metric_usage_count,
+            f.created_at, f.updated_at,
             f.datasource_id, f.table_id, f.workbook_id,
             d.name as datasource_name,
             t.name as table_name
@@ -1201,7 +1202,9 @@ def get_fields():
             'datasourceName': row.datasource_name or '-',
             'tableId': row.table_id,
             'tableName': row.table_name or '-',
-            'workbookId': row.workbook_id
+            'workbookId': row.workbook_id,
+            'createdAt': row.created_at.isoformat() if row.created_at else None,
+            'updatedAt': row.updated_at.isoformat() if row.updated_at else None
         })
         
     return jsonify({
@@ -1476,6 +1479,7 @@ def get_metrics():
         SELECT 
             f.id, f.name, f.description, f.role, f.data_type, f.usage_count,
             f.datasource_id, d.name as datasource_name,
+            f.created_at, f.updated_at,
             cf.formula, cf.complexity_score, cf.reference_count,
             cf.has_duplicates, cf.duplicate_count, cf.dependency_count
         FROM fields f
@@ -1507,7 +1511,9 @@ def get_metrics():
             'usedInViews': [],
             'usageCount': row.usage_count or 0,
             'hasDuplicate': row.has_duplicates or False,
-            'duplicateCount': row.duplicate_count or 0
+            'duplicateCount': row.duplicate_count or 0,
+            'createdAt': row.created_at.isoformat() if row.created_at else None,
+            'updatedAt': row.updated_at.isoformat() if row.updated_at else None
         })
     
     return jsonify({

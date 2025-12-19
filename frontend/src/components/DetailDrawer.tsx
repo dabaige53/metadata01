@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 import { api } from '@/lib/api';
+import { formatDateWithRelative, isRecent } from '@/lib/date';
 import {
     X,
     Info,
@@ -69,6 +70,10 @@ interface DetailItem {
     used_metrics?: any[];
     // Other
     similarMetrics?: any[];
+    created_at?: string;
+    updated_at?: string;
+    createdAt?: string;
+    updatedAt?: string;
     [key: string]: any;
 }
 
@@ -543,6 +548,8 @@ export default function DetailDrawer() {
     const renderOverviewTab = () => {
         if (!data) return null;
         const isFieldType = currentItem?.type === 'fields' || currentItem?.type === 'metrics';
+        const createdAt = data.createdAt || data.created_at;
+        const updatedAt = data.updatedAt || data.updated_at;
 
         // Mock数据策略: 如果后端没返回，通过现有字段计算一些 "假的" 治理状态
         // [MODIFIED] Removed mock logic. Using real data or defaulting to safe values.
@@ -623,6 +630,31 @@ export default function DetailDrawer() {
                                 {((data.referenceCount || 0) > 5) && <span className="text-[8px] bg-amber-50 text-amber-600 px-1 rounded border border-amber-100">🔥 Hot</span>}
                             </div>
                         </div>
+                        {createdAt && (
+                            <div className="bg-white p-3">
+                                <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                                    创建时间
+                                    <span data-tooltip="该资产首次同步到治理平台的时间">
+                                        <HelpCircle className="w-2.5 h-2.5" />
+                                    </span>
+                                </div>
+                                <div className="text-xs font-medium text-gray-800">{formatDateWithRelative(createdAt)}</div>
+                            </div>
+                        )}
+                        {updatedAt && (
+                            <div className="bg-white p-3">
+                                <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                                    更新时间
+                                    <span data-tooltip="该资产最近一次变更（字段、公式或血缘）的时间">
+                                        <HelpCircle className="w-2.5 h-2.5" />
+                                    </span>
+                                </div>
+                                <div className="text-xs font-medium text-gray-800 flex items-center gap-1.5">
+                                    <span>{formatDateWithRelative(updatedAt)}</span>
+                                    {isRecent(updatedAt) && <span className="text-[9px] px-1 py-0.5 rounded bg-green-50 text-green-700 border border-green-100">近期</span>}
+                                </div>
+                            </div>
+                        )}
                         {data.role && (
                             <div className="bg-white p-3 col-span-2">
                                 <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">

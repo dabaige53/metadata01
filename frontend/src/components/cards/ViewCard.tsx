@@ -1,6 +1,7 @@
 import React from 'react';
 import { LayoutGrid, Flame, FileSpreadsheet, LayoutDashboard, Presentation } from 'lucide-react';
 import HorizontalCard from './HorizontalCard';
+import { formatDateWithRelative, isRecent } from '@/lib/date';
 
 export interface ViewCardData {
     id: string;
@@ -20,6 +21,10 @@ export interface ViewCardData {
     field_count?: number;
     fieldCount?: number;
     description?: string;
+    created_at?: string;
+    createdAt?: string;
+    updated_at?: string;
+    updatedAt?: string;
 }
 
 export interface ViewCardProps {
@@ -33,6 +38,8 @@ export default function ViewCard({ view, onClick }: ViewCardProps) {
     const hits = view.hits_total ?? view.hitsTotal ?? view.usage ?? 0;
     const fieldCount = view.field_count ?? view.fieldCount ?? 0;
     const viewType = (view.viewType || view.type || '').toLowerCase();
+    const createdAt = view.created_at ?? view.createdAt;
+    const updatedAt = view.updated_at ?? view.updatedAt;
 
     // 视图类型图标与颜色
     let typeIcon = <LayoutGrid className="w-5 h-5 text-indigo-600" />;
@@ -84,6 +91,15 @@ export default function ViewCard({ view, onClick }: ViewCardProps) {
             label: '访问量',
             value: `${hits} 次`,
             highlight: hits > 100,
+        },
+        createdAt && {
+            label: '创建',
+            value: formatDateWithRelative(createdAt),
+        },
+        updatedAt && {
+            label: '更新',
+            value: formatDateWithRelative(updatedAt),
+            highlight: isRecent(updatedAt),
         },
     ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
 

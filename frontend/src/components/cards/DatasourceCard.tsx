@@ -1,6 +1,7 @@
 import React from 'react';
 import { Database, CheckCircle, AlertTriangle } from 'lucide-react';
 import HorizontalCard from './HorizontalCard';
+import { formatDateWithRelative, isRecent } from '@/lib/date';
 
 export interface DatasourceCardData {
   id: string;
@@ -28,6 +29,10 @@ export interface DatasourceCardData {
   containsUnsupportedCustomSql?: boolean;
   has_active_warning?: boolean;
   hasActiveWarning?: boolean;
+  created_at?: string;
+  createdAt?: string;
+  updated_at?: string;
+  updatedAt?: string;
 }
 
 export interface DatasourceCardProps {
@@ -76,6 +81,8 @@ export default function DatasourceCard({ datasource, onClick }: DatasourceCardPr
   const lastRefresh = datasource.last_refresh ?? datasource.lastRefresh;
   const hasUnsupportedSql = datasource.contains_unsupported_custom_sql ?? datasource.containsUnsupportedCustomSql ?? false;
   const hasWarning = datasource.has_active_warning ?? datasource.hasActiveWarning ?? false;
+  const createdAt = datasource.created_at ?? datasource.createdAt;
+  const updatedAt = datasource.updated_at ?? datasource.updatedAt;
 
   const refreshStatus = getRefreshStatus(lastRefresh);
 
@@ -133,6 +140,15 @@ export default function DatasourceCard({ datasource, onClick }: DatasourceCardPr
     {
       label: '刷新',
       value: formatRefreshTime(lastRefresh),
+    },
+    createdAt && {
+      label: '创建',
+      value: formatDateWithRelative(createdAt),
+    },
+    updatedAt && {
+      label: '更新',
+      value: formatDateWithRelative(updatedAt),
+      highlight: isRecent(updatedAt),
     },
   ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
 

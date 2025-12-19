@@ -1,6 +1,7 @@
 import React from 'react';
 import { FunctionSquare, AlertTriangle, Eye } from 'lucide-react';
 import HorizontalCard from './HorizontalCard';
+import { formatDateWithRelative, isRecent } from '@/lib/date';
 
 export interface MetricCardData {
   id: string;
@@ -27,6 +28,10 @@ export interface MetricCardData {
   used_in_views?: any[];
   usageCount?: number;
   usage_count?: number;
+  created_at?: string;
+  createdAt?: string;
+  updated_at?: string;
+  updatedAt?: string;
 }
 
 export interface MetricCardProps {
@@ -44,6 +49,8 @@ export default function MetricCard({ metric, onClick }: MetricCardProps) {
   const hasDuplicate = metric.hasDuplicate ?? metric.has_duplicate ?? false;
   const dependencyFields = metric.dependencyFields ?? metric.dependency_fields ?? [];
   const usedInViews = metric.usedInViews ?? metric.used_in_views ?? [];
+  const createdAt = metric.created_at ?? metric.createdAt;
+  const updatedAt = metric.updated_at ?? metric.updatedAt;
 
   // 优先使用预计算的统计值 (List API 返回的是 Count 数字，Array 为空)
   const dependencyCount = metric.dependencyCount ?? metric.dependency_count ?? dependencyFields.length;
@@ -96,6 +103,15 @@ export default function MetricCard({ metric, onClick }: MetricCardProps) {
     {
       label: '依赖字段',
       value: `${dependencyCount} 个`,
+    },
+    createdAt && {
+      label: '创建',
+      value: formatDateWithRelative(createdAt),
+    },
+    updatedAt && {
+      label: '更新',
+      value: formatDateWithRelative(updatedAt),
+      highlight: isRecent(updatedAt),
     },
   ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Table2, CheckCircle } from 'lucide-react';
 import HorizontalCard from './HorizontalCard';
+import { formatDateWithRelative, isRecent } from '@/lib/date';
 
 export interface TableCardData {
   id: string;
@@ -23,6 +24,10 @@ export interface TableCardData {
   isCertified?: boolean;
   isEmbedded?: boolean;
   is_embedded?: boolean;
+  created_at?: string;
+  createdAt?: string;
+  updated_at?: string;
+  updatedAt?: string;
 }
 
 export interface TableCardProps {
@@ -39,6 +44,8 @@ export default function TableCard({ table, onClick }: TableCardProps) {
   const databaseName = table.database_name ?? table.databaseName; // Allow undefined/null for filtering
   const isCertified = table.is_certified ?? table.isCertified ?? false;
   const isEmbedded = table.isEmbedded ?? table.is_embedded ?? false;
+  const createdAt = table.created_at ?? table.createdAt;
+  const updatedAt = table.updated_at ?? table.updatedAt;
 
   // 智能状态判断
   let statusText = '使用中';
@@ -100,6 +107,15 @@ export default function TableCard({ table, onClick }: TableCardProps) {
       label: '工作簿',
       value: `${workbookCount} 个`,
       highlight: workbookCount > 0,
+    },
+    createdAt && {
+      label: '创建',
+      value: formatDateWithRelative(createdAt),
+    },
+    updatedAt && {
+      label: '更新',
+      value: formatDateWithRelative(updatedAt),
+      highlight: isRecent(updatedAt),
     },
   ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
 

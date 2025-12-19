@@ -1,6 +1,7 @@
 import React from 'react';
 import { CircleDot, Eye, AlertCircle } from 'lucide-react';
 import HorizontalCard from './HorizontalCard';
+import { formatDateWithRelative, isRecent } from '@/lib/date';
 
 export interface FieldCardData {
   id: string;
@@ -27,6 +28,10 @@ export interface FieldCardData {
   metric_usage_count?: number;
   used_in_views?: any[];
   usedInViews?: any[];
+  created_at?: string;
+  createdAt?: string;
+  updated_at?: string;
+  updatedAt?: string;
 }
 
 export interface FieldCardProps {
@@ -42,6 +47,8 @@ export default function FieldCard({ field, onClick }: FieldCardProps) {
   const dataType = field.data_type ?? field.dataType ?? 'unknown';
   const usedByMetrics = field.used_by_metrics ?? [];
   const usedInViews = field.used_in_views ?? field.usedInViews ?? [];
+  const createdAt = field.created_at ?? field.createdAt;
+  const updatedAt = field.updated_at ?? field.updatedAt;
 
   // Use counts if arrays are empty (Server-side optimized list)
   const finalMetricUsageCount = metricUsageCount > 0 ? metricUsageCount : usedByMetrics.length;
@@ -82,6 +89,15 @@ export default function FieldCard({ field, onClick }: FieldCardProps) {
       label: '热度',
       value: `${usageCount} 次`,
       highlight: usageCount > 10,
+    },
+    createdAt && {
+      label: '创建',
+      value: formatDateWithRelative(createdAt),
+    },
+    updatedAt && {
+      label: '更新',
+      value: formatDateWithRelative(updatedAt),
+      highlight: isRecent(updatedAt),
     },
   ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
 
