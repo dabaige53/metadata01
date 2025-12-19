@@ -24,27 +24,37 @@ interface WorkbookItem {
 }
 
 function WorkbooksContent() {
-    const [allData, setAllData] = useState<WorkbookItem[]>([]);
+    const [data, setData] = useState<WorkbookItem[]>([]);
+    const [total, setTotal] = useState(0);
+    const [facetsData, setFacetsData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'list' | 'analysis'>('list');
     const { openDrawer, prefetch } = useDrawer();
 
-    // 加载数据
-    useEffect(() => {
-        fetch('/api/workbooks?page=1&page_size=500')
-            .then(res => res.json())
-            .then(result => {
-                const items = Array.isArray(result) ? result : (result.items || []);
-                setAllData(items);
-            })
-            .catch(console.error)
-            .finally(() => setLoading(false));
-    }, []);
+    const fetchWorkbooks = async (params: Record<string, any>) => {
+        setLoading(true);
+        try {
+            const queryParams = new URLSearchParams();
+            Object.entries(params).forEach(([k, v]) => {
+                if (v != null && v !== '') queryParams.set(k, String(v));
+            });
 
-    // 使用自定义 Hook 管理表格状态
+            const res = await fetch(`/api/workbooks?${queryParams.toString()}`);
+            const result = await res.json();
+
+            setData(result.items || []);
+            setTotal(result.total || 0);
+            setFacetsData(result.facets || null);
+        } catch (error) {
+            console.error('Failed to fetch workbooks:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // 使用自定义 Hook 管理表格状态 (服务器端模式)
     const {
         displayData,
-        totalCount,
         facets,
         activeFilters,
         handleFilterChange,
@@ -52,12 +62,19 @@ function WorkbooksContent() {
         handleSortChange,
         paginationState,
         handlePageChange,
+        handlePageSizeChange,
     } = useDataTable({
         moduleName: 'workbooks',
-        data: allData,
+        data: data,
         facetFields: [],
-        defaultPageSize: 50,
-        searchFields: ['name', 'project', 'project_name', 'projectName', 'owner'],
+        serverSide: true,
+        totalOverride: total,
+        facetsOverride: facetsData,
+        onParamsChange: (params) => {
+            if (activeTab === 'list') {
+                fetchWorkbooks(params);
+            }
+        },
     });
 
     // 排序选项
@@ -82,8 +99,8 @@ function WorkbooksContent() {
                     <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                         <BookOpen className="w-5 h-5 text-indigo-600" />
                         工作簿
-                        <span className="text-sm font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                            {totalCount} 项
+                        <span className="text-sm font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                            {total.toLocaleString()} 项
                         </span>
                     </h1>
 
@@ -131,10 +148,16 @@ function WorkbooksContent() {
             {activeTab === 'list' ? (
                 <>
                     {/* 横向卡片列表 */}
-                    <div className="space-y-3">
-                        {displayData.length === 0 ? (
+                    <div className="space-y-3 min-h-[400px] relative">
+                        {loading && (
+                            <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex justify-center items-start pt-20 z-10 transition-all">
+                                <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+                            </div>
+                        )}
+
+                        {displayData.length === 0 && !loading ? (
                             <div className="py-20 text-center text-gray-400">
-                                {totalCount === 0 ? '暂无数据' : '未找到匹配的工作簿'}
+                                {total === 0 ? '暂无数据' : '未找到匹配的工作簿'}
                             </div>
                         ) : (
                             displayData.map((item) => (
@@ -149,10 +172,11 @@ function WorkbooksContent() {
                     </div>
 
                     {/* 分页控件 */}
-                    {displayData.length > 0 && (
+                    {total > 0 && (
                         <Pagination
                             pagination={paginationState}
                             onPageChange={handlePageChange}
+                            onPageSizeChange={handlePageSizeChange}
                         />
                     )}
                 </>
