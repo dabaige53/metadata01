@@ -34,7 +34,7 @@ function ViewsContent() {
     const [total, setTotal] = useState(0);
     const [facetsData, setFacetsData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'list' | 'zeroAccess' | 'hot'>('list');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'zeroAccess' | 'hot'>('dashboard');
     const { openDrawer } = useDrawer();
 
     const fetchViews = async (params: Record<string, any>) => {
@@ -77,8 +77,13 @@ function ViewsContent() {
         totalOverride: total,
         facetsOverride: facetsData,
         onParamsChange: (params) => {
-            if (activeTab === 'list') {
-                fetchViews(params);
+            // Dashboard tab 这里的 params 会包含 include_standalone=true
+            if (activeTab === 'list' || activeTab === 'dashboard') {
+                const finalParams = { ...params };
+                if (activeTab === 'dashboard') {
+                    finalParams.include_standalone = 'true';
+                }
+                fetchViews(finalParams);
             }
         },
     });
@@ -105,7 +110,7 @@ function ViewsContent() {
                 <div className="flex items-center gap-4">
                     <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                         <LayoutGrid className="w-5 h-5 text-indigo-600" />
-                        视图
+                        仪表盘/视图
                         <span className="text-sm font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
                             {total.toLocaleString()} 项
                         </span>
@@ -114,13 +119,22 @@ function ViewsContent() {
                     {/* 标签页切换 */}
                     <div className="flex p-1 bg-gray-100/80 rounded-lg">
                         <button
+                            onClick={() => setActiveTab('dashboard')}
+                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'dashboard'
+                                ? 'bg-white text-indigo-600 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            仪表盘列表
+                        </button>
+                        <button
                             onClick={() => setActiveTab('list')}
                             className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'list'
                                 ? 'bg-white text-indigo-600 shadow-sm'
                                 : 'text-gray-500 hover:text-gray-700'
                                 }`}
                         >
-                            视图列表
+                            全部视图
                         </button>
                         <button
                             onClick={() => setActiveTab('zeroAccess')}
@@ -143,7 +157,9 @@ function ViewsContent() {
                     </div>
                 </div>
 
-                {activeTab === 'list' && (
+
+
+                {(activeTab === 'list' || activeTab === 'dashboard') && (
                     <SortButtons
                         sortOptions={sortOptions}
                         currentSort={sortState}
@@ -153,54 +169,71 @@ function ViewsContent() {
             </div>
 
             {/* 标签页内容切换 */}
-            {activeTab === 'list' && (
-                <InlineFilter
-                    facets={facets}
-                    activeFilters={activeFilters}
-                    onFilterChange={handleFilterChange}
-                />
-            )}
-
-            {activeTab === 'list' ? (
-                <>
-                    {/* 横向卡片列表 */}
-                    <div className="space-y-3 min-h-[400px] relative">
-                        {loading && (
-                            <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex justify-center items-start pt-20 z-10 transition-all">
-                                <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
-                            </div>
-                        )}
-
-                        {displayData.length === 0 && !loading ? (
-                            <div className="py-20 text-center text-gray-400">
-                                {total === 0 ? '暂无数据' : '未找到匹配的视图'}
-                            </div>
-                        ) : (
-                            displayData.map((item) => (
-                                <ViewCard
-                                    key={item.id}
-                                    view={item}
-                                    onClick={() => openDrawer(item.id, 'views', item.name)}
-                                />
-                            ))
+            {
+                (activeTab === 'list' || activeTab === 'dashboard') && (
+                    <div className="flex gap-4 mb-4">
+                        <InlineFilter
+                            facets={facets}
+                            activeFilters={activeFilters}
+                            onFilterChange={handleFilterChange}
+                        />
+                        {activeTab === 'list' && (
+                            <InlineFilter
+                                label="视图类型"
+                                options={[
+                                    { label: '仪表盘', value: 'dashboard' },
+                                    { label: '工作表', value: 'sheet' }
+                                ]}
+                                value={activeFilters.view_type || 'all'}
+                                onChange={(val) => handleFilterChange('view_type', val === 'all' ? undefined : val)}
+                            />
                         )}
                     </div>
+                )
+            }
 
-                    {/* 分页控件 */}
-                    {total > 0 && (
-                        <Pagination
-                            pagination={paginationState}
-                            onPageChange={handlePageChange}
-                            onPageSizeChange={handlePageSizeChange}
-                        />
-                    )}
-                </>
-            ) : activeTab === 'zeroAccess' ? (
-                <ZeroAccessViewsAnalysis />
-            ) : (
-                <HotViewsAnalysis />
-            )}
-        </div>
+            {
+                (activeTab === 'list' || activeTab === 'dashboard') ? (
+                    <>
+                        {/* 横向卡片列表 */}
+                        <div className="space-y-3 min-h-[400px] relative">
+                            {loading && (
+                                <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex justify-center items-start pt-20 z-10 transition-all">
+                                    <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+                                </div>
+                            )}
+
+                            {displayData.length === 0 && !loading ? (
+                                <div className="py-20 text-center text-gray-400">
+                                    {total === 0 ? '暂无数据' : '未找到匹配的视图'}
+                                </div>
+                            ) : (
+                                displayData.map((item) => (
+                                    <ViewCard
+                                        key={item.id}
+                                        view={item}
+                                        onClick={() => openDrawer(item.id, 'views', item.name)}
+                                    />
+                                ))
+                            )}
+                        </div>
+
+                        {/* 分页控件 */}
+                        {total > 0 && (
+                            <Pagination
+                                pagination={paginationState}
+                                onPageChange={handlePageChange}
+                                onPageSizeChange={handlePageSizeChange}
+                            />
+                        )}
+                    </>
+                ) : activeTab === 'zeroAccess' ? (
+                    <ZeroAccessViewsAnalysis />
+                ) : (
+                    <HotViewsAnalysis />
+                )
+            }
+        </div >
     );
 }
 

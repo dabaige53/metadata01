@@ -28,6 +28,8 @@ export interface MetricCardData {
   used_in_views?: any[];
   usageCount?: number;
   usage_count?: number;
+  instanceCount?: number;
+  instance_count?: number;
   created_at?: string;
   createdAt?: string;
   updated_at?: string;
@@ -46,7 +48,9 @@ export default function MetricCard({ metric, onClick }: MetricCardProps) {
   const dataType = metric.dataType ?? metric.data_type ?? 'unknown';
   const datasourceName = metric.datasourceName ?? metric.datasource_name; // Allow undefined/null for filtering
   const metricType = metric.metricType ?? metric.metric_type ?? 'Calculated';
-  const hasDuplicate = metric.hasDuplicate ?? metric.has_duplicate ?? false;
+
+  // 使用 instanceCount 表示相同定义的实例数量
+  const instanceCount = metric.instanceCount ?? metric.instance_count ?? 1;
   const dependencyFields = metric.dependencyFields ?? metric.dependency_fields ?? [];
   const usedInViews = metric.usedInViews ?? metric.used_in_views ?? [];
   const createdAt = metric.created_at ?? metric.createdAt;
@@ -54,8 +58,6 @@ export default function MetricCard({ metric, onClick }: MetricCardProps) {
 
   // 优先使用预计算的统计值 (List API 返回的是 Count 数字，Array 为空)
   const dependencyCount = metric.dependencyCount ?? metric.dependency_count ?? dependencyFields.length;
-  // const viewCount = metric.usageCount ?? metric.usage_count ?? usedInViews.length; // Not used in component currently?
-  // usedInViews.length is used for Tag. Let's use usageCount for Tag logic.
   const viewCount = metric.usageCount ?? metric.usage_count ?? usedInViews.length;
 
   // 复杂度级别
@@ -78,12 +80,15 @@ export default function MetricCard({ metric, onClick }: MetricCardProps) {
     },
   ];
 
+  /* 移除重复标记，改为显示多工作簿使用情况 */
+  /*
   if (hasDuplicate) {
     badges.push({
       text: '存在重复',
       color: 'red',
     });
   }
+  */
 
   // 构建详情信息
   const details = [
@@ -126,6 +131,14 @@ export default function MetricCard({ metric, onClick }: MetricCardProps) {
   // 构建标签
   const tags = [];
 
+  // 显示实例数量（如果大于1，说明有多个相同定义）
+  if (instanceCount > 1) {
+    tags.push({
+      label: `${instanceCount} 个相同定义`,
+      color: 'purple' as const,
+    });
+  }
+
   if (viewCount > 0) {
     tags.push({
       icon: <Eye className="w-3 h-3" />,
@@ -134,6 +147,8 @@ export default function MetricCard({ metric, onClick }: MetricCardProps) {
     });
   }
 
+  // 移除重复风险标签
+  /*
   if (hasDuplicate) {
     tags.push({
       icon: <AlertTriangle className="w-3 h-3" />,
@@ -141,6 +156,7 @@ export default function MetricCard({ metric, onClick }: MetricCardProps) {
       color: 'red' as const,
     });
   }
+  */
 
   if (dependencyFields.length > 5) {
     tags.push({

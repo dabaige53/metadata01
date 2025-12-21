@@ -50,7 +50,11 @@ terms = [
         "term": "Schema (模式)",
         "definition": "数据库中的命名空间，用于组织表和其他对象。在 Tableau 中通常显示为 'dbo', 'public' 等。",
         "category": "系统属性",
-        "element": "table"
+        "element": "table",
+        "enums": [
+            { "value": "public", "label": "public", "description": "PostgreSQL/Redshift 等数据库的默认模式。" },
+            { "value": "dbo", "label": "dbo", "description": "SQL Server 的默认模式 (Database Owner)。" }
+        ]
     },
     {
         "term": "Column Count (原始列数)",
@@ -185,6 +189,16 @@ terms = [
         "definition": "数据提取最近一次成功刷新的时间。",
         "category": "系统属性",
         "element": "datasource"
+    },
+    {
+        "term": "Publishing Type (发布类型)",
+        "definition": "定义数据源是独立发布在 Server 上，还是嵌入在工作簿内部。",
+        "category": "系统属性",
+        "element": "datasource",
+        "enums": [
+            { "value": "Published", "label": "已发布", "description": "数据源作为独立资产存在于 Tableau Server，可被多个工作簿连接复用。" },
+            { "value": "Embedded", "label": "嵌入式", "description": "数据源定义直接包含在工作簿内部，仅供该工作簿使用。" }
+        ]
     },
 
     # ========== 工作簿 (Workbook) ==========

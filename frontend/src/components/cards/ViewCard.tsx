@@ -25,6 +25,8 @@ export interface ViewCardData {
     createdAt?: string;
     updated_at?: string;
     updatedAt?: string;
+    containedSheetCount?: number;
+    isStandalone?: boolean;
 }
 
 export interface ViewCardProps {
@@ -52,8 +54,8 @@ export default function ViewCard({ view, onClick }: ViewCardProps) {
         typeColor = 'purple';
     } else if (viewType === 'sheet') {
         typeIcon = <FileSpreadsheet className="w-5 h-5 text-blue-600" />;
-        typeLabel = '工作表';
-        typeColor = 'blue';
+        typeLabel = view.isStandalone ? '独立工作表' : '工作表';
+        typeColor = view.isStandalone ? 'green' : 'blue';
     } else if (viewType === 'story') {
         typeIcon = <Presentation className="w-5 h-5 text-green-600" />;
         typeLabel = '故事';
@@ -89,6 +91,12 @@ export default function ViewCard({ view, onClick }: ViewCardProps) {
             label: '字段数',
             value: `${fieldCount} 个`,
             highlight: fieldCount > 20,
+        },
+        // Dashboard 特有信息
+        view.containedSheetCount !== undefined && view.containedSheetCount > 0 && {
+            label: '包含视图',
+            value: `${view.containedSheetCount} 个`,
+            highlight: true,
         },
         {
             label: '访问量',

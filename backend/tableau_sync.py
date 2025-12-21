@@ -22,7 +22,7 @@ from backend.models import (
     Database, DBTable, DBColumn, Field, Datasource, Workbook, View,
     TableauUser, Project,
     table_to_datasource, datasource_to_workbook, field_to_view, CalculatedField, SyncLog,
-    FieldDependency, Metric
+    FieldDependency, Metric, dashboard_to_sheet
 )
 
 
@@ -389,6 +389,9 @@ class TableauMetadataClient:
                     index
                     createdAt
                     updatedAt
+                    sheets {
+                        id
+                    }
                 }
             }
         }
@@ -1122,6 +1125,7 @@ class MetadataSync:
                     view.view_type = "dashboard"
                     view.workbook_id = wb_data["id"]
                     
+
                     # 解析时间
                     for time_field, attr_name in [("createdAt", "created_at"), ("updatedAt", "updated_at")]:
                         time_val = dashboard.get(time_field)
@@ -1132,6 +1136,30 @@ class MetadataSync:
                                 ))
                             except:
                                 pass
+                    
+                    # 同步仪表板与 sheet 的关联
+                    contained_sheets = dashboard.get("sheets", [])
+                    for contained_sheet in contained_sheets:
+                         if contained_sheet and contained_sheet.get("id"):
+                             sheet_id = contained_sheet.get("id")
+                             # 检查是否存在
+                             rel = self.session.execute(
+                                 select(dashboard_to_sheet).where(
+                                     dashboard_to_sheet.c.dashboard_id == dashboard["id"],
+                                     dashboard_to_sheet.c.sheet_id == sheet_id
+                                 )
+                             ).first()
+                             if not rel:
+                                 try:
+                                     self.session.execute(
+                                         dashboard_to_sheet.insert().values(
+                                             dashboard_id=dashboard["id"],
+                                             sheet_id=sheet_id
+                                         )
+                                     )
+                                 except Exception as e:
+                                     print(f"  ⚠️ 关联 sheet 失败: {e}")
+                                     pass
                     
                     view_count += 1
             

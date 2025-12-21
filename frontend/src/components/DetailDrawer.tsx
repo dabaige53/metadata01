@@ -307,9 +307,9 @@ export default function DetailDrawer() {
             }
         }
 
-        // 重复指标
+        // 同名指标定义
         if (data.similarMetrics && data.similarMetrics.length > 0) {
-            tabs.push({ id: 'duplicates', label: `重复指标 (${data.similarMetrics.length})`, icon: AlertTriangle });
+            tabs.push({ id: 'duplicates', label: `同名定义 (${data.similarMetrics.length})`, icon: Copy });
         }
 
         // 血缘 - 支持所有核心资产模块
@@ -389,23 +389,23 @@ export default function DetailDrawer() {
         );
     };
 
-    // ========== 重复指标渲染 ==========
+    // ========== 相同定义指标渲染 ==========
     const renderDuplicatesTab = () => {
         const dups = data?.similarMetrics || [];
-        if (dups.length === 0) return <div className="text-center text-gray-400 py-8">无重复指标</div>;
+        if (dups.length === 0) return <div className="text-center text-gray-400 py-8">未发现相同定义的指标</div>;
         return (
-            <div className="bg-red-50 rounded-lg border border-red-100 p-4">
+            <div className="bg-blue-50 rounded-lg border border-blue-100 p-4">
                 <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <FunctionSquare className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                     <div className="flex-1">
-                        <h3 className="text-[13px] font-bold text-red-800 mb-1">发现重复定义的指标</h3>
-                        <p className="text-[11px] text-red-600 mb-3">以下 {dups.length} 个指标使用了相同计算公式：</p>
+                        <h3 className="text-[13px] font-bold text-blue-800 mb-1">同名指标定义</h3>
+                        <p className="text-[11px] text-blue-600 mb-3">以下 {dups.length} 个数据源中存在相同名称和公式的指标：</p>
                         <div className="space-y-2">
                             {dups.map((d: any, i: number) => (
                                 <div key={i} onClick={() => handleAssetClick(d.id, 'metrics', d.name)}
-                                    className="bg-white/80 p-2.5 rounded border border-red-100 cursor-pointer hover:bg-white transition-colors">
+                                    className="bg-white/80 p-2.5 rounded border border-blue-100 cursor-pointer hover:bg-white transition-colors">
                                     <div className="flex justify-between items-center mb-1">
-                                        <span className="text-xs font-bold text-red-900">{d.name}</span>
+                                        <span className="text-xs font-bold text-blue-900">{d.name}</span>
                                     </div>
                                     <div className="text-[10px] text-gray-500">数据源: {d.datasourceName || '-'}</div>
                                 </div>
@@ -719,7 +719,12 @@ export default function DetailDrawer() {
                                         <HelpCircle className="w-2.5 h-2.5" />
                                     </span>
                                 </div>
-                                <div className="text-sm font-bold text-gray-800">{data.caption || data.name}</div>
+                                <div className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                    {data.caption || data.name}
+                                    {!data.caption && (data.name?.endsWith('...') || data.name?.length === 64) && (
+                                        <span className="text-[9px] text-red-500 bg-red-50 px-1 rounded border border-red-100">API截断</span>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     )
@@ -745,6 +750,14 @@ export default function DetailDrawer() {
                             <div className="bg-slate-800 rounded-lg p-3 font-mono text-xs text-green-400 break-all leading-relaxed shadow-inner">
                                 {data.formula}
                             </div>
+                            {data.formula?.endsWith('...') && (
+                                <div className="mt-2 flex items-start gap-2 text-[11px] text-amber-600 bg-amber-50 p-2 rounded border border-amber-100">
+                                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                                    <span>
+                                        <b>公式过长提示：</b> 源数据疑似已被 Tableau API 截断（API限制），请在 Tableau Desktop 中查看完整公式。
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     )
                 }
@@ -829,6 +842,9 @@ export default function DetailDrawer() {
         }
     };
 
+    // Helper to detect truncated automatic names
+    const isTruncated = (text?: string) => text?.endsWith('...') && (text.includes('(') || text.includes('ZN') || text.length === 64);
+
     // ========== Header 渲染 ==========
     const renderHeader = () => {
         const Icon = currentItem ? getModuleIcon(currentItem.type) : Info;
@@ -840,6 +856,8 @@ export default function DetailDrawer() {
         // 使用 currentItem 信息作为兜底，实现立即渲染
         const displayId = safeData?.id || currentItem?.id || '-';
         const displayName = safeData?.name || currentItem?.name || '资产详情';
+
+        const nameIsTruncated = isTruncated(displayName);
 
         const isCertified = safeData?.is_certified === true;
         // const mockRef = (safeData?.referenceCount || safeData?.views?.length || 0);
@@ -871,7 +889,14 @@ export default function DetailDrawer() {
                                 <Icon className="w-8 h-8" />
                             </div>
                             <div>
-                                <h2 className="text-xl font-bold text-gray-900 leading-tight mb-2">{displayName}</h2>
+                                <h2 className="text-xl font-bold text-gray-900 leading-tight mb-2 flex items-center gap-2">
+                                    <span className="break-all line-clamp-2" title={displayName}>{displayName}</span>
+                                    {nameIsTruncated && (
+                                        <span className="flex-shrink-0 text-[10px] bg-red-50 text-red-600 border border-red-100 px-1.5 py-0.5 rounded font-normal" title="Tableau API 返回的名称已被截断">
+                                            (截断)
+                                        </span>
+                                    )}
+                                </h2>
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <div className="group flex items-center gap-1 font-mono text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
                                         <span className="select-all break-all">{displayId}</span>

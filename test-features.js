@@ -150,6 +150,9 @@ async function runTests() {
   await testFeature('项目', '/projects');
   await testFeature('用户', '/users');
   await testFeature('视图', '/views');
+  await testFeature('视图 - 仪表盘列表', '/views?include_standalone=true');
+  await testFeature('视图 - 仅仪表盘', '/views?view_type=dashboard');
+  await testFeature('视图 - 仅工作表', '/views?view_type=sheet');
   await testFeature('搜索', '/search');
 
   // 输出结果

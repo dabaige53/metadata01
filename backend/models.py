@@ -38,6 +38,13 @@ field_to_view = Table(
     Column('used_in_formula', Boolean, default=False)
 )
 
+dashboard_to_sheet = Table(
+    'dashboard_to_sheet',
+    Base.metadata,
+    Column('dashboard_id', String(255), ForeignKey('views.id'), primary_key=True),
+    Column('sheet_id', String(255), ForeignKey('views.id'), primary_key=True)
+)
+
 
 # ==================== 辅助实体表 ====================
 
@@ -439,6 +446,15 @@ class View(Base):
     workbook = relationship('Workbook', back_populates='views')
     fields = relationship('Field', secondary=field_to_view, back_populates='views')
     
+    # Dashboard 包含的 Sheets
+    contained_sheets = relationship(
+        'View',
+        secondary=dashboard_to_sheet,
+        primaryjoin=id==dashboard_to_sheet.c.dashboard_id,
+        secondaryjoin=id==dashboard_to_sheet.c.sheet_id,
+        backref='parent_dashboards'
+    )
+    
     def to_dict(self):
         return {
             'id': self.id,
@@ -450,6 +466,8 @@ class View(Base):
             'index': self.index,
             'workbookId': self.workbook_id,
             'workbookName': self.workbook.name if self.workbook else None,
+            'containedSheetCount': len(self.contained_sheets) if self.view_type == 'dashboard' else 0,
+            'isStandalone': (len(self.parent_dashboards) == 0) if self.view_type == 'sheet' else False,
             'totalViewCount': self.total_view_count or 0,
             'hitsTotal': self.total_view_count or 0,
             'hits_total': self.total_view_count or 0,

@@ -980,9 +980,40 @@ def get_views():
     page_size = request.args.get('page_size', 50, type=int)
     page_size = min(page_size, 10000)
     
+    view_type = request.args.get('view_type', '')
+    include_standalone = request.args.get('include_standalone', '')
+    
     offset = (page - 1) * page_size
     query = session.query(View)
+    
+    # 筛选逻辑
+    if include_standalone == 'true':
+        # 特殊模式：显示所有仪表盘 + 独立的 Sheet (不属于任何仪表盘)
+        # 此模式通常用于"仪表盘列表" Tab
+        from sqlalchemy import or_, and_, not_
+        query = query.filter(
+            or_(
+                View.view_type == 'dashboard',
+                and_(
+                    View.view_type == 'sheet',
+                    ~View.parent_dashboards.any()  # 不属于任何仪表盘
+                )
+            )
+        )
+    elif view_type:
+        # 普通筛选
+        query = query.filter(View.view_type == view_type)
+        
     total = query.count()
+    
+    # 排序：默认按 ID 排序，也可以按名称
+    # 仪表盘在前?
+    if include_standalone == 'true':
+        # 优先显示仪表盘，然后是独立视图
+        from sqlalchemy import desc
+        query = query.order_by(View.view_type.asc(), View.name.asc()) # dashboard < sheet (alphabetically d < s)
+    else:
+        query = query.order_by(View.name.asc())
     
     views = query.limit(page_size).offset(offset).all()
     
@@ -1439,27 +1470,32 @@ def get_metrics():
     where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
     
     # Facets 统计
-    facets_sql = """
+    # Facets 统计 (仅统计唯一指标定义)
+    # 使用子查询先分组，再统计
+    facets_sql = f"""
         SELECT 
             'metricType' as facet_key,
-            CASE WHEN f.role = 'measure' THEN 'business' ELSE 'technical' END as facet_value,
+            CASE WHEN sub.role = 'measure' THEN 'business' ELSE 'technical' END as facet_value,
             COUNT(*) as cnt
-        FROM fields f
-        INNER JOIN calculated_fields cf ON f.id = cf.field_id
+        FROM (
+            SELECT MAX(f.role) as role
+            FROM fields f
+            INNER JOIN calculated_fields cf ON f.id = cf.field_id
+            {where_clause}
+            GROUP BY f.name, cf.formula
+        ) sub
         GROUP BY facet_value
         UNION ALL
-        SELECT 'role', f.role, COUNT(*)
-        FROM fields f
-        INNER JOIN calculated_fields cf ON f.id = cf.field_id
-        WHERE f.role IS NOT NULL
-        GROUP BY f.role
-        UNION ALL
-        SELECT 'hasDuplicate', 
-               CASE WHEN cf.has_duplicates = 1 THEN 'true' ELSE 'false' END,
-               COUNT(*)
-        FROM fields f
-        INNER JOIN calculated_fields cf ON f.id = cf.field_id
-        GROUP BY cf.has_duplicates
+        SELECT 'role', sub.role, COUNT(*)
+        FROM (
+            SELECT MAX(f.role) as role
+            FROM fields f
+            INNER JOIN calculated_fields cf ON f.id = cf.field_id
+            {where_clause}
+            GROUP BY f.name, cf.formula
+        ) sub
+        WHERE sub.role IS NOT NULL
+        GROUP BY sub.role
     """
     facets_rows = session.execute(text(facets_sql)).fetchall()
     facets = {}
@@ -1472,23 +1508,29 @@ def get_metrics():
     
     # 1. 统计查询
     stats_sql = f"""
-        SELECT COUNT(*) as total
-        FROM fields f
-        INNER JOIN calculated_fields cf ON f.id = cf.field_id
-        {where_clause}
+        SELECT COUNT(*) as total FROM (
+            SELECT 1
+            FROM fields f
+            INNER JOIN calculated_fields cf ON f.id = cf.field_id
+            {where_clause}
+            GROUP BY f.name, cf.formula
+        ) as sub
     """
     stats = session.execute(text(stats_sql), params).first()
     total = stats.total or 0
     total_pages = (total + page_size - 1) // page_size if total > 0 else 0
     
     # 2. 构建排序
+    # 注意：排序字段必须使用聚合函数
     order_clause = "ORDER BY f.name ASC"
     if sort == 'complexity':
-        order_clause = f"ORDER BY cf.complexity_score {'DESC' if order == 'desc' else 'ASC'}"
+        order_clause = f"ORDER BY MAX(cf.complexity_score) {'DESC' if order == 'desc' else 'ASC'}"
     elif sort == 'referenceCount':
-        order_clause = f"ORDER BY cf.reference_count {'DESC' if order == 'desc' else 'ASC'}"
+        order_clause = f"ORDER BY SUM(cf.reference_count) {'DESC' if order == 'desc' else 'ASC'}"
     elif sort == 'name':
         order_clause = f"ORDER BY f.name {'DESC' if order == 'desc' else 'ASC'}"
+    elif sort == 'usageCount': # 之前的 workbook_count 排序
+         order_clause = f"ORDER BY COUNT(DISTINCT f.workbook_id) {'DESC' if order == 'desc' else 'ASC'}"
     
     # 3. 数据查询
     offset = (page - 1) * page_size
@@ -1497,15 +1539,26 @@ def get_metrics():
     
     data_sql = f"""
         SELECT 
-            f.id, f.name, f.description, f.role, f.data_type, f.usage_count,
-            f.datasource_id, d.name as datasource_name,
-            f.created_at, f.updated_at,
-            cf.formula, cf.complexity_score, cf.reference_count,
-            cf.has_duplicates, cf.duplicate_count, cf.dependency_count
+            MIN(f.id) as id, 
+            f.name, 
+            MAX(f.description) as description, 
+            MAX(f.role) as role, 
+            MAX(f.data_type) as data_type, 
+            SUM(f.usage_count) as usage_count,
+            MAX(f.datasource_id) as datasource_id, 
+            MAX(d.name) as datasource_name,
+            MAX(f.created_at) as created_at, 
+            MAX(f.updated_at) as updated_at,
+            cf.formula, 
+            MAX(cf.complexity_score) as complexity_score, 
+            SUM(cf.reference_count) as reference_count,
+            COUNT(*) as instance_count,
+            MAX(cf.dependency_count) as dependency_count
         FROM fields f
         INNER JOIN calculated_fields cf ON f.id = cf.field_id
         LEFT JOIN datasources d ON f.datasource_id = d.id
         {where_clause}
+        GROUP BY f.name, cf.formula
         {order_clause}
         LIMIT :limit OFFSET :offset
     """
@@ -1528,12 +1581,9 @@ def get_metrics():
             'similarMetrics': [],
             'dependencyFields': [],
             'dependencyCount': row.dependency_count or 0,
-            'usedInViews': [],
+            'instanceCount': row.instance_count, # 相同name+formula的实例数量
             'usageCount': row.usage_count or 0,
-            'hasDuplicate': row.has_duplicates or False,
-            'duplicateCount': row.duplicate_count or 0,
-            'createdAt': row.created_at.isoformat() if row.created_at else None,
-            'updatedAt': row.updated_at.isoformat() if row.updated_at else None
+            'hasDuplicate': False # 聚合后不再显示重复标记
         })
     
     return jsonify({
@@ -1760,6 +1810,25 @@ def get_lineage(item_type, item_id):
                 upstream.append({'type': 'table', 'name': table.name, 'schema': table.schema})
             for wb in ds.workbooks:
                 downstream.append({'type': 'workbook', 'name': wb.name})
+
+    elif item_type == 'view':
+        view = session.query(View).filter(View.id == item_id).first()
+        if view:
+            # 上游：工作簿
+            if view.workbook:
+                upstream.append({'type': 'workbook', 'id': view.workbook.id, 'name': view.workbook.name})
+
+            # 上游：父级仪表盘 (如果是 Sheet)
+            for dash in view.parent_dashboards:
+                upstream.append({'type': 'view', 'id': dash.id, 'name': dash.name, 'subtype': 'dashboard'})
+
+            # 上游：使用的字段 (只列前20个)
+            for field in view.fields[:20]:
+                 upstream.append({'type': 'field', 'id': field.id, 'name': field.name})
+
+            # 下游：包含的工作表 (如果是 Dashboard)
+            for sheet in view.contained_sheets:
+                downstream.append({'type': 'view', 'id': sheet.id, 'name': sheet.name, 'subtype': 'sheet'})
     
     return jsonify({'upstream': upstream, 'downstream': downstream})
 
@@ -1940,6 +2009,35 @@ def get_lineage_graph(item_type, item_id):
             for wb in ds.workbooks[:10]:
                 add_node(wb.id, wb.name, 'workbook')
                 add_edge(ds.id, wb.id, '使用')
+
+    elif item_type == 'view':
+        view = session.query(View).filter(View.id == item_id).first()
+        if view:
+            # 区分类型
+            v_type = view.view_type or 'sheet'
+            add_node(view.id, view.name, v_type, is_center=True)
+
+            # 上游：工作簿
+            if view.workbook:
+                add_node(view.workbook.id, view.workbook.name, 'workbook')
+                add_edge(view.workbook.id, view.id, '包含')
+
+            # 上游：父级仪表盘 (如果是 Sheet)
+            if v_type == 'sheet':
+                for dash in view.parent_dashboards:
+                    add_node(dash.id, dash.name, 'dashboard')
+                    add_edge(dash.id, view.id, '包含')
+
+            # 下游：包含的工作表 (如果是 Dashboard)
+            if v_type == 'dashboard':
+                for sheet in view.contained_sheets:
+                    add_node(sheet.id, sheet.name, 'sheet')
+                    add_edge(view.id, sheet.id, '包含')
+
+            # 上游：使用的字段 (只列前10个，避免图太大)
+            for field in view.fields[:10]:
+                add_node(field.id, field.name, 'field')
+                add_edge(field.id, view.id, '提供数据')
     
     # 生成 Mermaid 代码
     mermaid_code = "graph LR\n"
@@ -1951,7 +2049,9 @@ def get_lineage_graph(item_type, item_id):
         'table': '[{}]',
         'datasource': '[({})]',
         'workbook': '(({}))' ,
-        'view': '>{}]'
+        'view': '>{}]',
+        'dashboard': '[[{}]]',  # 双框矩形
+        'sheet': '>{}]'        # 旗帜形
     }
     
     node_ids = set()
