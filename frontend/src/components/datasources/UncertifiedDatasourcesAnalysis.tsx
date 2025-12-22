@@ -10,8 +10,13 @@ import {
     ShieldOff,
     ExternalLink,
     CheckCircle2,
-    AlertCircle
+    AlertCircle,
+    Search
 } from 'lucide-react';
+import { useDataTable } from '@/hooks/useDataTable';
+import FacetFilterBar from '../data-table/FacetFilterBar';
+import SortButtons from '../data-table/SortButtons';
+import Pagination from '../data-table/Pagination';
 
 interface DatasourceItem {
     id: string;
@@ -24,33 +29,67 @@ interface DatasourceItem {
     is_certified?: boolean;
     workbook_count?: number;
     field_count?: number;
-    last_refresh?: string;
-    lastRefresh?: string;
-    [key: string]: string | number | boolean | undefined;
+    issue_type?: 'uncertified' | 'orphaned';
+    [key: string]: any;
 }
 
 export default function UncertifiedDatasourcesAnalysis() {
-    const [uncertified, setUncertified] = useState<DatasourceItem[]>([]);
-    const [orphaned, setOrphaned] = useState<DatasourceItem[]>([]);
+    const [allData, setAllData] = useState<DatasourceItem[]>([]);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
 
     useEffect(() => {
-        api.getDatasources(1, 200)
+        api.getDatasources(1, 1000)
             .then(res => {
                 const items = (Array.isArray(res) ? res : (res.items || [])) as unknown as DatasourceItem[];
 
-                // 未认证数据源
-                const uncert = items.filter(d => !(d.isCertified ?? d.is_certified));
-                setUncertified(uncert);
+                // 给所有数据打标签，并合并
+                // 未认证
+                const uncert = items.filter(d => !(d.isCertified ?? d.is_certified)).map(d => ({ ...d, issue_type: 'uncertified' }));
+                // 孤立 (且已认证，避免重复，或者保留重复由筛选器处理)
+                const orph = items.filter(d => (!d.workbook_count || d.workbook_count === 0)).map(d => ({ ...d, issue_type: 'orphaned' }));
 
-                // 孤立数据源：未被任何工作簿引用
-                const orph = items.filter(d => !d.workbook_count || d.workbook_count === 0);
-                setOrphaned(orph);
+                // 去重合并：一个数据源可能既未认证也是孤立的。这里我们选择展示所有问题记录，搜索和筛选会处理它。
+                // 如果想去重，则需要唯一标识符。
+                const merged = [...uncert];
+                orph.forEach(o => {
+                    if (!merged.find(m => m.id === o.id)) {
+                        merged.push(o);
+                    } else {
+                        // 如果已存在，标记为 dual issue 或增加属性
+                        const existing = merged.find(m => m.id === o.id);
+                        if (existing) {
+                            existing.is_orphaned = true; // 额外补充标记
+                        }
+                    }
+                });
+
+                setAllData(merged);
             })
             .catch(console.error)
             .finally(() => setLoading(false));
     }, []);
+
+    const {
+        displayData,
+        facets,
+        activeFilters,
+        handleBatchFilterChange,
+        handleClearAllFilters,
+        sortState,
+        handleSortChange,
+        paginationState,
+        handlePageChange,
+        handlePageSizeChange,
+        searchTerm,
+        setSearchTerm
+    } = useDataTable({
+        moduleName: 'datasources-governance',
+        data: allData,
+        facetFields: ['project', 'issue_type'],
+        searchFields: ['name', 'project', 'owner'],
+        defaultPageSize: 20
+    });
 
     if (loading) {
         return (
@@ -60,9 +99,7 @@ export default function UncertifiedDatasourcesAnalysis() {
         );
     }
 
-    const hasIssues = uncertified.length > 0 || orphaned.length > 0;
-
-    if (!hasIssues) {
+    if (allData.length === 0) {
         return (
             <div className="bg-green-50 border border-green-100 rounded-lg p-12 text-center">
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -74,157 +111,122 @@ export default function UncertifiedDatasourcesAnalysis() {
         );
     }
 
+    const uncertCount = allData.filter(d => d.issue_type === 'uncertified').length;
+    const orphanCount = allData.filter(d => d.issue_type === 'orphaned' || d.is_orphaned).length;
+
     return (
         <div className="space-y-6">
-            {/* 概览统计报告 */}
+            {/* 概览统计 */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-amber-500">
                     <div className="text-xs text-gray-500 uppercase mb-1">未认证数据源</div>
-                    <div className="text-2xl font-bold text-amber-600">{uncertified.length}</div>
+                    <div className="text-2xl font-bold text-amber-600">{uncertCount}</div>
                     <div className="text-xs text-gray-400 mt-1">未通过官方认证标准</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-red-500">
                     <div className="text-xs text-gray-500 uppercase mb-1">孤立数据源</div>
-                    <div className="text-2xl font-bold text-red-600">{orphaned.length}</div>
+                    <div className="text-2xl font-bold text-red-600">{orphanCount}</div>
                     <div className="text-xs text-gray-400 mt-1">未被任何工作簿引用</div>
                 </div>
             </div>
 
-            {/* 未认证数据源列表 */}
-            {uncertified.length > 0 && (
-                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                    <div className="p-4 bg-amber-50/50 border-b border-gray-100">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-amber-100 text-amber-600">
-                                <ShieldOff className="w-5 h-5" />
-                            </div>
-                            <div>
-                                <h4 className="font-bold text-gray-800 text-[15px]">未认证数据源</h4>
-                                <p className="text-xs text-gray-500">这些数据源尚未通过认证，建议完善认证流程以确保数据质量</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-white text-gray-400 text-[11px] uppercase tracking-wider font-semibold border-b border-gray-50">
-                                <tr>
-                                    <th className="px-6 py-3 text-left">数据源名称</th>
-                                    <th className="px-6 py-3 text-left">项目</th>
-                                    <th className="px-6 py-3 text-left">负责人</th>
-                                    <th className="px-6 py-3 text-center">工作簿引用</th>
-                                    <th className="px-6 py-3 text-right">操作</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50">
-                                {uncertified.slice(0, 20).map((ds) => (
-                                    <tr key={ds.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-2">
-                                                <Layers className="w-4 h-4 text-amber-400" />
-                                                <span className="font-medium text-gray-800">{ds.name}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-gray-500 text-[13px]">
-                                            {ds.project || ds.project_name || ds.projectName || '-'}
-                                        </td>
-                                        <td className="px-6 py-4 text-gray-500 text-[13px]">
-                                            {ds.owner || '-'}
-                                        </td>
-                                        <td className="px-6 py-4 text-center text-gray-500">
-                                            {ds.workbook_count || 0}
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <button
-                                                onClick={() => openDrawer(ds.id, 'datasources', ds.name)}
-                                                className="inline-flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 rounded-lg transition-all border border-indigo-100 hover:border-indigo-600 shadow-sm active:scale-95"
-                                            >
-                                                查看详情 <ExternalLink className="w-3 h-3" />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                        {uncertified.length > 20 && (
-                            <div className="p-4 text-center text-gray-400 text-sm border-t border-gray-50">
-                                还有 {uncertified.length - 20} 个未认证数据源未显示
-                            </div>
-                        )}
+            {/* 工具栏 */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <FacetFilterBar
+                    facets={facets}
+                    activeFilters={activeFilters}
+                    onFilterChange={handleBatchFilterChange}
+                    onClearAll={handleClearAllFilters}
+                />
+                <div className="flex items-center gap-3">
+                    <SortButtons
+                        sortOptions={[
+                            { key: 'workbook_count', label: '引用数' },
+                            { key: 'name', label: '名称' }
+                        ]}
+                        currentSort={sortState}
+                        onSortChange={handleSortChange}
+                    />
+                    <div className="relative w-full md:w-64">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="搜索数据源、项目..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                        />
                     </div>
                 </div>
-            )}
+            </div>
 
-            {/* 孤立数据源列表 */}
-            {orphaned.length > 0 && (
-                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                    <div className="p-4 bg-red-50/50 border-b border-gray-100">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-red-100 text-red-600">
-                                <AlertCircle className="w-5 h-5" />
-                            </div>
-                            <div>
-                                <h4 className="font-bold text-gray-800 text-[15px]">孤立数据源</h4>
-                                <p className="text-xs text-gray-500">这些数据源未被任何工作簿引用，可考虑下线或确认是否需要保留</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-white text-gray-400 text-[11px] uppercase tracking-wider font-semibold border-b border-gray-50">
-                                <tr>
-                                    <th className="px-6 py-3 text-left">数据源名称</th>
-                                    <th className="px-6 py-3 text-left">项目</th>
-                                    <th className="px-6 py-3 text-left">负责人</th>
-                                    <th className="px-6 py-3 text-center">认证状态</th>
-                                    <th className="px-6 py-3 text-right">操作</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50">
-                                {orphaned.slice(0, 20).map((ds) => (
-                                    <tr key={ds.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-2">
-                                                <Layers className="w-4 h-4 text-red-400" />
-                                                <span className="font-medium text-gray-800">{ds.name}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-gray-500 text-[13px]">
-                                            {ds.project || ds.project_name || ds.projectName || '-'}
-                                        </td>
-                                        <td className="px-6 py-4 text-gray-500 text-[13px]">
-                                            {ds.owner || '-'}
-                                        </td>
-                                        <td className="px-6 py-4 text-center">
-                                            {(ds.isCertified ?? ds.is_certified) ? (
-                                                <span className="inline-flex items-center gap-1 text-green-600">
-                                                    <Shield className="w-3.5 h-3.5" /> 已认证
-                                                </span>
-                                            ) : (
-                                                <span className="inline-flex items-center gap-1 text-gray-400">
-                                                    <ShieldOff className="w-3.5 h-3.5" /> 未认证
-                                                </span>
+            {/* 列表 */}
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead className="bg-gray-50/50 text-gray-400 text-[11px] uppercase tracking-wider font-semibold border-b border-gray-100">
+                            <tr>
+                                <th className="px-6 py-3 text-left">治理标签</th>
+                                <th className="px-6 py-3 text-left">数据源名称</th>
+                                <th className="px-6 py-3 text-left">项目</th>
+                                <th className="px-6 py-3 text-left">负责人</th>
+                                <th className="px-6 py-3 text-center">工作簿引用</th>
+                                <th className="px-6 py-3 text-right">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {displayData.map((ds) => (
+                                <tr key={ds.id} className="hover:bg-gray-50 transition-colors">
+                                    <td className="px-6 py-4">
+                                        <div className="flex flex-wrap gap-1">
+                                            {!(ds.isCertified ?? ds.is_certified) && (
+                                                <span className="px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded text-[10px] font-bold uppercase tracking-wider border border-amber-100">未认证</span>
                                             )}
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <button
-                                                onClick={() => openDrawer(ds.id, 'datasources', ds.name)}
-                                                className="inline-flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 rounded-lg transition-all border border-indigo-100 hover:border-indigo-600 shadow-sm active:scale-95"
-                                            >
-                                                查看详情 <ExternalLink className="w-3 h-3" />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                        {orphaned.length > 20 && (
-                            <div className="p-4 text-center text-gray-400 text-sm border-t border-gray-50">
-                                还有 {orphaned.length - 20} 个孤立数据源未显示
-                            </div>
-                        )}
-                    </div>
+                                            {(ds.workbook_count === 0 || ds.is_orphaned) && (
+                                                <span className="px-1.5 py-0.5 bg-red-50 text-red-600 rounded text-[10px] font-bold uppercase tracking-wider border border-red-100">孤立</span>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center gap-2">
+                                            <Layers className={`w-4 h-4 ${ds.issue_type === 'orphaned' ? 'text-red-400' : 'text-amber-400'}`} />
+                                            <span className="font-medium text-gray-800">{ds.name}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-gray-500 text-[13px]">
+                                        {ds.project || ds.project_name || ds.projectName || '-'}
+                                    </td>
+                                    <td className="px-6 py-4 text-gray-500 text-[13px]">
+                                        {ds.owner || '-'}
+                                    </td>
+                                    <td className="px-6 py-4 text-center text-gray-500 font-medium">
+                                        {ds.workbook_count || 0}
+                                    </td>
+                                    <td className="px-6 py-4 text-right">
+                                        <button
+                                            onClick={() => openDrawer(ds.id, 'datasources', ds.name)}
+                                            className="inline-flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 rounded-lg transition-all border border-indigo-100 hover:border-indigo-600 shadow-sm active:scale-95"
+                                        >
+                                            查看详情 <ExternalLink className="w-3 h-3" />
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
-            )}
+
+                {/* 分页 */}
+                {allData.length > paginationState.pageSize && (
+                    <div className="p-4 border-t border-gray-50 bg-gray-50/30">
+                        <Pagination
+                            pagination={paginationState}
+                            onPageChange={handlePageChange}
+                            onPageSizeChange={handlePageSizeChange}
+                        />
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

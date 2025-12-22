@@ -20,6 +20,7 @@ export interface MetricCatalogItem {
     datasource_count: number;
     workbooks: Array<{ id: string; name: string }>;
     workbook_count: number;
+    formula_length?: number;
 }
 
 export interface MetricCatalogCardProps {

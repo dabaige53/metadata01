@@ -1847,6 +1847,10 @@ class MetadataSync:
             
             self.session.commit()
             print(f"  ✅ 更新 {updated} 个视图的使用统计, 记录 {history_count} 条历史")
+            
+            # 将仪表盘访问量累加到其包含的sheet上
+            self._propagate_dashboard_views()
+            
             return updated
             
         except Exception as e:
@@ -1854,6 +1858,45 @@ class MetadataSync:
             import traceback
             traceback.print_exc()
             return 0
+    
+    def _propagate_dashboard_views(self):
+        """将仪表盘的访问量累加到其包含的sheet上
+        
+        逻辑：如果一个sheet被包含在仪表盘中，用户访问仪表盘时也相当于访问了这些sheet。
+        因此，将仪表盘的访问量完整累加到每个包含的sheet上。
+        """
+        print("  📈 将仪表盘访问量累加到包含的sheet...")
+        
+        try:
+            from sqlalchemy import text
+            
+            # 使用 SQL 直接更新，更高效
+            # 对于每个被仪表盘包含的sheet，累加所有包含它的仪表盘的访问量
+            update_sql = text("""
+                UPDATE views
+                SET total_view_count = COALESCE(total_view_count, 0) + COALESCE((
+                    SELECT SUM(COALESCE(d.total_view_count, 0))
+                    FROM dashboard_to_sheet ds
+                    JOIN views d ON ds.dashboard_id = d.id
+                    WHERE ds.sheet_id = views.id
+                ), 0)
+                WHERE id IN (SELECT DISTINCT sheet_id FROM dashboard_to_sheet)
+            """)
+            
+            result = self.session.execute(update_sql)
+            self.session.commit()
+            
+            # 统计受影响的sheet数量
+            affected = self.session.execute(text(
+                "SELECT COUNT(DISTINCT sheet_id) FROM dashboard_to_sheet"
+            )).scalar()
+            
+            print(f"  ✅ 已将仪表盘访问量累加到 {affected} 个sheet")
+            
+        except Exception as e:
+            print(f"  ⚠️ 分摊仪表盘访问量失败: {e}")
+            import traceback
+            traceback.print_exc()
     
     def calculate_stats(self):
         """计算并更新预存统计字段（同步结束后调用）"""

@@ -7,13 +7,17 @@ import {
     Zap,
     AlertTriangle,
     FunctionSquare,
-    GitBranch
+    GitBranch,
+    Search
 } from 'lucide-react';
 import { MetricCatalogItem } from '../cards/MetricCatalogCard';
+import FacetFilterBar from '../data-table/FacetFilterBar';
+import SortButtons from '../data-table/SortButtons';
+import Pagination from '../data-table/Pagination';
+import { useDataTable } from '@/hooks/useDataTable';
 
 export default function ComplexMetricsAnalysis() {
-    const [items, setItems] = useState<MetricCatalogItem[]>([]);
-    const [totalCount, setTotalCount] = useState(0);
+    const [allData, setAllData] = useState<MetricCatalogItem[]>([]);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
 
@@ -21,25 +25,38 @@ export default function ComplexMetricsAnalysis() {
         fetch('/api/metrics/catalog/complex')
             .then(res => res.json())
             .then(result => {
-                setItems(result.items || []);
-                setTotalCount(result.total_count || 0);
+                setAllData(result.items || []);
             })
             .catch(console.error)
             .finally(() => setLoading(false));
     }, []);
 
-    const getComplexityLevel = (length: number) => {
-        if (length >= 500) return { color: 'text-red-600 bg-red-50', label: '超高', icon: '🔴' };
-        if (length >= 300) return { color: 'text-orange-600 bg-orange-50', label: '高', icon: '🟠' };
-        if (length >= 200) return { color: 'text-amber-600 bg-amber-50', label: '中高', icon: '🟡' };
-        return { color: 'text-gray-600 bg-gray-50', label: '正常', icon: '🟢' };
-    };
+    const {
+        displayData,
+        facets,
+        activeFilters,
+        handleBatchFilterChange,
+        handleClearAllFilters,
+        sortState,
+        handleSortChange,
+        paginationState,
+        handlePageChange,
+        handlePageSizeChange,
+        searchTerm,
+        setSearchTerm
+    } = useDataTable({
+        moduleName: 'metrics-complex',
+        data: allData,
+        facetFields: ['role'],
+        searchFields: ['name', 'formula'],
+        defaultPageSize: 20
+    });
 
     // 统计
-    const superComplex = items.filter(m => (m.formula_length || 0) >= 500).length;
-    const multiDatasourceCount = items.filter(m => m.datasource_count > 1).length;
-    const avgLength = items.length > 0
-        ? Math.round(items.reduce((sum, m) => sum + (m.formula_length || 0), 0) / items.length)
+    const superComplex = allData.filter(m => (m.formula_length || 0) >= 500).length;
+    const multiDatasourceCount = allData.filter(m => m.datasource_count > 1).length;
+    const avgLength = allData.length > 0
+        ? Math.round(allData.reduce((sum, m) => sum + (m.formula_length || 0), 0) / allData.length)
         : 0;
 
     if (loading) {
@@ -50,7 +67,7 @@ export default function ComplexMetricsAnalysis() {
         );
     }
 
-    if (totalCount === 0) {
+    if (allData.length === 0) {
         return (
             <div className="bg-green-50 border border-green-100 rounded-lg p-12 text-center">
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -67,9 +84,9 @@ export default function ComplexMetricsAnalysis() {
             {/* 概览统计 */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-orange-500">
-                    <div className="text-xs text-gray-500 uppercase mb-1">高复杂度指标</div>
-                    <div className="text-2xl font-bold text-orange-600">{totalCount}</div>
-                    <div className="text-xs text-gray-400 mt-1">公式&gt;100字符</div>
+                    <div className="text-xs text-gray-500 uppercase mb-1">高难度规范指标</div>
+                    <div className="text-2xl font-bold text-orange-600">{allData.length}</div>
+                    <div className="text-xs text-gray-400 mt-1">公式聚合后 &gt; 100 字符</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-red-500">
                     <div className="text-xs text-gray-500 uppercase mb-1">超高复杂度</div>
@@ -90,76 +107,127 @@ export default function ComplexMetricsAnalysis() {
                 </div>
             </div>
 
+            {/* 工具栏: 右上排序 */}
+            <div className="flex justify-end">
+                <SortButtons
+                    sortOptions={[
+                        { key: 'formula_length', label: '复杂度' },
+                        { key: 'total_references', label: '引用数' },
+                        { key: 'name', label: '名称' }
+                    ]}
+                    currentSort={sortState}
+                    onSortChange={handleSortChange}
+                />
+            </div>
+
+            {/* 工具栏: 左下筛选 + 右下搜索 */}
+            <div className="flex items-center justify-between gap-4">
+                <FacetFilterBar
+                    facets={facets}
+                    activeFilters={activeFilters}
+                    onFilterChange={handleBatchFilterChange}
+                    onClearAll={handleClearAllFilters}
+                />
+
+                <div className="relative w-64">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Search className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <input
+                        type="text"
+                        placeholder="搜索参数名称或公式..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                    />
+                </div>
+            </div>
+
             {/* 复杂指标卡片列表 */}
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                 <div className="p-4 bg-gradient-to-r from-orange-50 to-red-50 border-b border-gray-100">
                     <h3 className="font-bold text-gray-800 flex items-center gap-2">
                         <Zap className="w-5 h-5 text-orange-500" />
-                        高复杂度指标列表
-                        <span className="text-xs text-gray-500 font-normal">按公式长度排序（聚合视角）</span>
+                        高难度规范指标列表
+                        <span className="text-xs text-gray-500 font-normal">按规范指标复杂度排序</span>
                     </h3>
                 </div>
                 <div className="space-y-0 divide-y divide-gray-100">
-                    {items.slice(0, 30).map((item, idx) => {
-                        const formulaLen = item.formula_length || 0;
-                        const level = getComplexityLevel(formulaLen);
-                        return (
-                            <div
-                                key={`${item.name}-${item.formula_hash || idx}`}
-                                className="p-4 hover:bg-gray-50 transition-colors cursor-pointer"
-                                onClick={() => openDrawer(item.representative_id || '', 'metric')}
-                            >
-                                <div className="flex items-start gap-4">
-                                    {/* 图标 */}
-                                    <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 bg-orange-50 text-orange-600">
-                                        <FunctionSquare className="w-5 h-5" />
-                                    </div>
-
-                                    {/* 指标信息 */}
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="font-bold text-gray-800">{item.name}</span>
-                                            {/* 复杂度标签 */}
-                                            <span className={`px-2 py-0.5 text-[10px] rounded-full font-medium ${level.color}`}>
-                                                {level.icon} {level.label} ({formulaLen}字符)
-                                            </span>
-                                            {/* 实例数标签 */}
-                                            {item.instance_count > 1 && (
-                                                <span className="px-2 py-0.5 text-[10px] rounded-full bg-gray-100 text-gray-600">
-                                                    {item.instance_count} 实例
-                                                </span>
-                                            )}
-                                            {/* 多数据源血缘标记 */}
-                                            {item.datasource_count > 1 && (
-                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 border border-purple-200 rounded-full text-xs text-purple-600">
-                                                    <GitBranch className="w-3 h-3" />
-                                                    跨 {item.datasource_count} 数据源
-                                                </span>
-                                            )}
+                    {displayData.length === 0 ? (
+                        <div className="p-12 text-center text-gray-400">
+                            未找到匹配的高复杂度指标
+                        </div>
+                    ) : (
+                        displayData.map((item, idx) => {
+                            const formulaLen = item.formula_length || 0;
+                            const level = ((length: number) => {
+                                if (length >= 500) return { color: 'text-red-600 bg-red-50', label: '超高', icon: '🔴' };
+                                if (length >= 300) return { color: 'text-orange-600 bg-orange-50', label: '高', icon: '🟠' };
+                                if (length >= 200) return { color: 'text-amber-600 bg-amber-50', label: '中高', icon: '🟡' };
+                                return { color: 'text-gray-600 bg-gray-50', label: '正常', icon: '🟢' };
+                            })(formulaLen);
+                            return (
+                                <div
+                                    key={`${item.name}-${item.formula_hash || idx}`}
+                                    className="p-4 hover:bg-gray-50 transition-colors cursor-pointer"
+                                    onClick={() => openDrawer(item.representative_id || '', 'metrics')}
+                                >
+                                    <div className="flex items-start gap-4">
+                                        {/* 图标 */}
+                                        <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 bg-orange-50 text-orange-600">
+                                            <FunctionSquare className="w-5 h-5" />
                                         </div>
-                                        {/* 公式预览 */}
-                                        <div className="mt-2">
-                                            <code className="bg-gray-100/50 px-2 py-1 rounded text-[11px] text-gray-600 font-mono line-clamp-2">
-                                                {item.formula}
-                                            </code>
+
+                                        {/* 指标信息 */}
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="font-bold text-gray-800">{item.name}</span>
+                                                {/* 复杂度标签 */}
+                                                <span className={`px-2 py-0.5 text-[10px] rounded-full font-medium ${level.color}`}>
+                                                    {level.icon} {level.label} ({formulaLen}字符)
+                                                </span>
+                                                {/* 实例数标签 */}
+                                                {item.instance_count > 1 && (
+                                                    <span className="px-2 py-0.5 text-[10px] rounded-full bg-gray-100 text-gray-600">
+                                                        {item.instance_count} 实例
+                                                    </span>
+                                                )}
+                                                {/* 多数据源血缘标记 */}
+                                                {item.datasource_count > 1 && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 border border-purple-200 rounded-full text-xs text-purple-600">
+                                                        <GitBranch className="w-3 h-3" />
+                                                        跨 {item.datasource_count} 数据源
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {/* 公式预览 */}
+                                            <div className="mt-2">
+                                                <code className="bg-gray-100/50 px-2 py-1 rounded text-[11px] text-gray-600 font-mono line-clamp-2">
+                                                    {item.formula}
+                                                </code>
+                                            </div>
                                         </div>
-                                    </div>
 
-                                    {/* 引用数 */}
-                                    <div className="text-right flex-shrink-0">
-                                        <div className="text-lg font-bold text-gray-700">{item.total_references || 0}</div>
-                                        <div className="text-xs text-gray-400">引用</div>
-                                    </div>
+                                        {/* 引用数 */}
+                                        <div className="text-right flex-shrink-0">
+                                            <div className="text-lg font-bold text-gray-700">{item.total_references || 0}</div>
+                                            <div className="text-xs text-gray-400">引用</div>
+                                        </div>
 
-                                    <div className="text-gray-300">→</div>
+                                        <div className="text-gray-300">→</div>
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })
+                    )}
                 </div>
-                {items.length > 30 && (
-                    <div className="p-4 text-center text-gray-400 text-sm border-t border-gray-50">
-                        还有 {items.length - 30} 个高复杂度指标未显示
+                {allData.length > paginationState.pageSize && (
+                    <div className="p-4 border-t border-gray-100">
+                        <Pagination
+                            pagination={paginationState}
+                            onPageChange={handlePageChange}
+                            onPageSizeChange={handlePageSizeChange}
+                        />
                     </div>
                 )}
             </div>

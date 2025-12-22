@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
-import { Loader2, BookOpen } from 'lucide-react';
+import { Loader2, BookOpen, Search } from 'lucide-react';
 import FacetFilterBar from '@/components/data-table/FacetFilterBar';
 import SortButtons from '@/components/data-table/SortButtons';
 import Pagination from '@/components/data-table/Pagination';
@@ -64,6 +64,8 @@ function WorkbooksContent() {
         paginationState,
         handlePageChange,
         handlePageSizeChange,
+        searchTerm,
+        setSearchTerm
     } = useDataTable({
         moduleName: 'workbooks',
         data: data,
@@ -137,14 +139,30 @@ function WorkbooksContent() {
                 )}
             </div>
 
-            {/* 筛选器工具栏 */}
+            {/* 工具栏: 左下筛选 + 右下搜索 */}
             {activeTab === 'list' && (
-                <FacetFilterBar
-                    facets={facets}
-                    activeFilters={activeFilters}
-                    onFilterChange={handleBatchFilterChange}
-                    onClearAll={handleClearAllFilters}
-                />
+                <div className="flex items-center justify-between gap-4">
+                    <FacetFilterBar
+                        facets={facets}
+                        activeFilters={activeFilters}
+                        onFilterChange={handleBatchFilterChange}
+                        onClearAll={handleClearAllFilters}
+                    />
+
+                    {/* 搜索框 */}
+                    <div className="relative w-64">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <Search className="h-4 w-4 text-gray-400" />
+                        </div>
+                        <input
+                            type="text"
+                            placeholder="搜索工作簿名称..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                        />
+                    </div>
+                </div>
             )}
 
             {activeTab === 'list' ? (

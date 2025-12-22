@@ -1,7 +1,7 @@
 'use client';
-
 import { useEffect, useState } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
+
 import {
     Loader2,
     Flame,
@@ -9,12 +9,17 @@ import {
     TrendingUp,
     Eye,
     GitBranch,
-    Table
+    Table,
+    Search
 } from 'lucide-react';
 import { FieldCatalogItem } from '../cards/FieldCatalogCard';
+import FacetFilterBar from '../data-table/FacetFilterBar';
+import SortButtons from '../data-table/SortButtons';
+import Pagination from '../data-table/Pagination';
+import { useDataTable } from '@/hooks/useDataTable';
 
 export default function HotFieldsAnalysis() {
-    const [items, setItems] = useState<FieldCatalogItem[]>([]);
+    const [allData, setAllData] = useState<FieldCatalogItem[]>([]);
     const [maxUsage, setMaxUsage] = useState(0);
     const [avgUsage, setAvgUsage] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -24,23 +29,36 @@ export default function HotFieldsAnalysis() {
         fetch('/api/fields/catalog/hot')
             .then(res => res.json())
             .then(result => {
-                setItems(result.items || []);
+                setAllData(result.items || []);
                 setMaxUsage(result.max_usage || 0);
-                setAvgUsage(result.avg_usage || 0);
             })
             .catch(console.error)
             .finally(() => setLoading(false));
     }, []);
 
-    const getHeatLevel = (count: number) => {
-        if (count >= 200) return { color: 'text-red-600 bg-red-50', label: '🔥🔥🔥 超热门' };
-        if (count >= 100) return { color: 'text-orange-600 bg-orange-50', label: '🔥🔥 热门' };
-        if (count >= 50) return { color: 'text-amber-600 bg-amber-50', label: '🔥 活跃' };
-        return { color: 'text-yellow-600 bg-yellow-50', label: '⚡ 常用' };
-    };
+    const {
+        displayData,
+        facets,
+        activeFilters,
+        handleBatchFilterChange,
+        handleClearAllFilters,
+        sortState,
+        handleSortChange,
+        paginationState,
+        handlePageChange,
+        handlePageSizeChange,
+        searchTerm,
+        setSearchTerm
+    } = useDataTable({
+        moduleName: 'fields-hot',
+        data: allData,
+        facetFields: ['role'],
+        searchFields: ['canonical_name', 'table_name'],
+        defaultPageSize: 20
+    });
 
     // 统计多数据源字段数量
-    const multiDatasourceCount = items.filter(f => f.datasource_count > 1).length;
+    const multiDatasourceCount = allData.filter(f => f.datasource_count > 1).length;
 
     if (loading) {
         return (
@@ -50,7 +68,7 @@ export default function HotFieldsAnalysis() {
         );
     }
 
-    if (items.length === 0) {
+    if (allData.length === 0) {
         return (
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-12 text-center">
                 <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -68,8 +86,8 @@ export default function HotFieldsAnalysis() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-orange-500">
                     <div className="text-xs text-gray-500 uppercase mb-1">热门规范字段</div>
-                    <div className="text-2xl font-bold text-orange-600">{items.length}</div>
-                    <div className="text-xs text-gray-400 mt-1">聚合后引用&gt;20次</div>
+                    <div className="text-2xl font-bold text-orange-600">{allData.length}</div>
+                    <div className="text-xs text-gray-400 mt-1">公式/名称聚合后引用 &gt; 20次</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-red-500">
                     <div className="text-xs text-gray-500 uppercase mb-1">最高引用</div>
@@ -90,24 +108,65 @@ export default function HotFieldsAnalysis() {
                 </div>
             </div>
 
+            {/* 工具栏: 右上排序 */}
+            <div className="flex justify-end">
+                <SortButtons
+                    sortOptions={[
+                        { key: 'total_usage', label: '热度' },
+                        { key: 'canonical_name', label: '名称' }
+                    ]}
+                    currentSort={sortState}
+                    onSortChange={handleSortChange}
+                />
+            </div>
+
+            {/* 工具栏: 左下筛选 + 右下搜索 */}
+            <div className="flex items-center justify-between gap-4">
+                <FacetFilterBar
+                    facets={facets}
+                    activeFilters={activeFilters}
+                    onFilterChange={handleBatchFilterChange}
+                    onClearAll={handleClearAllFilters}
+                />
+
+                <div className="relative w-64">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Search className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <input
+                        type="text"
+                        placeholder="搜索字段或表名..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                    />
+                </div>
+            </div>
+
             {/* 热门字段卡片列表 */}
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                 <div className="p-4 bg-gradient-to-r from-orange-50 to-red-50 border-b border-gray-100">
                     <h3 className="font-bold text-gray-800 flex items-center gap-2">
                         <Flame className="w-5 h-5 text-orange-500" />
-                        热门字段排行榜
-                        <span className="text-xs text-gray-500 font-normal">按聚合引用次数排序</span>
+                        热门规范字段排行榜
+                        <span className="text-xs text-gray-500 font-normal">按规范引用次数排序</span>
                     </h3>
                 </div>
                 <div className="space-y-0 divide-y divide-gray-100">
-                    {items.slice(0, 50).map((item, idx) => {
+                    {displayData.map((item, idx) => {
                         const usageCount = item.total_usage || 0;
-                        const heatLevel = getHeatLevel(usageCount);
+                        const heatLevel = (count: number) => {
+                            if (count >= 200) return { color: 'text-red-600 bg-red-50', label: '🔥🔥🔥 超热门' };
+                            if (count >= 100) return { color: 'text-orange-600 bg-orange-50', label: '🔥🔥 热门' };
+                            if (count >= 50) return { color: 'text-amber-600 bg-amber-50', label: '🔥 活跃' };
+                            return { color: 'text-yellow-600 bg-yellow-50', label: '⚡ 常用' };
+                        };
+                        const level = heatLevel(usageCount);
                         return (
                             <div
                                 key={`${item.canonical_name}-${item.table_id || idx}`}
                                 className="p-4 hover:bg-gray-50 transition-colors cursor-pointer"
-                                onClick={() => openDrawer(item.representative_id || '', 'field')}
+                                onClick={() => openDrawer(item.representative_id || '', 'fields')}
                             >
                                 <div className="flex items-center gap-4">
                                     {/* 排名 */}
@@ -155,8 +214,8 @@ export default function HotFieldsAnalysis() {
                                     </div>
 
                                     {/* 热度标签 */}
-                                    <span className={`px-2 py-1 text-[10px] rounded-full font-medium ${heatLevel.color}`}>
-                                        {heatLevel.label}
+                                    <span className={`px-2 py-1 text-[10px] rounded-full font-medium ${level.color}`}>
+                                        {level.label}
                                     </span>
 
                                     <div className="text-gray-300">→</div>

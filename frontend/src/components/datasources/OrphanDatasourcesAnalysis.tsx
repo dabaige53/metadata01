@@ -10,8 +10,13 @@ import {
     ExternalLink,
     AlertTriangle,
     Shield,
-    ShieldOff
+    ShieldOff,
+    Search
 } from 'lucide-react';
+import { useDataTable } from '@/hooks/useDataTable';
+import FacetFilterBar from '../data-table/FacetFilterBar';
+import SortButtons from '../data-table/SortButtons';
+import Pagination from '../data-table/Pagination';
 
 interface DatasourceItem {
     id: string;
@@ -24,24 +29,46 @@ interface DatasourceItem {
     is_certified?: boolean;
     workbook_count?: number;
     field_count?: number;
+    [key: string]: any;
 }
 
 export default function OrphanDatasourcesAnalysis() {
-    const [orphaned, setOrphaned] = useState<DatasourceItem[]>([]);
+    const [allData, setAllData] = useState<DatasourceItem[]>([]);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
 
     useEffect(() => {
-        api.getDatasources(1, 200)
+        api.getDatasources(1, 1000)
             .then(res => {
                 const items = (Array.isArray(res) ? res : (res.items || [])) as unknown as DatasourceItem[];
                 // 孤立数据源：未被任何工作簿引用
-                const orph = items.filter(d => !d.workbook_count || d.workbook_count === 0);
-                setOrphaned(orph);
+                const orphaned = items.filter(d => !d.workbook_count || d.workbook_count === 0);
+                setAllData(orphaned);
             })
             .catch(console.error)
             .finally(() => setLoading(false));
     }, []);
+
+    const {
+        displayData,
+        facets,
+        activeFilters,
+        handleBatchFilterChange,
+        handleClearAllFilters,
+        sortState,
+        handleSortChange,
+        paginationState,
+        handlePageChange,
+        handlePageSizeChange,
+        searchTerm,
+        setSearchTerm
+    } = useDataTable({
+        moduleName: 'datasources-orphan',
+        data: allData,
+        facetFields: ['project', 'is_certified'],
+        searchFields: ['name', 'project', 'owner'],
+        defaultPageSize: 20
+    });
 
     if (loading) {
         return (
@@ -51,7 +78,7 @@ export default function OrphanDatasourcesAnalysis() {
         );
     }
 
-    if (orphaned.length === 0) {
+    if (allData.length === 0) {
         return (
             <div className="bg-green-50 border border-green-100 rounded-lg p-12 text-center">
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -69,41 +96,60 @@ export default function OrphanDatasourcesAnalysis() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-red-500">
                     <div className="text-xs text-gray-500 uppercase mb-1">孤立数据源</div>
-                    <div className="text-2xl font-bold text-red-600">{orphaned.length}</div>
+                    <div className="text-2xl font-bold text-red-600">{allData.length}</div>
                     <div className="text-xs text-gray-400 mt-1">未被任何工作簿引用</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
                     <div className="text-xs text-gray-500 uppercase mb-1">字段浪费</div>
                     <div className="text-2xl font-bold text-gray-700">
-                        {orphaned.reduce((sum, d) => sum + (d.field_count || 0), 0)}
+                        {allData.reduce((sum, d) => sum + (d.field_count || 0), 0)}
                     </div>
-                    <div className="text-xs text-gray-400 mt-1">孤立数据源中的字段数</div>
+                    <div className="text-xs text-gray-400 mt-1">孤立数据源中的字段数合计</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
                     <div className="text-xs text-gray-500 uppercase mb-1">治理建议</div>
-                    <div className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                    <div className="text-sm font-medium text-gray-700 mt-1 flex items-center gap-2">
                         <AlertTriangle className="w-4 h-4 text-amber-500" />
                         评估是否下线或建立引用
                     </div>
                 </div>
             </div>
 
-            {/* 孤立数据源列表 */}
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                <div className="p-4 bg-red-50/50 border-b border-gray-100">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-red-100 text-red-600">
-                            <Unlink className="w-5 h-5" />
-                        </div>
-                        <div>
-                            <h4 className="font-bold text-gray-800 text-[15px]">孤立数据源清单</h4>
-                            <p className="text-xs text-gray-500">这些数据源未被任何工作簿引用，可考虑下线或确认是否需要保留</p>
-                        </div>
+            {/* 工具栏 */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <FacetFilterBar
+                    facets={facets}
+                    activeFilters={activeFilters}
+                    onFilterChange={handleBatchFilterChange}
+                    onClearAll={handleClearAllFilters}
+                />
+                <div className="flex items-center gap-3">
+                    <SortButtons
+                        sortOptions={[
+                            { key: 'field_count', label: '字段数' },
+                            { key: 'name', label: '名称' }
+                        ]}
+                        currentSort={sortState}
+                        onSortChange={handleSortChange}
+                    />
+                    <div className="relative w-full md:w-64">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="搜索数据源、项目或负责人..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                        />
                     </div>
                 </div>
+            </div>
+
+            {/* 列表 */}
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                        <thead className="bg-white text-gray-400 text-[11px] uppercase tracking-wider font-semibold border-b border-gray-50">
+                        <thead className="bg-gray-50/50 text-gray-400 text-[11px] uppercase tracking-wider font-semibold border-b border-gray-100">
                             <tr>
                                 <th className="px-6 py-3 text-left">数据源名称</th>
                                 <th className="px-6 py-3 text-left">项目</th>
@@ -114,7 +160,7 @@ export default function OrphanDatasourcesAnalysis() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {orphaned.map((ds) => (
+                            {displayData.map((ds) => (
                                 <tr key={ds.id} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-2">
@@ -128,16 +174,16 @@ export default function OrphanDatasourcesAnalysis() {
                                     <td className="px-6 py-4 text-gray-500 text-[13px]">
                                         {ds.owner || '-'}
                                     </td>
-                                    <td className="px-6 py-4 text-center text-gray-500">
+                                    <td className="px-6 py-4 text-center text-gray-500 font-medium">
                                         {ds.field_count || 0}
                                     </td>
                                     <td className="px-6 py-4 text-center">
                                         {(ds.isCertified ?? ds.is_certified) ? (
-                                            <span className="inline-flex items-center gap-1 text-green-600 text-xs">
+                                            <span className="inline-flex items-center gap-1 text-green-600 text-xs px-2 py-0.5 bg-green-50 rounded-full">
                                                 <Shield className="w-3.5 h-3.5" /> 已认证
                                             </span>
                                         ) : (
-                                            <span className="inline-flex items-center gap-1 text-gray-400 text-xs">
+                                            <span className="inline-flex items-center gap-1 text-gray-400 text-xs px-2 py-0.5 bg-gray-50 rounded-full">
                                                 <ShieldOff className="w-3.5 h-3.5" /> 未认证
                                             </span>
                                         )}
@@ -155,6 +201,17 @@ export default function OrphanDatasourcesAnalysis() {
                         </tbody>
                     </table>
                 </div>
+
+                {/* 分页 */}
+                {allData.length > paginationState.pageSize && (
+                    <div className="p-4 border-t border-gray-50 bg-gray-50/30">
+                        <Pagination
+                            pagination={paginationState}
+                            onPageChange={handlePageChange}
+                            onPageSizeChange={handlePageSizeChange}
+                        />
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -18,6 +18,8 @@ interface SortButtonsProps {
   onSortChange: (key: string) => void;
 }
 
+import DefinitionTooltip from '../ui/DefinitionTooltip';
+
 export default function SortButtons({ sortOptions, currentSort, onSortChange }: SortButtonsProps) {
   if (sortOptions.length === 0) {
     return null;
@@ -33,13 +35,15 @@ export default function SortButtons({ sortOptions, currentSort, onSortChange }: 
           <button
             key={key}
             onClick={() => onSortChange(key)}
-            className={`sort-btn px-3 py-1.5 rounded-md text-xs font-medium border transition-all ${
-              isActive
-                ? 'bg-indigo-50 text-indigo-700 border-indigo-300'
-                : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:text-gray-700'
-            }`}
+            className={`sort-btn px-3 py-1.5 rounded-md text-xs font-medium border transition-all ${isActive
+              ? 'bg-indigo-50 text-indigo-700 border-indigo-300'
+              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:text-gray-700'
+              }`}
           >
-            {label}{arrow}
+            <DefinitionTooltip term={label}>
+              {label}
+            </DefinitionTooltip>
+            {arrow}
           </button>
         );
       })}

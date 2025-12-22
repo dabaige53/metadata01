@@ -101,15 +101,16 @@ def get_field_usage_by_name(session, field_name):
 
 from typing import Optional
 
-def build_tableau_url(asset_type: str, path: Optional[str] = None, uri: Optional[str] = None, luid: Optional[str] = None) -> Optional[str]:
+def build_tableau_url(asset_type: str, path: Optional[str] = None, uri: Optional[str] = None, luid: Optional[str] = None, asset_id: Optional[str] = None) -> Optional[str]:
     """
     构建 Tableau Server 在线查看 URL
     
     参数:
-        asset_type: 资产类型 ('view', 'workbook', 'datasource')
+        asset_type: 资产类型 ('view', 'workbook', 'datasource', 'database', 'table')
         path: 视图路径 (视图使用完整路径，工作簿使用第一个视图的路径)
         uri: 资产 URI (数据源使用)
-        luid: 资产的 LUID (备用)
+        luid: 资产的 LUID (用于构建 Catalog URL)
+        asset_id: 资产 ID (Metadata API 返回的 ID，用于 Catalog URL)
     
     返回:
         Tableau Server 在线查看 URL，或 None (如果无法构建)
@@ -118,6 +119,8 @@ def build_tableau_url(asset_type: str, path: Optional[str] = None, uri: Optional
         视图: http://tbi.juneyaoair.com/views/WorkbookName/ViewName
         工作簿: http://tbi.juneyaoair.com/views/WorkbookName (使用第一个视图的路径)
         数据源: http://tbi.juneyaoair.com/#/datasources/{luid}
+        数据库: http://tbi.juneyaoair.com/#/catalog/databases/{id}/tables
+        数据表: http://tbi.juneyaoair.com/#/catalog/tables/{id}/columns
     """
     base_url = Config.TABLEAU_BASE_URL.rstrip('/')
     
@@ -140,12 +143,34 @@ def build_tableau_url(asset_type: str, path: Optional[str] = None, uri: Optional
         return None
     
     if asset_type == 'datasource':
-        if luid:
-            return f"{base_url}/#/datasources/{luid}"
+        # 优先从 URI 提取数字 ID（格式：sites/1/datasources/1589）
         if uri and '/' in uri:
             parts = uri.split('/')
             if len(parts) >= 2:
-                return f"{base_url}/#/datasources/{parts[-1]}"
+                ds_id = parts[-1]  # 获取最后一部分作为数字 ID
+                return f"{base_url}/#/datasources/{ds_id}/askData"
+        # 回退使用 luid
+        if luid:
+            return f"{base_url}/#/datasources/{luid}/askData"
+    
+    # Tableau Catalog 链接 (用于数据库和数据表)
+    if asset_type == 'database':
+        # 使用 Metadata API 的 ID 或 luid
+        db_id = asset_id or luid
+        if db_id:
+            return f"{base_url}/#/catalog/databases/{db_id}/tables"
+    
+    if asset_type == 'table':
+        # 使用 Metadata API 的 ID 或 luid
+        table_id = asset_id or luid
+        if table_id:
+            return f"{base_url}/#/catalog/tables/{table_id}/columns"
+    
+    if asset_type == 'project':
+        # 项目页面 URL
+        project_id = luid or asset_id
+        if project_id:
+            return f"{base_url}/#/projects/{project_id}"
     
     return None
 
@@ -553,6 +578,9 @@ def get_database_detail(db_id):
         'total_columns': total_columns,
         'connected_datasource_count': len(connected_datasources)
     }
+    
+    # 构建 Tableau Catalog 在线链接
+    data['tableau_url'] = build_tableau_url('database', asset_id=db.id, luid=db.luid)
 
     return jsonify(data)
 
@@ -834,6 +862,9 @@ def get_table_detail(table_id):
         'field_count': len(full_fields),
         'datasource_count': len(table.datasources)
     }
+    
+    # 构建 Tableau Catalog 在线链接
+    data['tableau_url'] = build_tableau_url('table', asset_id=table.id, luid=table.luid)
 
     return jsonify(data)
 
@@ -1236,18 +1267,27 @@ def get_workbook_detail(wb_id):
 
 @api_bp.route('/views/governance/zero-access')
 def get_views_zero_access():
-    """获取零访问视图分析（基于全量数据）"""
+    """获取零访问视图分析（基于全量数据）
+    
+    只统计「仪表盘 + 独立Sheet」，排除被仪表盘包含的sheet，
+    以保持与视图列表页面的总数一致。
+    """
     session = g.db_session
     from sqlalchemy import text
     
-    # 查询访问量为0的视图
+    # 查询访问量为0的视图（仅仪表盘 + 独立sheet）
+    # 排除被仪表盘包含的sheet，避免重复统计
     sql = """
         SELECT 
             v.id, v.name, v.view_type, v.workbook_id,
             w.name as workbook_name
         FROM views v
         LEFT JOIN workbooks w ON v.workbook_id = w.id
-        WHERE v.total_view_count IS NULL OR v.total_view_count = 0
+        WHERE (v.total_view_count IS NULL OR v.total_view_count = 0)
+          AND (
+              v.view_type = 'dashboard' 
+              OR (v.view_type = 'sheet' AND v.id NOT IN (SELECT sheet_id FROM dashboard_to_sheet))
+          )
         ORDER BY w.name, v.name
     """
     rows = session.execute(text(sql)).fetchall()
@@ -1283,10 +1323,15 @@ def get_views_zero_access():
 
 @api_bp.route('/views/governance/hot')
 def get_views_hot():
-    """获取热门视图排行榜（基于全量数据，访问量 > 100）"""
+    """获取热门视图排行榜（基于全量数据，访问量 > 100）
+    
+    只统计「仪表盘 + 独立Sheet」，排除被仪表盘包含的sheet，
+    以保持与视图列表页面的统计口径一致。
+    """
     session = g.db_session
     from sqlalchemy import text
     
+    # 热门视图（仅仪表盘 + 独立sheet）
     sql = """
         SELECT 
             v.id, v.name, v.view_type, v.total_view_count,
@@ -1294,6 +1339,10 @@ def get_views_hot():
         FROM views v
         LEFT JOIN workbooks w ON v.workbook_id = w.id
         WHERE v.total_view_count > 100
+          AND (
+              v.view_type = 'dashboard' 
+              OR (v.view_type = 'sheet' AND v.id NOT IN (SELECT sheet_id FROM dashboard_to_sheet))
+          )
         ORDER BY v.total_view_count DESC
     """
     rows = session.execute(text(sql)).fetchall()
@@ -2374,7 +2423,10 @@ def get_field_detail(field_id):
     # 获取关联数据源 (相同表 + 相同规范名称)
     # 规范名称 = upstream_column_name OR name
     canonical_name = field.upstream_column.name if field.upstream_column else field.name
+    
+    siblings = []
     if field.table_id:
+        # 有物理表关联：精确匹配物理列
         siblings = session.query(Field).filter(
             Field.table_id == field.table_id,
             case(
@@ -2382,23 +2434,56 @@ def get_field_detail(field_id):
                 else_=Field.name == canonical_name
             )
         ).options(selectinload(Field.datasource)).all()
+    else:
+        # 无物理表（如内置字段、计算字段）：按名称松散聚合
+        # 查找所有同名字段 (限制 100 个防止性能问题)
+        siblings = session.query(Field).filter(
+            Field.name == field.name,
+            Field.table_id == None
+        ).options(selectinload(Field.datasource)).limit(100).all()
 
-        related_datasources = []
-        ds_ids = set()
-        for sib in siblings:
-            if sib.datasource and sib.datasource.id not in ds_ids:
-                ds_ids.add(sib.datasource.id)
-                related_datasources.append({
-                    'id': sib.datasource.id,
-                    'name': sib.datasource.name,
-                    'project_name': sib.datasource.project_name,
-                    'is_certified': sib.datasource.is_certified,
-                    'field_id': sib.id, # Link back to the specific field instance in that datasource
-                    'field_name': sib.name
-                })
+    related_datasources = []
+    ds_ids = set()
+    
+    # 聚合所有兄弟字段的信息
+    total_view_count = 0
+    total_workbook_count = 0
+    
+    # 先处理当前字段的数据源
+    if field.datasource and field.datasource.id not in ds_ids:
+        ds_ids.add(field.datasource.id)
+        related_datasources.append({
+            'id': field.datasource.id,
+            'name': field.datasource.name,
+            'project_name': field.datasource.project_name,
+            'is_certified': field.datasource.is_certified,
+            'field_id': field.id,
+            'field_name': field.name,
+            'is_current': True
+        })
+
+    for sib in siblings:
+        if sib.id == field_id:
+            continue # 跳过自己 (已处理)
+            
+        # 累加统计数据 (简单的累加可能不准确，因为可能同一视图引用了多个 sibling，但对于概览来说足够了)
+        # 注意：这里我们无法直接获取每个 sibling 的 view_count，除非也预加载了
+        # 为了性能，这里暂时不累加 siblings 的详细 view/workbook 计数，只聚合数据源
         
-        data['related_datasources'] = related_datasources
-        data['stats']['related_datasource_count'] = len(related_datasources)
+        if sib.datasource and sib.datasource.id not in ds_ids:
+            ds_ids.add(sib.datasource.id)
+            related_datasources.append({
+                'id': sib.datasource.id,
+                'name': sib.datasource.name,
+                'project_name': sib.datasource.project_name,
+                'is_certified': sib.datasource.is_certified,
+                'field_id': sib.id, 
+                'field_name': sib.name,
+                'is_current': False
+            })
+    
+    data['related_datasources'] = related_datasources
+    data['stats']['related_datasource_count'] = len(related_datasources)
 
     return jsonify(data)
 
@@ -3202,6 +3287,41 @@ def get_metric_detail(metric_id):
                     'owner': v.workbook.owner
                 }
 
+    # 5. 聚合相关数据源 (当前指标 + 相似指标)
+    related_datasources = []
+    ds_ids = set()
+    
+    # 当前指标数据源
+    if field.datasource and field.datasource.id not in ds_ids:
+        ds_ids.add(field.datasource.id)
+        related_datasources.append({
+            'id': field.datasource.id,
+            'name': field.datasource.name,
+            'project_name': field.datasource.project_name,
+            'is_certified': field.datasource.is_certified,
+            'field_id': field.id,
+            'field_name': field.name,
+            'match_type': 'current'
+        })
+        
+    # 相似指标数据源
+    for sim in similar:
+        if sim['datasourceId'] and sim['datasourceId'] not in ds_ids:
+            ds_ids.add(sim['datasourceId'])
+            related_datasources.append({
+                'id': sim['datasourceId'],
+                'name': sim['datasourceName'],
+                'project_name': '-', # sim 中暂无 project_name，可后续扩展
+                'is_certified': False, 
+                'field_id': sim['id'],
+                'field_name': sim['name'],
+                'match_type': 'similar'
+            })
+            
+    # 聚合总引用数
+    total_view_count = len(views_data) + sum(len(sim['usedInViews']) for sim in similar)
+    total_workbook_count = len(workbooks_set) + sum(len(sim['usedInWorkbooks']) for sim in similar)
+
     metric_data = {
         'id': field.id,
         'name': field.name,
@@ -3210,7 +3330,7 @@ def get_metric_detail(metric_id):
         'role': field.role,
         'dataType': field.data_type,
         'complexity': calc_field.complexity_score or 0,
-        'referenceCount': len(views_data),
+        'referenceCount': total_view_count, # 使用聚合后的总数
         'datasourceName': datasource_info['name'] if datasource_info else '-',
         'datasourceId': field.datasource_id,
         'datasource_info': datasource_info,
@@ -3220,11 +3340,13 @@ def get_metric_detail(metric_id):
         'usedInViews': views_data,
         'usedInWorkbooks': list(workbooks_set.values()),
         'hasDuplicate': len(similar) > 0,
+        'related_datasources': related_datasources, # 全新的聚合字段
         'stats': {
-            'view_count': len(views_data),
-            'workbook_count': len(workbooks_set),
+            'view_count': total_view_count,
+            'workbook_count': total_workbook_count,
             'dependency_count': len(dependencies),
-            'duplicate_count': len(similar)
+            'duplicate_count': len(similar),
+            'related_datasource_count': len(related_datasources)
         }
     }
 
@@ -3822,7 +3944,8 @@ def get_project_detail(project_id):
             'certified_datasources': certified_ds,
             'certification_rate': round(certified_ds / len(datasources) * 100, 1) if datasources else 0
         },
-        'owner_distribution': owner_dist
+        'owner_distribution': owner_dist,
+        'tableau_url': build_tableau_url('project', luid=project.luid, asset_id=project.id)
     })
 
 

@@ -157,7 +157,8 @@ export const api = {
             'user': 'users',
         };
         const path = typeToPath[type] || type;
-        return request<any>(`/${path}/${id}`);
+        // 添加时间戳参数以强制禁用缓存，解决聚合数据显示滞后的问题
+        return request<any>(`/${path}/${id}?_t=${Date.now()}`);
     },
 
     // 数据库

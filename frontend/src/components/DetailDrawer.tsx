@@ -121,6 +121,10 @@ export default function DetailDrawer() {
 
     useEffect(() => {
         if (isOpen && currentItem) {
+            // 兼容性映射：处理单数类型标识符
+            if (currentItem.type === 'field') currentItem.type = 'fields';
+            if (currentItem.type === 'metric') currentItem.type = 'metrics';
+
             // 如果 ID 变化，先清除旧数据
             if (data && data.id !== currentItem.id) {
                 // Check cache immediately before clearing!
@@ -161,12 +165,6 @@ export default function DetailDrawer() {
         try {
             const result = await api.getDetail(type, id);
             setData(result);
-            // Cache update is handled by prefetch, but here we are manual.
-            // Note: Our Context 'prefetch' updates cache. We could also update cache here if we exposed setCache, 
-            // but for simplicity, allow prefetch to handle pre-loading. 
-            // Ideally, we should update cache here too. 
-            // Since we can't easily access setCache from here, we rely on prefetch or just local state.
-            // Future improvement: expose setCache or updateCache in context.
         } catch (err) {
             console.error(err);
             setError('加载失败');
@@ -205,6 +203,7 @@ export default function DetailDrawer() {
 
         // 根据不同类型添加具体的关联资产 Tab
         if (type === 'databases') {
+            // 只有有数据表时才显示
             if (data.tables && data.tables.length > 0) {
                 tabs.push({ id: 'tables', label: `数据表 (${data.tables.length})`, icon: Table2 });
             }
@@ -214,12 +213,15 @@ export default function DetailDrawer() {
             if (data.database_info || data.databaseName) {
                 tabs.push({ id: 'db', label: '所属数据库', icon: Database });
             }
+            // 原始列 - 只有有列时才显示
             if (data.columns && data.columns.length > 0) {
                 tabs.push({ id: 'columns', label: `原始列 (${data.columns.length})`, icon: List });
             }
+            // 包含字段 - 只有有字段时才显示
             if (data.full_fields && data.full_fields.length > 0) {
                 tabs.push({ id: 'fields', label: `包含字段 (${data.full_fields.length})`, icon: Columns });
             }
+            // 关联数据源 - 只有有下游数据源时才显示
             if (data.datasources && data.datasources.length > 0) {
                 tabs.push({ id: 'datasources', label: `关联数据源 (${data.datasources.length})`, icon: Layers });
             }
@@ -235,74 +237,99 @@ export default function DetailDrawer() {
         }
 
         if (type === 'fields' || type === 'metrics') {
+            // 所属数据表 (如有关联)
             const table = data.table_info;
             if (table) tabs.push({ id: 'table', label: '所属数据表', icon: Table2 });
 
-            const deps = data.dependencyFields || [];
-            if (deps.length > 0) tabs.push({ id: 'deps', label: `依赖字段 (${deps.length})`, icon: Columns });
+            // 依赖字段 - 仅对计算字段/指标显示，普通字段不需要
+            const deps = data.dependencyFields || data.formula_references || [];
+            if (deps.length > 0 && (data.isCalculated || data.formula)) {
+                tabs.push({ id: 'deps', label: `依赖字段 (${deps.length})`, icon: Columns });
+            }
 
-            // 新增：关联数据源 (从后端 related_datasources 获取)
+            // 所属数据源 - 多源场景下显示字段所在的各个数据源
+            // 优先使用 related_datasources，兜底使用 datasource_info
             const relatedDs = data.related_datasources || [];
             if (relatedDs.length > 0) {
                 tabs.push({ id: 'datasources', label: `所属数据源 (${relatedDs.length})`, icon: Layers });
+            } else if (data.datasource_info) {
+                // 如果只有单个数据源，也显示该 Tab
+                tabs.push({ id: 'datasources', label: '所属数据源 (1)', icon: Layers });
             }
 
+            // 影响指标 - 只有被指标引用时才显示
             const m_down = data.used_by_metrics || [];
-            if (m_down.length > 0) tabs.push({ id: 'impact_metrics', label: `影响指标 (${m_down.length})`, icon: FunctionSquare });
+            if (m_down.length > 0) {
+                tabs.push({ id: 'impact_metrics', label: `影响指标 (${m_down.length})`, icon: FunctionSquare });
+            }
 
+            // 关联视图 - 只有被视图引用时才显示
             const v_down = data.used_in_views || data.usedInViews || [];
-            if (v_down.length > 0) tabs.push({ id: 'views', label: `关联视图 (${v_down.length})`, icon: Layout });
+            if (v_down.length > 0) {
+                tabs.push({ id: 'views', label: `关联视图 (${v_down.length})`, icon: Layout });
+            }
 
+            // 引用工作簿 - 只有被工作簿引用时才显示
             const wb_down = data.usedInWorkbooks || [];
-            if (wb_down.length > 0) tabs.push({ id: 'workbooks', label: `引用工作簿 (${wb_down.length})`, icon: BookOpen });
+            if (wb_down.length > 0) {
+                tabs.push({ id: 'workbooks', label: `引用工作簿 (${wb_down.length})`, icon: BookOpen });
+            }
         }
 
         if (type === 'datasources') {
+            // 原始表 - 只有有关联表时才显示
             if (data.tables && data.tables.length > 0) {
                 tabs.push({ id: 'tables', label: `原始表 (${data.tables.length})`, icon: Table2 });
             }
-            if (data.workbooks && data.workbooks.length > 0) {
-                tabs.push({ id: 'workbooks', label: `关联工作簿 (${data.workbooks.length})`, icon: BookOpen });
-            }
+            // 包含字段 - 只有有字段时才显示
             if (data.full_fields && data.full_fields.length > 0) {
                 tabs.push({ id: 'fields', label: `包含字段 (${data.full_fields.length})`, icon: Columns });
             }
+            // 包含指标 - 只有有指标时才显示
             if (data.metrics && data.metrics.length > 0) {
                 tabs.push({ id: 'metrics', label: `包含指标 (${data.metrics.length})`, icon: FunctionSquare });
+            }
+            // 关联工作簿 - 只有有下游工作簿时才显示
+            if (data.workbooks && data.workbooks.length > 0) {
+                tabs.push({ id: 'workbooks', label: `关联工作簿 (${data.workbooks.length})`, icon: BookOpen });
             }
         }
 
         if (type === 'workbooks') {
+            // 视图/看板 - 只有有视图时才显示
             if (data.views && data.views.length > 0) {
                 tabs.push({ id: 'views', label: `视图/看板 (${data.views.length})`, icon: Layout });
             }
+            // 使用数据源 - 只有有上游数据源时才显示
             if (data.datasources && data.datasources.length > 0) {
                 tabs.push({ id: 'datasources', label: `使用数据源 (${data.datasources.length})`, icon: Layers });
             }
+            // 使用字段 - 只有有字段使用时才显示
             if (data.used_fields && data.used_fields.length > 0) {
                 tabs.push({ id: 'fields', label: `使用字段 (${data.used_fields.length})`, icon: Columns });
             }
+            // 使用指标 - 只有有指标使用时才显示
             if (data.used_metrics && data.used_metrics.length > 0) {
                 tabs.push({ id: 'metrics', label: `使用指标 (${data.used_metrics.length})`, icon: FunctionSquare });
             }
-            // 访问统计 tab
+            // 访问统计 tab - 始终显示
             tabs.push({ id: 'usage', label: '访问统计', icon: BarChart3 });
         }
 
         if (type === 'views') {
-            // 所属工作簿
+            // 所属工作簿 - 只有有上级工作簿时才显示
             if (data.workbook_info) {
                 tabs.push({ id: 'workbook', label: '所属工作簿', icon: BookOpen });
             }
-            // 使用的字段
+            // 使用的字段 - 只有有字段使用时才显示
             if (data.used_fields && data.used_fields.length > 0) {
                 tabs.push({ id: 'fields', label: `使用字段 (${data.used_fields.length})`, icon: Columns });
             }
-            // 使用的指标
+            // 使用的指标 - 只有有指标使用时才显示
             if (data.used_metrics && data.used_metrics.length > 0) {
                 tabs.push({ id: 'metrics', label: `使用指标 (${data.used_metrics.length})`, icon: FunctionSquare });
             }
-            // 访问统计 tab
+            // 访问统计 tab - 始终显示
             tabs.push({ id: 'usage', label: '访问统计', icon: BarChart3 });
         }
 
@@ -315,7 +342,7 @@ export default function DetailDrawer() {
             }
         }
 
-        // 同名指标定义
+        // 同名指标定义 - 只有有重复时才显示
         if (data.similarMetrics && data.similarMetrics.length > 0) {
             tabs.push({ id: 'duplicates', label: `同名定义 (${data.similarMetrics.length})`, icon: Copy });
         }
@@ -456,7 +483,14 @@ export default function DetailDrawer() {
 
     // ========== 关联数据源渲染 (新) ==========
     const renderDatasourcesTab = () => {
-        const items = data?.related_datasources || [];
+        // 优先使用 related_datasources，兜底使用 datasource_info
+        let items = data?.related_datasources || [];
+
+        // 如果没有 related_datasources，从 datasource_info 构造单条记录
+        if (items.length === 0 && data?.datasource_info) {
+            items = [data.datasource_info];
+        }
+
         if (items.length === 0) return <div className="text-center text-gray-400 py-8">无关联数据源</div>;
 
         return (

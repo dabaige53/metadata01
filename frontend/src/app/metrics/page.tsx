@@ -1,16 +1,76 @@
 'use client';
 
-import { Suspense, useState } from 'react';
-import { useDrawer } from '@/lib/drawer-context';
-import { Loader2, FunctionSquare } from 'lucide-react';
+import { Loader2, FunctionSquare, Search } from 'lucide-react';
 import DuplicateMetricsAnalysis from '@/components/metrics/DuplicateMetricsAnalysis';
 import ComplexMetricsAnalysis from '@/components/metrics/ComplexMetricsAnalysis';
 import UnusedMetricsAnalysis from '@/components/metrics/UnusedMetricsAnalysis';
 import MetricCatalog from '@/components/metrics/MetricCatalog';
+import FacetFilterBar from '@/components/data-table/FacetFilterBar';
+import SortButtons from '@/components/data-table/SortButtons';
+import { useDataTable } from '@/hooks/useDataTable';
+import { Suspense, useEffect, useState } from 'react';
+import { useDrawer } from '@/lib/drawer-context';
 
 function MetricsContent() {
     const [activeTab, setActiveTab] = useState<'catalog' | 'duplicate' | 'complex' | 'unused'>('catalog');
     const { openDrawer } = useDrawer();
+    const [data, setData] = useState<any[]>([]);
+    const [total, setTotal] = useState(0);
+    const [facetsData, setFacetsData] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+
+    const fetchData = async (params: Record<string, any>) => {
+        setLoading(true);
+        try {
+            const queryParams = new URLSearchParams();
+            Object.entries(params).forEach(([k, v]) => {
+                if (v != null && v !== '') queryParams.set(k, String(v));
+            });
+
+            const res = await fetch(`/api/metrics/catalog?${queryParams.toString()}`);
+            const result = await res.json();
+
+            setData(result.items || []);
+            setTotal(result.total || 0);
+            setFacetsData(result.facets || null);
+        } catch (error) {
+            console.error('Failed to fetch metric catalog:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const {
+        facets,
+        activeFilters,
+        handleBatchFilterChange,
+        handleClearAllFilters,
+        sortState,
+        handleSortChange,
+        paginationState,
+        handlePageChange,
+        handlePageSizeChange,
+        searchTerm,
+        setSearchTerm
+    } = useDataTable({
+        moduleName: 'metrics',
+        data: data,
+        facetFields: ['metric_type'],
+        serverSide: true,
+        totalOverride: total,
+        facetsOverride: facetsData,
+        onParamsChange: (params) => {
+            if (activeTab === 'catalog') {
+                fetchData(params);
+            }
+        },
+    });
+
+    const sortOptions = [
+        { key: 'total_usage', label: '热度' },
+        { key: 'complexity', label: '复杂度' },
+        { key: 'name', label: '名称' },
+    ];
 
     return (
         <div className="space-y-4">
@@ -19,7 +79,12 @@ function MetricsContent() {
                 <div className="flex items-center gap-4">
                     <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                         <FunctionSquare className="w-5 h-5 text-indigo-600" />
-                        指标库
+                        计算字段
+                        {activeTab === 'catalog' && (
+                            <span className="text-sm font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                                {total.toLocaleString()} 项
+                            </span>
+                        )}
                     </h1>
 
                     {/* 标签页切换 */}
@@ -31,7 +96,7 @@ function MetricsContent() {
                                 : 'text-gray-500 hover:text-gray-700'
                                 }`}
                         >
-                            指标目录
+                            计算字段目录
                         </button>
                         <button
                             onClick={() => setActiveTab('duplicate')}
@@ -62,11 +127,52 @@ function MetricsContent() {
                         </button>
                     </div>
                 </div>
+
+                {activeTab === 'catalog' && (
+                    <SortButtons
+                        sortOptions={sortOptions}
+                        currentSort={sortState}
+                        onSortChange={handleSortChange}
+                    />
+                )}
             </div>
+
+            {/* 工具栏: 左下筛选 + 右下搜索 */}
+            {activeTab === 'catalog' && (
+                <div className="flex items-center justify-between gap-4">
+                    <FacetFilterBar
+                        facets={facets}
+                        activeFilters={activeFilters}
+                        onFilterChange={handleBatchFilterChange}
+                        onClearAll={handleClearAllFilters}
+                    />
+
+                    <div className="relative w-64">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <Search className="h-4 w-4 text-gray-400" />
+                        </div>
+                        <input
+                            type="text"
+                            placeholder="搜索指标名称..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                        />
+                    </div>
+                </div>
+            )}
 
             {/* 内容区域 */}
             {activeTab === 'catalog' ? (
-                <MetricCatalog onMetricClick={(metric) => openDrawer(metric.representative_id || '', 'metric')} />
+                <MetricCatalog
+                    data={data}
+                    loading={loading}
+                    total={total}
+                    paginationState={paginationState}
+                    handlePageChange={handlePageChange}
+                    handlePageSizeChange={handlePageSizeChange}
+                    onMetricClick={(metric) => openDrawer(metric.representative_id || '', 'metrics')}
+                />
             ) : activeTab === 'duplicate' ? (
                 <DuplicateMetricsAnalysis />
             ) : activeTab === 'complex' ? (
