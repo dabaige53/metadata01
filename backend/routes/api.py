@@ -1052,18 +1052,37 @@ def get_workbooks_single_source():
 
 @api_bp.route('/workbooks')
 def get_workbooks():
-    """获取工作簿列表"""
+    """获取工作簿列表 - 增加动态统计"""
     session = g.db_session
     search = request.args.get('search', '')
+    sort = request.args.get('sort', 'name')
+    order = request.args.get('order', 'asc')
+    
     query = session.query(Workbook)
     if search: query = query.filter(Workbook.name.ilike(f'%{search}%'))
-    workbooks = query.all()
+    
+    # 分页参数
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 50, type=int)
+    offset = (page - 1) * page_size
+    
+    total_count = query.count()
+    workbooks = query.limit(page_size).offset(offset).all()
     
     results = []
     for wb in workbooks:
         data = wb.to_dict()
         data['upstream_datasources'] = [ds.name for ds in wb.datasources]
+        # 直接使用预计算字段（由 tableau_sync.py 的 calculate_stats 写入）
         results.append(data)
+
+        
+    # 内存排序，支持 viewCount（视图数已经在 to_dict 里或者被赋值过，但这里需要确保排序逻辑）
+    if sort == 'viewCount':
+        results.sort(key=lambda x: x.get('viewCount', 0), reverse=(order == 'desc'))
+    elif sort == 'name':
+        results.sort(key=lambda x: x.get('name', ''), reverse=(order == 'desc'))
+
     # Facets 统计
     from sqlalchemy import text
     facets = {}
@@ -1081,9 +1100,9 @@ def get_workbooks():
         
     return jsonify({
         'items': results,
-        'total': len(results),
-        'page': 1,
-        'page_size': len(results),
+        'total': total_count,
+        'page': page,
+        'page_size': page_size,
         'facets': facets
     })
 
@@ -1426,22 +1445,40 @@ def get_view_usage_stats(view_id):
     
     if history:
         # 找到今天之前的最近一条记录
+        found_daily_baseline = False
         for h in history:
             count, recorded_at = h[0], h[1]
             if isinstance(recorded_at, str):
                 recorded_at = datetime.fromisoformat(recorded_at.replace('Z', '+00:00'))
             if recorded_at < today_start:
                 daily_delta = current_count - count
+                found_daily_baseline = True
                 break
         
+        # 如果没有找到今天之前的记录，说明今天是首次记录，日增量 = 当前总量
+        if not found_daily_baseline:
+            daily_delta = current_count
+        
         # 找到一周前的最近一条记录
+        found_weekly_baseline = False
         for h in history:
             count, recorded_at = h[0], h[1]
             if isinstance(recorded_at, str):
                 recorded_at = datetime.fromisoformat(recorded_at.replace('Z', '+00:00'))
             if recorded_at < week_ago:
                 weekly_delta = current_count - count
+                found_weekly_baseline = True
                 break
+        
+        # 如果没有找到一周前的记录，用最早的记录作为基准
+        if not found_weekly_baseline and history:
+            oldest = history[-1]
+            oldest_count = oldest[0]
+            weekly_delta = current_count - oldest_count
+    else:
+        # 没有任何历史记录，日增量和周增量都是当前总量
+        daily_delta = current_count
+        weekly_delta = current_count
     
     return jsonify({
         'viewId': view_id,
@@ -1663,6 +1700,7 @@ def get_fields_catalog():
     # 按 (规范名称 + table_id) 分组
     base_sql = f"""
         SELECT 
+            MIN(f.id) as representative_id,
             COALESCE(f.upstream_column_name, f.name) as canonical_name,
             f.table_id,
             t.name as table_name,
@@ -1718,6 +1756,7 @@ def get_fields_catalog():
                        for i in range(len(ds_names))]
         
         items.append({
+            'representative_id': row.representative_id, # Add this field
             'canonical_name': row.canonical_name,
             'table_id': row.table_id,
             'table_name': row.table_name or '-',
@@ -2191,6 +2230,7 @@ def get_metrics_catalog():
     # 按 (name + formula_hash) 分组
     base_sql = f"""
         SELECT 
+            MIN(f.id) as representative_id,
             f.name,
             cf.formula,
             cf.formula_hash,
@@ -2265,6 +2305,7 @@ def get_metrics_catalog():
             complexity_level = '低'
         
         items.append({
+            'representative_id': row.representative_id,
             'name': row.name,
             'formula': row.formula,
             'formula_hash': row.formula_hash,
@@ -2386,7 +2427,7 @@ def get_metrics():
         WHERE sub.role IS NOT NULL
         GROUP BY sub.role
     """
-    facets_rows = session.execute(text(facets_sql)).fetchall()
+    facets_rows = session.execute(text(facets_sql), params).fetchall()
     facets = {}
     for row in facets_rows:
         key, value, cnt = row
@@ -2516,6 +2557,10 @@ def get_metric_detail(metric_id):
         ).filter(
             CalculatedField.formula_hash == calc_field.formula_hash,
             Field.id != field.id
+        ).add_columns(
+            Field.id.label('representative_id'), # Add this line
+            Field.name.label('name'), # Add this line
+            CalculatedField.formula_hash # Add this line
         ).all()
         
         for s_field, s_calc in similar_results:

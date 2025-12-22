@@ -211,22 +211,22 @@ const {
 
 ## API 端点（后端 Flask 服务 - localhost:8001）
 
-| 路径 | 说明 | 支持参数 |
-|------|------|---------|
-| `/api/stats` | 全局统计 | - |
-| `/api/dashboard/analysis` | 治理健康度分析 | - |
-| `/api/databases` | 数据库列表 | - |
-| `/api/tables` | 数据表列表 | - |
-| `/api/datasources` | 数据源列表 | - |
-| `/api/fields` | 字段列表 | `page`, `page_size` |
-| `/api/metrics` | 指标列表 | `page`, `page_size` |
-| `/api/workbooks` | 工作簿列表 | - |
-| `/api/views` | 视图列表 | - |
-| `/api/projects` | 项目列表 | - |
-| `/api/users` | 用户列表 | - |
-| `/api/lineage/{type}/{id}` | 血缘关系 | - |
-| `/api/search?q=` | 全局搜索 | `q` |
-| `/api/quality/overview` | 数据质量概览 | - |
+| 路径                       | 说明           | 支持参数            |
+| -------------------------- | -------------- | ------------------- |
+| `/api/stats`               | 全局统计       | -                   |
+| `/api/dashboard/analysis`  | 治理健康度分析 | -                   |
+| `/api/databases`           | 数据库列表     | -                   |
+| `/api/tables`              | 数据表列表     | -                   |
+| `/api/datasources`         | 数据源列表     | -                   |
+| `/api/fields`              | 字段列表       | `page`, `page_size` |
+| `/api/metrics`             | 指标列表       | `page`, `page_size` |
+| `/api/workbooks`           | 工作簿列表     | -                   |
+| `/api/views`               | 视图列表       | -                   |
+| `/api/projects`            | 项目列表       | -                   |
+| `/api/users`               | 用户列表       | -                   |
+| `/api/lineage/{type}/{id}` | 血缘关系       | -                   |
+| `/api/search?q=`           | 全局搜索       | `q`                 |
+| `/api/quality/overview`    | 数据质量概览   | -                   |
 
 ## 开发规范
 
@@ -239,6 +239,30 @@ const {
 - ✅ 使用 Tailwind CSS 进行样式开发
 - ✅ 组件完全解耦，可复用
 - ✅ 使用 useMemo/useCallback 优化性能
+
+### 统计数据预计算规范
+
+所有统计数据必须在数据同步阶段（`tableau_sync.py`）进行预计算，并直接写入数据库的预定义字段中。API 层只负责读取这些预计算值，不做实时聚合计算。
+
+**核心原则**：
+- ✅ **预计算优先**：所有 `*_count` 字段（如 `field_count`、`metric_count`、`view_count`）必须在同步时写入
+- ✅ **同步时修复**：如果预计算结果不正确（如依赖的关联表数据缺失），应在 `tableau_sync.py` 的 `calculate_stats()` 方法中修复数据采集或计算逻辑
+- ❌ **禁止 API 层实时计算**：后端接口不应使用 `JOIN` + `COUNT` 等方式动态聚合统计数据，这会影响性能并导致口径不一致
+
+**预计算字段位置**：
+| 模型              | 预计算字段                                                      | 计算逻辑                                      |
+| ----------------- | --------------------------------------------------------------- | --------------------------------------------- |
+| `Workbook`        | `view_count`, `datasource_count`, `field_count`, `metric_count` | 遍历关联视图中的字段，按 `is_calculated` 区分 |
+| `Datasource`      | `table_count`, `workbook_count`, `field_count`, `metric_count`  | 直接统计关联对象数量                          |
+| `Field`           | `usage_count`, `metric_usage_count`                             | 查询 `field_to_view` 关联表                   |
+| `CalculatedField` | `has_duplicates`, `duplicate_count`, `formula_hash`             | 公式哈希比对                                  |
+
+**修复流程**：
+1. 发现统计数据异常（如全为 0）
+2. 检查 `tableau_sync.py` 中对应的数据采集逻辑（如 `sync_field_to_view`）
+3. 检查 `calculate_stats()` 中的统计计算逻辑
+4. 修复后重新运行同步：`python3 backend/tableau_sync.py`
+
 
 ### 数据治理 Tab 切换设计规范
 
@@ -276,14 +300,14 @@ const [activeTab, setActiveTab] = useState<'list' | 'analysis'>('list');
 
 **各模块治理场景**:
 
-| 模块 | Tab 1 (默认) | Tab 2+ (治理分析) |
-|------|-------------|-------------------|
-| 指标库 ✅ | 指标列表 | 重复指标分析 |
-| 字段字典 | 字段列表 | 无描述字段 / 孤立字段 |
-| 数据表 | 数据表列表 | 未使用表 / 宽表分析 |
-| 数据源 | 数据源列表 | 未认证数据源 / 孤立数据源 |
-| 工作簿 | 工作簿列表 | 无视图工作簿 / 单源依赖分析 |
-| 视图 | 视图列表 | 无访问视图 / 复杂视图 |
+| 模块     | Tab 1 (默认) | Tab 2+ (治理分析)           |
+| -------- | ------------ | --------------------------- |
+| 指标库 ✅ | 指标列表     | 重复指标分析                |
+| 字段字典 | 字段列表     | 无描述字段 / 孤立字段       |
+| 数据表   | 数据表列表   | 未使用表 / 宽表分析         |
+| 数据源   | 数据源列表   | 未认证数据源 / 孤立数据源   |
+| 工作簿   | 工作簿列表   | 无视图工作簿 / 单源依赖分析 |
+| 视图     | 视图列表     | 无访问视图 / 复杂视图       |
 
 ### 文件命名
 
@@ -313,9 +337,9 @@ node test-features.js
 
 ## 文档资源
 
-| 文档 | 用途 | 读者 |
-|------|------|------|
-| `快速启动指南.md` | 启动和使用 | 用户/测试人员 |
-| `E2E测试报告.md` | 测试结果详情 | 测试人员/QA |
-| `升级完成报告.md` | 技术实现细节 | 开发者 |
-| `差异分析和修复方案.md` | 完整规划 | 架构师/规划者 |
+| 文档                    | 用途         | 读者          |
+| ----------------------- | ------------ | ------------- |
+| `快速启动指南.md`       | 启动和使用   | 用户/测试人员 |
+| `E2E测试报告.md`        | 测试结果详情 | 测试人员/QA   |
+| `升级完成报告.md`       | 技术实现细节 | 开发者        |
+| `差异分析和修复方案.md` | 完整规划     | 架构师/规划者 |

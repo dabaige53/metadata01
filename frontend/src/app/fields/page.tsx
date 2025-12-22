@@ -82,9 +82,7 @@ function FieldsContent() {
         totalOverride: total,
         facetsOverride: facetsData,
         onParamsChange: (params) => {
-            if (activeTab === 'list') {
-                fetchFields(params);
-            }
+            fetchFields(params);
         },
     });
 
@@ -211,7 +209,7 @@ function FieldsContent() {
                     )}
                 </>
             ) : activeTab === 'catalog' ? (
-                <FieldCatalog onFieldClick={(field) => openDrawer('field', field.canonical_name)} />
+                <FieldCatalog onFieldClick={(field) => openDrawer(field.representative_id || '', 'field')} />
             ) : activeTab === 'noDescription' ? (
                 <NoDescriptionFieldsAnalysis />
             ) : activeTab === 'orphan' ? (

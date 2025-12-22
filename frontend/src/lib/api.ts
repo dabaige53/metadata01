@@ -143,8 +143,22 @@ export const api = {
     // 获取仪表盘分析数据
     getDashboardAnalysis: () => request<DashboardAnalysis>('/dashboard/analysis'),
 
-    // 通用详情获取
-    getDetail: (type: string, id: string) => request<any>(`/${type}/${id}`),
+    // 通用详情获取 - 将单数类型映射到复数 API 路径
+    getDetail: (type: string, id: string) => {
+        const typeToPath: Record<string, string> = {
+            'field': 'fields',
+            'metric': 'metrics',
+            'table': 'tables',
+            'database': 'databases',
+            'datasource': 'datasources',
+            'workbook': 'workbooks',
+            'view': 'views',
+            'project': 'projects',
+            'user': 'users',
+        };
+        const path = typeToPath[type] || type;
+        return request<any>(`/${path}/${id}`);
+    },
 
     // 数据库
     getDatabases: (page = 1, pageSize = 50, filters?: Record<string, string>) => {

@@ -458,16 +458,30 @@ export default function DetailDrawer() {
                 const stats = await api.getViewUsageStats(currentItem.id);
                 setUsageStats(stats);
             } else if (currentItem.type === 'workbooks' && data?.views) {
-                // 工作簿：汇总所有视图统计
-                let total = 0;
-                for (const v of data.views) {
-                    total += v.totalViewCount || 0;
+                // 工作簿：汇总所有视图统计 (并行请求每个视图的统计)
+                let totalViews = 0;
+                let totalDaily = 0;
+                let totalWeekly = 0;
+                const allHistory: Array<{ count: number; recordedAt: string }> = [];
+
+                const viewStatsPromises = data.views.map((v: any) =>
+                    api.getViewUsageStats(v.id).catch(() => null)
+                );
+                const viewsStats = await Promise.all(viewStatsPromises);
+
+                for (const stats of viewsStats) {
+                    if (stats) {
+                        totalViews += stats.totalViewCount || 0;
+                        totalDaily += stats.dailyDelta || 0;
+                        totalWeekly += stats.weeklyDelta || 0;
+                    }
                 }
+
                 setUsageStats({
-                    totalViewCount: total,
-                    dailyDelta: 0,
-                    weeklyDelta: 0,
-                    history: []
+                    totalViewCount: totalViews,
+                    dailyDelta: totalDaily,
+                    weeklyDelta: totalWeekly,
+                    history: allHistory.slice(0, 10)
                 });
             }
         } catch (err) {
@@ -664,8 +678,8 @@ export default function DetailDrawer() {
                             <div className="text-xs font-medium text-gray-800">
                                 {isUserType ? (
                                     <span className={`px-1.5 py-0.5 rounded text-[10px] ${data.site_role?.includes('Admin') ? 'bg-red-50 text-red-700' :
-                                            data.site_role?.includes('Creator') ? 'bg-blue-50 text-blue-700' :
-                                                'bg-gray-100 text-gray-600'
+                                        data.site_role?.includes('Creator') ? 'bg-blue-50 text-blue-700' :
+                                            'bg-gray-100 text-gray-600'
                                         }`}>
                                         {data.site_role || '-'}
                                     </span>

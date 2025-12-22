@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { FunctionSquare, Database, BookOpen, ChevronDown, ChevronUp, Layers, Zap } from 'lucide-react';
+import { FunctionSquare, Database, BookOpen, ChevronDown, ChevronUp, Code, Layers } from 'lucide-react';
 import HorizontalCard from './HorizontalCard';
 
 export interface MetricCatalogItem {
@@ -11,10 +11,10 @@ export interface MetricCatalogItem {
     role?: string;
     data_type?: string;
     description?: string;
+    representative_id?: string;
     instance_count: number;
-    complexity?: number;
-    complexity_level?: string;
-    formula_length?: number;
+    complexity: number;
+    complexity_level: string;
     total_references: number;
     datasources: Array<{ id: string; name: string }>;
     datasource_count: number;
@@ -31,15 +31,7 @@ export default function MetricCatalogCard({ metric, onClick }: MetricCatalogCard
     const [expanded, setExpanded] = useState(false);
 
     const isMeasure = metric.role?.toLowerCase() === 'measure';
-    const roleName = isMeasure ? '业务指标' : '技术计算';
-
-    // 复杂度颜色
-    const complexityColor = {
-        '超高': 'red',
-        '高': 'orange',
-        '中': 'purple',
-        '低': 'gray',
-    }[metric.complexity_level || '低'] as 'red' | 'orange' | 'purple' | 'gray';
+    const roleName = isMeasure ? '度量' : (metric.role?.toLowerCase() === 'dimension' ? '维度' : metric.role || '未知');
 
     // 构建徽章
     const badges: Array<{ text: string; color: 'green' | 'blue' | 'gray' | 'red' | 'purple' | 'orange' }> = [
@@ -49,6 +41,17 @@ export default function MetricCatalogCard({ metric, onClick }: MetricCatalogCard
         },
     ];
 
+    // 复杂度徽章
+    const complexityColor =
+        metric.complexity_level === '超高' ? 'red' :
+            metric.complexity_level === '高' ? 'orange' :
+                metric.complexity_level === '中' ? 'purple' : 'blue';
+
+    badges.push({
+        text: `${metric.complexity_level}复杂度`,
+        color: complexityColor,
+    });
+
     // 实例数徽章
     if (metric.instance_count > 1) {
         badges.push({
@@ -57,43 +60,26 @@ export default function MetricCatalogCard({ metric, onClick }: MetricCatalogCard
         });
     }
 
-    // 复杂度徽章
-    if (metric.complexity_level && metric.complexity_level !== '低') {
-        badges.push({
-            text: `复杂度: ${metric.complexity_level}`,
-            color: complexityColor,
-        });
-    }
-
-    // 热门徽章
-    if (metric.total_references > 20) {
-        badges.push({
-            text: '高频使用',
-            color: 'red',
-        });
-    }
-
     // 构建详情信息
     const details = [
         {
-            label: '总引用',
+            label: '引用数',
             value: `${metric.total_references} 次`,
-            highlight: metric.total_references > 10,
+            highlight: metric.total_references > 0,
+        },
+        {
+            label: '公式长度',
+            value: `${metric.formula?.length || 0} 字符`,
         },
         {
             label: '数据源',
             value: `${metric.datasource_count} 个`,
         },
-        metric.workbook_count > 0 && {
+        {
             label: '工作簿',
             value: `${metric.workbook_count} 个`,
         },
-        metric.formula_length && {
-            label: '公式长度',
-            value: `${metric.formula_length} 字符`,
-        },
-    ].filter((item): item is { label: string; value: string; highlight?: boolean } =>
-        Boolean(item && item.value !== undefined && item.value !== null && item.value !== ''));
+    ];
 
     // 构建标签
     const tags: Array<{ icon?: React.ReactNode; label: string; color: 'green' | 'blue' | 'gray' | 'purple' | 'yellow' | 'red' | 'orange' }> = [];
@@ -101,44 +87,50 @@ export default function MetricCatalogCard({ metric, onClick }: MetricCatalogCard
     if (metric.instance_count > 1) {
         tags.push({
             icon: <Layers className="w-3 h-3" />,
-            label: `在 ${metric.datasource_count} 个数据源中定义`,
+            label: `共有 ${metric.instance_count} 个实例`,
             color: 'purple',
         });
     }
 
-    if (metric.total_references > 0) {
+    if (metric.formula) {
+        const truncatedFormula = metric.formula.length > 60
+            ? metric.formula.substring(0, 60) + '...'
+            : metric.formula;
         tags.push({
-            icon: <Zap className="w-3 h-3" />,
-            label: `累计 ${metric.total_references} 次引用`,
-            color: 'blue',
+            icon: <Code className="w-3 h-3" />,
+            label: `公式: ${truncatedFormula}`,
+            color: 'gray',
         });
     }
 
-    // 右侧展开按钮
-    const hasExpandContent = metric.datasources.length > 0 || metric.formula;
-    const rightContent = hasExpandContent && (
-        <button
-            onClick={(e) => {
-                e.stopPropagation();
-                setExpanded(!expanded);
-            }}
-            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-all"
-        >
-            {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            <span>{expanded ? '收起' : '展开'}</span>
-        </button>
-    );
+    // 判断是否有可展开的内容
+    const hasExpandContent = metric.datasources.length > 0 || metric.formula || metric.workbooks.length > 0;
 
     return (
         <div className="group">
-            <HorizontalCard
-                icon={<FunctionSquare className="w-5 h-5" />}
-                title={metric.name}
-                badges={badges}
-                details={details}
-                tags={tags}
-                onClick={onClick}
-            />
+            <div className="flex items-start gap-2">
+                <div className="flex-1">
+                    <HorizontalCard
+                        icon={<FunctionSquare className="w-5 h-5" />}
+                        title={metric.name}
+                        badges={badges}
+                        details={details}
+                        tags={tags}
+                        onClick={onClick}
+                    />
+                </div>
+
+                {/* 展开按钮 */}
+                {hasExpandContent && (
+                    <button
+                        onClick={() => setExpanded(!expanded)}
+                        className="mt-4 flex items-center gap-1 px-3 py-1.5 text-xs text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg border border-gray-200 transition-all shrink-0"
+                    >
+                        {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        <span>{expanded ? '收起' : '详情'}</span>
+                    </button>
+                )}
+            </div>
 
             {/* 展开的详情 */}
             {expanded && (
@@ -146,18 +138,18 @@ export default function MetricCatalogCard({ metric, onClick }: MetricCatalogCard
                     {/* 公式 */}
                     {metric.formula && (
                         <div>
-                            <div className="text-xs font-medium text-gray-500 mb-1">公式：</div>
+                            <div className="text-xs font-medium text-gray-500 mb-1">完整公式：</div>
                             <div className="p-2 bg-white rounded border text-xs font-mono text-gray-700 break-all">
                                 {metric.formula}
                             </div>
                         </div>
                     )}
 
-                    {/* 数据源列表 */}
+                    {/* 数据源列表维护 */}
                     {metric.datasources.length > 0 && (
                         <div>
                             <div className="text-xs font-medium text-gray-500 mb-2">
-                                在以下 {metric.datasources.length} 个数据源中定义：
+                                在以下 {metric.datasource_count} 个数据源中定义：
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 {metric.datasources.map((ds, idx) => (

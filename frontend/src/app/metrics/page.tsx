@@ -79,9 +79,7 @@ function MetricsContent() {
         totalOverride: total,
         facetsOverride: facetsData,
         onParamsChange: (params) => {
-            if (activeTab === 'list') {
-                fetchMetrics(params);
-            }
+            fetchMetrics(params);
         },
     });
 
@@ -92,13 +90,7 @@ function MetricsContent() {
         { key: 'name', label: '名称' },
     ];
 
-    if (loading) {
-        return (
-            <div className="flex justify-center py-20">
-                <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
-            </div>
-        );
-    }
+
 
     return (
         <div className="space-y-4">
@@ -217,7 +209,7 @@ function MetricsContent() {
                     )}
                 </>
             ) : activeTab === 'catalog' ? (
-                <MetricCatalog onMetricClick={(metric) => openDrawer('metric', metric.name)} />
+                <MetricCatalog onMetricClick={(metric) => openDrawer(metric.representative_id || '', 'metric')} />
             ) : activeTab === 'duplicate' ? (
                 <DuplicateMetricsAnalysis />
             ) : activeTab === 'complex' ? (

@@ -363,10 +363,63 @@ class TableauMetadataClient:
         return result.get("data", {}).get("publishedDatasources", [])
     
     def fetch_workbooks(self) -> List[Dict]:
-        """获取所有工作簿（增强版）"""
-        query = """
+        """获取所有工作簿（优化版：Robust Aliased Chunking + Null Owner Fallback）"""
+        all_workbooks = []
+        
+        print(f"  正在获取工作簿列表...")
+        # 1. 获取所有 ID (Safe Query)
+        list_query = """
         {
             workbooks {
+                id
+                name
+            }
+        }
+        """
+        list_result = self.execute_query(list_query)
+        if "errors" in list_result and not list_result.get("data"):
+            print(f"  ⚠️ 获取工作簿列表失败: {list_result['errors']}")
+            return []
+            
+        workbooks_meta = list_result.get("data", {}).get("workbooks") or []
+        print(f"  需同步 {len(workbooks_meta)} 个工作簿详情...")
+        
+        # 2. 分批获取详情
+        chunk_size = 10
+        total = len(workbooks_meta)
+        
+        for i in range(0, total, chunk_size):
+            chunk = workbooks_meta[i:i+chunk_size]
+            
+            # 尝试批量获取 (含 metadata)
+            try:
+                self._fetch_workbooks_chunk(chunk, all_workbooks, include_owner=True)
+            except Exception as e:
+                print(f"  ⚠️ 批次 {i//chunk_size + 1} 遇到错误，尝试降级重试 (不含 Owner)...")
+                try:
+                    self._fetch_workbooks_chunk(chunk, all_workbooks, include_owner=False)
+                except Exception as e2:
+                    print(f"  ❌ 批次 {i//chunk_size + 1} 彻底失败: {e2}")
+
+            print(f"    - 工作簿: 已处理 {min(i+chunk_size, total)}/{total}")
+
+        return all_workbooks
+    
+    def _fetch_workbooks_chunk(self, chunk: List[Dict], all_workbooks: List[Dict], include_owner: bool = True):
+        """辅助：批量获取工作簿详情"""
+        query_parts = []
+        owner_field = """
+                    owner {
+                        id
+                        username
+                        name
+                    }
+        """ if include_owner else ""
+        
+        for idx, wb in enumerate(chunk):
+            wb_id = wb["id"]
+            query_parts.append(f"""
+            wb{idx}: workbooks(filter: {{id: "{wb_id}"}}) {{
                 id
                 luid
                 name
@@ -376,16 +429,12 @@ class TableauMetadataClient:
                 createdAt
                 updatedAt
                 containsUnsupportedCustomSql
-                owner {
-                    id
-                    username
-                    name
-                }
-                upstreamDatasources {
+                {owner_field}
+                upstreamDatasources {{
                     id
                     name
-                }
-                sheets {
+                }}
+                sheets {{
                     id
                     luid
                     name
@@ -393,8 +442,8 @@ class TableauMetadataClient:
                     index
                     createdAt
                     updatedAt
-                }
-                dashboards {
+                }}
+                dashboards {{
                     id
                     luid
                     name
@@ -402,153 +451,157 @@ class TableauMetadataClient:
                     index
                     createdAt
                     updatedAt
-                    sheets {
+                    sheets {{
                         id
-                    }
-                }
-                embeddedDatasources {
+                    }}
+                }}
+                embeddedDatasources {{
                     id
                     name
-                    fields {
+                    fields {{
                         id
                         name
                         description
-                        ... on ColumnField {
+                        ... on ColumnField {{
                             dataType
                             role
                             isHidden
                             folderName
-                        }
-                        ... on CalculatedField {
+                        }}
+                        ... on CalculatedField {{
                             dataType
                             role
                             isHidden
                             folderName
                             formula
-                        }
-                    }
-                }
-            }
-        }
-        """
-        result = self.execute_query(query)
+                        }}
+                    }}
+                }}
+            }}
+            """)
         
-        # 检查错误并回退
-        if "errors" in result:
-            print(f"  ⚠️ GraphQL 警告: {result['errors']}")
-            return self._fetch_workbooks_fallback()
+        full_query = "{" + "\n".join(query_parts) + "}"
+        result = self.execute_query(full_query)
         
-        return result.get("data", {}).get("workbooks", [])
-    
-    def _fetch_workbooks_fallback(self) -> List[Dict]:
-        """回退：使用简化查询获取工作簿"""
-        query = """
-        {
-            workbooks {
-                id
-                name
-                projectName
-                createdAt
-                updatedAt
-                owner {
-                    username
-                }
-                upstreamDatasources {
-                    id
-                    name
-                }
-                sheets {
-                    id
-                    luid
-                    name
-                }
-                dashboards {
-                    id
-                    luid
-                    name
-                }
-                embeddedDatasources {
-                    id
-                    name
-                    fields {
-                        id
-                        name
-                        description
-                    }
-                }
-            }
-        }
-        """
-        result = self.execute_query(query)
-        return result.get("data", {}).get("workbooks", [])
+        # 检查是否有 strict error (导致 data 为 null)
+        if "data" not in result or not result["data"]:
+             # 抛出异常以触发降级
+             raise Exception("Data is null, likely non-nullable field violation")
+             
+        data = result.get("data", {})
+        
+        for key, wb_list in data.items():
+            if not wb_list: continue 
+            wb_detail = wb_list[0]
+            
+            all_workbooks.append(wb_detail)
     
     def fetch_fields(self) -> List[Dict]:
-        """获取所有字段（通过数据源）"""
-        query = """
+        all_fields = []
+        
+        # 1. 获取所有数据源 ID
+        print(f"  正在获取数据源列表以同步字段...")
+        ds_query = """
         {
             publishedDatasources {
                 id
                 name
-                fields {
-                    __typename
-                    id
-                    name
-                    description
-                    ... on ColumnField {
-                        dataType
-                        role
-                        isHidden
-                        folderName
-                        upstreamColumns {
-                            id
-                            name
-                            table {
-                                id
-                            }
-                        }
-                    }
-                    ... on CalculatedField {
-                        dataType
-                        role
-                        isHidden
-                        folderName
-                        formula
-                    }
-                }
+            }
+            embeddedDatasources {
+                id
+                name
             }
         }
         """
-        result = self.execute_query(query)
-        
-        # 检查是否有错误
-        # 检查是否有错误 (不立即返回，尝试获取部分数据)
-        if "errors" in result:
-            print(f"  ⚠️ GraphQL 警告/错误: {result['errors']}")
-            # return [] # 允许部分结果
-        
-        data = result.get("data")
-        if data is None:
-            print(f"  ⚠️ 未获取到数据: {result}")
+        ds_result = self.execute_query(ds_query)
+        if "errors" in ds_result and not ds_result.get("data"):
+            print(f"  ⚠️ 获取数据源失败: {ds_result['errors']}")
             return []
             
-        datasources = data.get("publishedDatasources") or []
+        published = ds_result.get("data", {}).get("publishedDatasources") or []
+        embedded = ds_result.get("data", {}).get("embeddedDatasources") or []
         
-        # 展平字段列表
-        all_fields = []
-        for ds in datasources:
-            if not ds:
-                continue
-            ds_id = ds.get("id")
-            ds_name = ds.get("name")
-            fields = ds.get("fields") or []
-            for field in fields:
-                if field and field.get("id"):
-                    field["datasource_id"] = ds_id
-                    field["datasource_name"] = ds_name
-                    all_fields.append(field)
+        # 分别处理两种数据源
+        self._batch_fetch_fields(published, "publishedDatasources", all_fields)
+        self._batch_fetch_fields(embedded, "embeddedDatasources", all_fields)
         
+        print(f"  ✅ 共采集到 {len(all_fields)} 个字段")
         return all_fields
-    
+
+    def _batch_fetch_fields(self, datasources: List[Dict], type_name: str, all_fields: List[Dict]):
+        """批量获取字段详情 (辅助方法)"""
+        if not datasources:
+            return
+
+        print(f"  同步 {type_name}: {len(datasources)} 个...")
+        chunk_size = 10
+        total = len(datasources)
+        
+        for i in range(0, total, chunk_size):
+            chunk = datasources[i:i+chunk_size]
+            
+            # 动态构建 Alias Filter 查询
+            query_parts = []
+            for idx, ds in enumerate(chunk):
+                ds_id = ds["id"]
+                query_parts.append(f"""
+                q{idx}: {type_name}(filter: {{id: "{ds_id}"}}) {{
+                    id
+                    name
+                    fields {{
+                        __typename
+                        id
+                        name
+                        description
+                        ... on ColumnField {{
+                            dataType
+                            role
+                            isHidden
+                        }}
+                        ... on CalculatedField {{
+                            dataType
+                            role
+                            isHidden
+                            formula
+                        }}
+                        ... on GroupField {{
+                            dataType
+                            role
+                            isHidden
+                        }}
+                    }}
+                }}
+                """)
+            
+            full_query = "{" + "\n".join(query_parts) + "}"
+            
+            try:
+                result = self.execute_query(full_query)
+                if "errors" in result:
+                    print(f"  ⚠️ 批次 {i//chunk_size + 1} 部分失败: {result['errors'][0].get('message')}")
+                
+                data = result.get("data", {})
+                if not data: continue
+                
+                for key, ds_list in data.items():
+                    if not ds_list: continue
+                    # filter查询返回的是列表，取第一个
+                    ds_data = ds_list[0]
+                    ds_id = ds_data.get("id")
+                    ds_name = ds_data.get("name")
+                    
+                    fields = ds_data.get("fields") or []
+                    for field in fields:
+                        if field and field.get("id"):
+                            field["datasource_id"] = ds_id
+                            field["datasource_name"] = ds_name
+                            all_fields.append(field)
+                
+                print(f"    - {type_name}: 已处理 {min(i+chunk_size, total)}/{total}")
+                
+            except Exception as e:
+                print(f"  ❌ 批次查询异常: {e}")
+
     def fetch_calculated_fields(self) -> List[Dict]:
         """获取所有计算字段"""
         query = """
@@ -588,58 +641,97 @@ class TableauMetadataClient:
         return calc_fields
     
     def fetch_views_with_fields(self) -> List[Dict]:
-        """获取视图及其使用的字段（不分页采集，因为工作簿数量较少）"""
+        """获取视图及其使用的字段（迭代优化版：通过 Filter-ID 分页采集）"""
         all_view_fields = []
         
-        print(f"  正在获取视图字段关联...")
+        print(f"  正在获取视图字段关联(优化版)...")
         
-        query = """
+        # 1. 获取所有工作簿 ID
+        wb_query = """
         {
             workbooks {
                 id
                 name
-                sheets {
-                    id
-                    name
-                    sheetFieldInstances {
-                        id
-                        name
-                        datasource {
-                            id
-                        }
-                    }
-                }
             }
         }
         """
-        result = self.execute_query(query)
+        wb_result = self.execute_query(wb_query)
+        if "errors" in wb_result and not wb_result.get("data"):
+             print(f"  ⚠️ 获取工作簿列表失败: {wb_result['errors']}")
+             return []
+             
+        workbooks = wb_result.get("data", {}).get("workbooks") or []
+        print(f"  需同步 {len(workbooks)} 个工作簿的视图关联...")
         
-        if "errors" in result:
-            print(f"  ⚠️ GraphQL 错误 (workbook-sheets): {result['errors']}")
-            return []
+        # 2. 逐个工作簿查询 (或小批量)
+        # 考虑到视图包含的字段引用节点可能很多，这里采用每次查 5 个工作簿
+        chunk_size = 5
+        total = len(workbooks)
         
-        workbooks = result.get("data", {}).get("workbooks") or []
-        for wb in workbooks:
-            if not wb: continue
-            wb_id = wb.get("id")
-            sheets = wb.get("sheets") or []
+        for i in range(0, total, chunk_size):
+            chunk = workbooks[i:i+chunk_size]
             
-            for sheet in sheets:
-                if not sheet: continue
-                view_id = sheet.get("id")
-                view_name = sheet.get("name")
-                fields = sheet.get("sheetFieldInstances") or []
+            # 动态构建 Alias Filter 查询
+            query_parts = []
+            for idx, wb in enumerate(chunk):
+                wb_id = wb["id"]
+                query_parts.append(f"""
+                wb{idx}: workbooks(filter: {{id: "{wb_id}"}}) {{
+                    id
+                    name
+                    sheets {{
+                        id
+                        name
+                        sheetFieldInstances {{
+                            id
+                            name
+                            datasource {{
+                                id
+                            }}
+                        }}
+                    }}
+                }}
+                """)
+            
+            full_query = "{" + "\n".join(query_parts) + "}"
+            
+            try:
+                result = self.execute_query(full_query)
+                if "errors" in result:
+                    print(f"  ⚠️ 批次 {i//chunk_size + 1} 部分失败: {result['errors'][0].get('message')}")
                 
-                for field in fields:
-                    if field and field.get("id"):
-                        all_view_fields.append({
-                            "view_id": view_id,
-                            "view_name": view_name,
-                            "workbook_id": wb_id,
-                            "field_id": field.get("id"),
-                            "field_name": field.get("name"),
-                            "datasource_id": (field.get("datasource") or {}).get("id")
-                        })
+                data = result.get("data", {})
+                if not data: continue
+                
+                # 解析别名结果
+                for key, wb_list in data.items():
+                    if not wb_list: continue
+                    # workbooks 返回的是列表
+                    wb_data = wb_list[0]
+                    wb_id = wb_data.get("id")
+                    
+                    sheets = wb_data.get("sheets") or []
+                    for sheet in sheets:
+                        if not sheet: continue
+                        view_id = sheet.get("id")
+                        view_name = sheet.get("name")
+                        fields = sheet.get("sheetFieldInstances") or []
+                        
+                        for field in fields:
+                            if field and field.get("id"):
+                                all_view_fields.append({
+                                    "view_id": view_id,
+                                    "view_name": view_name,
+                                    "workbook_id": wb_id,
+                                    "field_id": field.get("id"),
+                                    "field_name": field.get("name"),
+                                    "datasource_id": (field.get("datasource") or {}).get("id")
+                                })
+                                
+                print(f"    - 已处理 {min(i+chunk_size, total)}/{total} 个工作簿, 累计关联 {len(all_view_fields)}")
+                
+            except Exception as e:
+                print(f"  ❌ 批次查询异常: {e}")
         
         print(f"  ✅ 抓取到 {len(all_view_fields)} 个字段关联关系")
         return all_view_fields
@@ -1774,17 +1866,30 @@ class MetadataSync:
                 wb.view_count = len(wb.views) if wb.views else 0
                 wb.datasource_count = len(wb.datasources) if wb.datasources else 0
                 
-                # 统计字段和指标（需查询视图中的字段）
+                # 统计字段和指标（优先通过视图中的字段，备选通过数据源）
                 field_ids = set()
                 metric_ids = set()
+                
+                # 方案1：通过视图中的字段（需要 field_to_view 关联表有数据）
                 for v in (wb.views or []):
                     for f in (v.fields or []):
                         if f.is_calculated:
                             metric_ids.add(f.id)
                         else:
                             field_ids.add(f.id)
+                
+                # 方案2：如果视图关联为空，改用数据源的字段
+                if len(field_ids) == 0 and len(metric_ids) == 0:
+                    for ds in (wb.datasources or []):
+                        for f in (ds.fields or []):
+                            if f.is_calculated:
+                                metric_ids.add(f.id)
+                            else:
+                                field_ids.add(f.id)
+                
                 wb.field_count = len(field_ids)
                 wb.metric_count = len(metric_ids)
+
             
             # ========== Datasource 统计 ==========
             datasources = self.session.query(Datasource).all()
