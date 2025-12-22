@@ -34,31 +34,13 @@ export default function UnusedMetricsAnalysis() {
     const { openDrawer } = useDrawer();
 
     useEffect(() => {
-        fetch('/api/metrics?page=1&page_size=500')
+        // 使用专用治理API获取完整的未使用指标数据
+        fetch('/api/metrics/governance/unused')
             .then(res => res.json())
             .then(result => {
-                const items = result.items || result || [];
-                // 筛选未使用指标（引用数为0）
-                const unusedMetrics = items.filter((m: MetricItem) => {
-                    const refCount = m.reference_count ?? m.referenceCount ?? 0;
-                    return refCount === 0;
-                });
-
-                // 按数据源分组
-                const grouped = unusedMetrics.reduce((acc: Record<string, MetricItem[]>, metric: MetricItem) => {
-                    const key = metric.datasource_name || metric.datasourceName || '未知数据源';
-                    if (!acc[key]) acc[key] = [];
-                    acc[key].push(metric);
-                    return acc;
-                }, {} as Record<string, MetricItem[]>);
-
-                // 转换为数组并按数量排序
-                const groupArray = Object.entries(grouped)
-                    .map(([name, metrics]) => ({ name, metrics: metrics as MetricItem[] }))
-                    .sort((a, b) => b.metrics.length - a.metrics.length);
-
-                setGroupedData(groupArray);
-                setTotalCount(unusedMetrics.length);
+                // 直接使用后端返回的分组数据
+                setGroupedData(result.groups || []);
+                setTotalCount(result.total_count || 0);
             })
             .catch(console.error)
             .finally(() => setLoading(false));

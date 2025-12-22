@@ -29,22 +29,12 @@ export default function ComplexMetricsAnalysis() {
     const { openDrawer } = useDrawer();
 
     useEffect(() => {
-        fetch('/api/metrics?page=1&page_size=500')
+        // 使用专用治理API获取完整的高复杂度指标数据
+        fetch('/api/metrics/governance/complex')
             .then(res => res.json())
             .then(result => {
-                const items = result.items || result || [];
-                // 筛选高复杂度指标（公式长度>200字符或复杂度评分>5）
-                const complexMetrics = items.filter((m: MetricItem) => {
-                    const formulaLen = m.formula?.length || 0;
-                    const complexity = m.complexity_score ?? m.complexityScore ?? 0;
-                    return formulaLen > 200 || complexity > 5;
-                }).sort((a: MetricItem, b: MetricItem) => {
-                    const aLen = a.formula?.length || 0;
-                    const bLen = b.formula?.length || 0;
-                    return bLen - aLen;
-                });
-
-                setData(complexMetrics);
+                // 直接使用后端返回的数据
+                setData(result.items || []);
             })
             .catch(console.error)
             .finally(() => setLoading(false));

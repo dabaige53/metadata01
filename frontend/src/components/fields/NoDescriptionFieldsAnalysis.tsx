@@ -41,32 +41,12 @@ export default function NoDescriptionFieldsAnalysis() {
     const { openDrawer } = useDrawer();
 
     useEffect(() => {
-        fetch('/api/fields?page=1&page_size=500')
+        fetch('/api/fields/governance/no-description')
             .then(res => res.json())
             .then(result => {
-                const items = result.items || result || [];
-                // 过滤无描述字段（只保留基础字段，排除计算字段）
-                const noDescFields = items.filter((f: FieldItem) => {
-                    const isCalc = (f as Record<string, unknown>).isCalculated ?? (f as Record<string, unknown>).is_calculated;
-                    const hasDesc = f.description && f.description.trim() !== '';
-                    return !isCalc && !hasDesc;
-                });
-
-                // 按数据源分组
-                const grouped = noDescFields.reduce((acc: Record<string, FieldItem[]>, field: FieldItem) => {
-                    const key = field.datasource_name || field.datasourceName || '未知数据源';
-                    if (!acc[key]) acc[key] = [];
-                    acc[key].push(field);
-                    return acc;
-                }, {} as Record<string, FieldItem[]>);
-
-                // 转换为数组并按数量排序
-                const groupArray = Object.entries(grouped)
-                    .map(([name, fields]) => ({ datasource_name: name, fields: fields as FieldItem[] }))
-                    .sort((a, b) => b.fields.length - a.fields.length);
-
-                setGroupedData(groupArray);
-                setTotalCount(noDescFields.length);
+                // 直接使用后端返回的分组数据
+                setGroupedData(result.groups || []);
+                setTotalCount(result.total_count || 0);
             })
             .catch(console.error)
             .finally(() => setLoading(false));

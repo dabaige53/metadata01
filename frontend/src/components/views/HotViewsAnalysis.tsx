@@ -29,21 +29,12 @@ export default function HotViewsAnalysis() {
     const { openDrawer } = useDrawer();
 
     useEffect(() => {
-        fetch('/api/views?page=1&page_size=200')
+        // 使用专用治理API获取完整的热门视图数据
+        fetch('/api/views/governance/hot')
             .then(res => res.json())
             .then(result => {
-                const items = result.items || result || [];
-                // 筛选热门视图（访问量>50次）
-                const hotViews = items.filter((v: ViewItem) => {
-                    const viewCount = v.total_view_count ?? v.totalViewCount ?? 0;
-                    return viewCount > 50;
-                }).sort((a: ViewItem, b: ViewItem) => {
-                    const aCount = a.total_view_count ?? a.totalViewCount ?? 0;
-                    const bCount = b.total_view_count ?? b.totalViewCount ?? 0;
-                    return bCount - aCount;
-                });
-
-                setData(hotViews);
+                // 直接使用后端返回的数据
+                setData(result.items || []);
             })
             .catch(console.error)
             .finally(() => setLoading(false));

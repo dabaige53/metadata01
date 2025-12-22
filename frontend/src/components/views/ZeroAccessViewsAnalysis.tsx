@@ -36,31 +36,13 @@ export default function ZeroAccessViewsAnalysis() {
     const { openDrawer } = useDrawer();
 
     useEffect(() => {
-        fetch('/api/views?page=1&page_size=500')
+        // 使用专用治理API获取完整的零访问视图数据
+        fetch('/api/views/governance/zero-access')
             .then(res => res.json())
             .then(result => {
-                const items = result.items || result || [];
-                // 筛选零访问视图
-                const zeroAccessViews = items.filter((v: ViewItem) => {
-                    const viewCount = v.total_view_count ?? v.totalViewCount ?? 0;
-                    return viewCount === 0;
-                });
-
-                // 按工作簿分组
-                const grouped = zeroAccessViews.reduce((acc: Record<string, ViewItem[]>, view: ViewItem) => {
-                    const key = view.workbook_name || view.workbookName || '未知工作簿';
-                    if (!acc[key]) acc[key] = [];
-                    acc[key].push(view);
-                    return acc;
-                }, {} as Record<string, ViewItem[]>);
-
-                // 转换为数组并按数量排序
-                const groupArray = Object.entries(grouped)
-                    .map(([name, views]) => ({ name, views: views as ViewItem[] }))
-                    .sort((a, b) => b.views.length - a.views.length);
-
-                setGroupedData(groupArray);
-                setTotalCount(zeroAccessViews.length);
+                // 直接使用后端返回的分组数据
+                setGroupedData(result.groups || []);
+                setTotalCount(result.total_count || 0);
             })
             .catch(console.error)
             .finally(() => setLoading(false));

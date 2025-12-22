@@ -42,32 +42,13 @@ export default function OrphanFieldsAnalysis() {
     const { openDrawer } = useDrawer();
 
     useEffect(() => {
-        // 获取孤立字段（未被任何视图使用的字段）
-        fetch('/api/fields?page=1&page_size=500&orphan=true')
+        // 使用专用治理API获取完整的孤立字段数据
+        fetch('/api/fields/governance/orphan')
             .then(res => res.json())
             .then(result => {
-                const items = result.items || result || [];
-                // 筛选未使用的字段 (usage_count = 0 或 未被视图引用)
-                const orphanFields = items.filter((f: FieldItem) => {
-                    const usageCount = f.usage_count ?? f.usageCount ?? 0;
-                    return usageCount === 0;
-                });
-
-                // 按数据源分组
-                const grouped = orphanFields.reduce((acc: Record<string, FieldItem[]>, field: FieldItem) => {
-                    const key = field.datasource_name || field.datasourceName || '未知数据源';
-                    if (!acc[key]) acc[key] = [];
-                    acc[key].push(field);
-                    return acc;
-                }, {} as Record<string, FieldItem[]>);
-
-                // 转换为数组并按数量排序
-                const groupArray = Object.entries(grouped)
-                    .map(([name, fields]) => ({ datasource_name: name, fields: fields as FieldItem[] }))
-                    .sort((a, b) => b.fields.length - a.fields.length);
-
-                setGroupedData(groupArray);
-                setTotalCount(orphanFields.length);
+                // 直接使用后端返回的分组数据
+                setGroupedData(result.groups || []);
+                setTotalCount(result.total_count || 0);
             })
             .catch(console.error)
             .finally(() => setLoading(false));

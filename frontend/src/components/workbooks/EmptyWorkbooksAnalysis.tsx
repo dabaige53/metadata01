@@ -31,24 +31,14 @@ export default function EmptyWorkbooksAnalysis() {
     const { openDrawer } = useDrawer();
 
     useEffect(() => {
-        fetch('/api/workbooks?page=1&page_size=500')
-            .then(res => res.json())
-            .then(result => {
-                const items = Array.isArray(result) ? result : (result.items || []);
-
-                // 无视图工作簿
-                const empty = items.filter((w: WorkbookItem) => {
-                    const viewCnt = w.viewCount ?? w.view_count ?? 0;
-                    return viewCnt === 0;
-                });
-                setEmptyWorkbooks(empty);
-
-                // 单源依赖：只依赖一个数据源的工作簿
-                const singleSource = items.filter((w: WorkbookItem) => {
-                    const sources = w.upstream_datasources || [];
-                    return sources.length === 1;
-                });
-                setSingleSourceWorkbooks(singleSource);
+        // 并行获取无视图工作簿和单源依赖工作簿数据
+        Promise.all([
+            fetch('/api/workbooks/governance/empty').then(res => res.json()),
+            fetch('/api/workbooks/governance/single-source').then(res => res.json())
+        ])
+            .then(([emptyResult, singleResult]) => {
+                setEmptyWorkbooks(emptyResult.items || []);
+                setSingleSourceWorkbooks(singleResult.items || []);
             })
             .catch(console.error)
             .finally(() => setLoading(false));

@@ -529,6 +529,78 @@ def get_database_detail(db_id):
 
 # ==================== 数据表接口 ====================
 
+# -------------------- 数据表治理分析专用 API --------------------
+
+@api_bp.route('/tables/governance/unused')
+def get_tables_unused():
+    """获取未使用数据表分析（基于全量数据，未被任何数据源引用）"""
+    session = g.db_session
+    from sqlalchemy import text
+    
+    sql = """
+        SELECT 
+            t.id, t.name, t.schema, t.database_id,
+            db.name as database_name,
+            (SELECT COUNT(*) FROM columns c WHERE c.table_id = t.id) as column_count
+        FROM tables t
+        LEFT JOIN databases db ON t.database_id = db.id
+        LEFT JOIN table_to_datasource td ON t.id = td.table_id
+        WHERE td.datasource_id IS NULL
+        ORDER BY t.name
+    """
+    rows = session.execute(text(sql)).fetchall()
+    
+    items = [{
+        'id': row.id,
+        'name': row.name,
+        'schema': row.schema or '-',
+        'database_name': row.database_name or '-',
+        'column_count': row.column_count or 0
+    } for row in rows]
+    
+    return jsonify({
+        'total_count': len(items),
+        'items': items
+    })
+
+
+@api_bp.route('/tables/governance/wide')
+def get_tables_wide():
+    """获取宽表分析（基于全量数据，列数 > 50）"""
+    session = g.db_session
+    from sqlalchemy import text
+    
+    sql = """
+        SELECT 
+            t.id, t.name, t.schema, t.database_id,
+            db.name as database_name,
+            (SELECT COUNT(*) FROM columns c WHERE c.table_id = t.id) as column_count,
+            (SELECT COUNT(DISTINCT td.datasource_id) FROM table_to_datasource td WHERE td.table_id = t.id) as datasource_count
+        FROM tables t
+        LEFT JOIN databases db ON t.database_id = db.id
+        GROUP BY t.id
+        HAVING column_count > 50
+        ORDER BY column_count DESC
+    """
+    rows = session.execute(text(sql)).fetchall()
+    
+    items = [{
+        'id': row.id,
+        'name': row.name,
+        'schema': row.schema or '-',
+        'database_name': row.database_name or '-',
+        'column_count': row.column_count or 0,
+        'datasource_count': row.datasource_count or 0
+    } for row in rows]
+    
+    return jsonify({
+        'total_count': len(items),
+        'items': items
+    })
+
+
+# -------------------- 数据表列表 API --------------------
+
 @api_bp.route('/tables')
 def get_tables():
     """获取数据表列表 - 性能优化版"""
@@ -888,6 +960,79 @@ def get_datasource_detail(ds_id):
 
 # ==================== 工作簿接口 ====================
 
+# -------------------- 工作簿治理分析专用 API --------------------
+
+@api_bp.route('/workbooks/governance/empty')
+def get_workbooks_empty():
+    """获取无视图工作簿分析（基于全量数据）"""
+    session = g.db_session
+    from sqlalchemy import text
+    
+    # 查询视图数为0的工作簿
+    sql = """
+        SELECT 
+            w.id, w.name, w.project_name, w.owner, w.site_name
+        FROM workbooks w
+        LEFT JOIN views v ON w.id = v.workbook_id
+        GROUP BY w.id
+        HAVING COUNT(v.id) = 0
+        ORDER BY w.name
+    """
+    rows = session.execute(text(sql)).fetchall()
+    
+    items = [{
+        'id': row.id,
+        'name': row.name,
+        'project_name': row.project_name or '-',
+        'owner': row.owner or '-',
+        'site_name': row.site_name or '-'
+    } for row in rows]
+    
+    return jsonify({
+        'total_count': len(items),
+        'items': items
+    })
+
+
+@api_bp.route('/workbooks/governance/single-source')
+def get_workbooks_single_source():
+    """获取单源依赖工作簿分析（基于全量数据）"""
+    session = g.db_session
+    from sqlalchemy import text
+    
+    # 查询只依赖一个数据源的工作簿
+    sql = """
+        SELECT 
+            w.id, w.name, w.project_name, w.owner,
+            COUNT(DISTINCT dw.datasource_id) as ds_count,
+            MIN(d.name) as datasource_name,
+            (SELECT COUNT(*) FROM views v WHERE v.workbook_id = w.id) as view_count
+        FROM workbooks w
+        LEFT JOIN datasource_to_workbook dw ON w.id = dw.workbook_id
+        LEFT JOIN datasources d ON dw.datasource_id = d.id
+        GROUP BY w.id
+        HAVING ds_count = 1
+        ORDER BY w.name
+    """
+    rows = session.execute(text(sql)).fetchall()
+    
+    items = [{
+        'id': row.id,
+        'name': row.name,
+        'project_name': row.project_name or '-',
+        'owner': row.owner or '-',
+        'datasource_name': row.datasource_name or '-',
+        'view_count': row.view_count or 0
+    } for row in rows]
+    
+    return jsonify({
+        'total_count': len(items),
+        'items': items
+    })
+
+
+# -------------------- 工作簿列表 API --------------------
+
 @api_bp.route('/workbooks')
 def get_workbooks():
     """获取工作簿列表"""
@@ -973,6 +1118,109 @@ def get_workbook_detail(wb_id):
 
 
 # ==================== 视图接口 ====================
+
+# -------------------- 视图治理分析专用 API --------------------
+
+@api_bp.route('/views/governance/zero-access')
+def get_views_zero_access():
+    """获取零访问视图分析（基于全量数据）"""
+    session = g.db_session
+    from sqlalchemy import text
+    
+    # 查询访问量为0的视图
+    sql = """
+        SELECT 
+            v.id, v.name, v.view_type, v.workbook_id,
+            w.name as workbook_name
+        FROM views v
+        LEFT JOIN workbooks w ON v.workbook_id = w.id
+        WHERE v.total_view_count IS NULL OR v.total_view_count = 0
+        ORDER BY w.name, v.name
+    """
+    rows = session.execute(text(sql)).fetchall()
+    
+    # 按工作簿分组
+    groups_map = {}
+    for row in rows:
+        wb_name = row.workbook_name or '未知工作簿'
+        
+        if wb_name not in groups_map:
+            groups_map[wb_name] = {
+                'workbook_name': wb_name,
+                'workbook_id': row.workbook_id,
+                'views': []
+            }
+        
+        groups_map[wb_name]['views'].append({
+            'id': row.id,
+            'name': row.name,
+            'view_type': row.view_type or 'sheet'
+        })
+    
+    groups = sorted(groups_map.values(), key=lambda grp: len(grp['views']), reverse=True)
+    for grp in groups:
+        grp['view_count'] = len(grp['views'])
+    
+    return jsonify({
+        'total_count': len(rows),
+        'workbook_count': len(groups),
+        'groups': groups
+    })
+
+
+@api_bp.route('/views/governance/hot')
+def get_views_hot():
+    """获取热门视图排行榜（基于全量数据，访问量 > 100）"""
+    session = g.db_session
+    from sqlalchemy import text
+    
+    sql = """
+        SELECT 
+            v.id, v.name, v.view_type, v.total_view_count,
+            v.workbook_id, w.name as workbook_name
+        FROM views v
+        LEFT JOIN workbooks w ON v.workbook_id = w.id
+        WHERE v.total_view_count > 100
+        ORDER BY v.total_view_count DESC
+    """
+    rows = session.execute(text(sql)).fetchall()
+    
+    # 计算统计数据
+    view_counts = [row.total_view_count for row in rows]
+    max_views = max(view_counts) if view_counts else 0
+    avg_views = round(sum(view_counts) / len(view_counts)) if view_counts else 0
+    
+    items = []
+    for row in rows:
+        count = row.total_view_count or 0
+        if count >= 10000:
+            heat_level = '超热门'
+        elif count >= 1000:
+            heat_level = '热门'
+        elif count >= 500:
+            heat_level = '活跃'
+        else:
+            heat_level = '常用'
+        
+        items.append({
+            'id': row.id,
+            'name': row.name,
+            'view_type': row.view_type or 'sheet',
+            'total_view_count': count,
+            'workbook_name': row.workbook_name or '-',
+            'heat_level': heat_level
+        })
+    
+    return jsonify({
+        'total_count': len(items),
+        'max_views': max_views,
+        'avg_views': avg_views,
+        'items': items
+    })
+
+
+# -------------------- 视图列表 API --------------------
+
 @api_bp.route('/views')
 def get_views():
     session = g.db_session
@@ -1129,6 +1377,171 @@ def get_view_usage_stats(view_id):
 
 
 # ==================== 字段接口 ====================
+
+# -------------------- 字段治理分析专用 API --------------------
+
+@api_bp.route('/fields/governance/no-description')
+def get_fields_no_description():
+    """获取无描述字段分析 - 按数据源分组（基于全量数据）"""
+    session = g.db_session
+    from sqlalchemy import text
+    
+    # 查询所有无描述的非计算字段（直接在SQL层过滤）
+    sql = """
+        SELECT 
+            f.id, f.name, f.role, f.data_type, 
+            f.datasource_id, d.name as datasource_name,
+            t.name as table_name
+        FROM fields f
+        LEFT JOIN datasources d ON f.datasource_id = d.id
+        LEFT JOIN tables t ON f.table_id = t.id
+        WHERE (f.is_calculated = 0 OR f.is_calculated IS NULL)
+          AND (f.description IS NULL OR f.description = '')
+        ORDER BY d.name, f.name
+    """
+    rows = session.execute(text(sql)).fetchall()
+    
+    # 按数据源分组
+    groups_map = {}
+    for row in rows:
+        ds_name = row.datasource_name or '未知数据源'
+        ds_id = row.datasource_id or 'unknown'
+        
+        if ds_name not in groups_map:
+            groups_map[ds_name] = {
+                'datasource_name': ds_name,
+                'datasource_id': ds_id,
+                'fields': []
+            }
+        
+        groups_map[ds_name]['fields'].append({
+            'id': row.id,
+            'name': row.name,
+            'role': row.role,
+            'data_type': row.data_type,
+            'table_name': row.table_name or '-'
+        })
+    
+    # 转换为数组并按字段数降序排列
+    groups = sorted(groups_map.values(), key=lambda grp: len(grp['fields']), reverse=True)
+    for grp in groups:
+        grp['field_count'] = len(grp['fields'])
+    
+    return jsonify({
+        'total_count': len(rows),
+        'datasource_count': len(groups),
+        'groups': groups
+    })
+
+
+@api_bp.route('/fields/governance/orphan')
+def get_fields_orphan():
+    """获取孤立字段分析 - 未被任何视图使用的字段（基于全量数据）"""
+    session = g.db_session
+    from sqlalchemy import text
+    
+    # 查询所有 usage_count = 0 的字段
+    sql = """
+        SELECT 
+            f.id, f.name, f.role, f.data_type, f.is_calculated,
+            f.datasource_id, d.name as datasource_name
+        FROM fields f
+        LEFT JOIN datasources d ON f.datasource_id = d.id
+        WHERE (f.usage_count IS NULL OR f.usage_count = 0)
+        ORDER BY d.name, f.name
+    """
+    rows = session.execute(text(sql)).fetchall()
+    
+    # 按数据源分组
+    groups_map = {}
+    for row in rows:
+        ds_name = row.datasource_name or '未知数据源'
+        ds_id = row.datasource_id or 'unknown'
+        
+        if ds_name not in groups_map:
+            groups_map[ds_name] = {
+                'datasource_name': ds_name,
+                'datasource_id': ds_id,
+                'fields': []
+            }
+        
+        groups_map[ds_name]['fields'].append({
+            'id': row.id,
+            'name': row.name,
+            'role': row.role,
+            'data_type': row.data_type,
+            'is_calculated': row.is_calculated or False
+        })
+    
+    # 转换为数组并按字段数降序排列
+    groups = sorted(groups_map.values(), key=lambda grp: len(grp['fields']), reverse=True)
+    for grp in groups:
+        grp['field_count'] = len(grp['fields'])
+    
+    return jsonify({
+        'total_count': len(rows),
+        'datasource_count': len(groups),
+        'groups': groups
+    })
+
+
+@api_bp.route('/fields/governance/hot')
+def get_fields_hot():
+    """获取热门字段排行榜（基于全量数据，usage_count > 20）"""
+    session = g.db_session
+    from sqlalchemy import text
+    
+    # 查询所有高频使用的字段（usage_count > 20）
+    sql = """
+        SELECT 
+            f.id, f.name, f.role, f.data_type, f.is_calculated,
+            f.usage_count, f.datasource_id, d.name as datasource_name
+        FROM fields f
+        LEFT JOIN datasources d ON f.datasource_id = d.id
+        WHERE f.usage_count > 20
+        ORDER BY f.usage_count DESC
+    """
+    rows = session.execute(text(sql)).fetchall()
+    
+    # 计算统计数据
+    usage_counts = [row.usage_count for row in rows]
+    max_usage = max(usage_counts) if usage_counts else 0
+    avg_usage = round(sum(usage_counts) / len(usage_counts)) if usage_counts else 0
+    
+    # 构建字段列表
+    fields = []
+    for row in rows:
+        usage = row.usage_count or 0
+        # 计算热度等级
+        if usage >= 200:
+            heat_level = '超热门'
+        elif usage >= 100:
+            heat_level = '热门'
+        elif usage >= 50:
+            heat_level = '活跃'
+        else:
+            heat_level = '常用'
+        
+        fields.append({
+            'id': row.id,
+            'name': row.name,
+            'usage_count': usage,
+            'role': row.role,
+            'data_type': row.data_type,
+            'datasource_name': row.datasource_name or '-',
+            'is_calculated': row.is_calculated or False,
+            'heat_level': heat_level
+        })
+    
+    return jsonify({
+        'total_count': len(rows),
+        'max_usage': max_usage,
+        'avg_usage': avg_usage,
+        'fields': fields
+    })
+
+
+# -------------------- 字段列表 API --------------------
 
 @api_bp.route('/fields')
 def get_fields():
@@ -1418,6 +1831,110 @@ def update_field(field_id):
 # ... (Datasource/Table routes should be updated similarly if needed, but for now focusing on Fields/Metrics) ...
 
 # ==================== 指标接口 ====================
+
+# -------------------- 指标治理分析专用 API --------------------
+
+@api_bp.route('/metrics/governance/unused')
+def get_metrics_unused():
+    """获取未使用指标分析（基于全量数据，引用数为0）"""
+    session = g.db_session
+    from sqlalchemy import text
+    
+    sql = """
+        SELECT 
+            f.id, f.name, f.datasource_id, d.name as datasource_name,
+            cf.formula, cf.reference_count
+        FROM fields f
+        JOIN calculated_fields cf ON f.id = cf.field_id
+        LEFT JOIN datasources d ON f.datasource_id = d.id
+        WHERE cf.reference_count IS NULL OR cf.reference_count = 0
+        ORDER BY d.name, f.name
+    """
+    rows = session.execute(text(sql)).fetchall()
+    
+    # 按数据源分组
+    groups_map = {}
+    for row in rows:
+        ds_name = row.datasource_name or '未知数据源'
+        ds_id = row.datasource_id or 'unknown'
+        
+        if ds_name not in groups_map:
+            groups_map[ds_name] = {
+                'datasource_name': ds_name,
+                'datasource_id': ds_id,
+                'metrics': []
+            }
+        
+        groups_map[ds_name]['metrics'].append({
+            'id': row.id,
+            'name': row.name,
+            'formula': row.formula[:100] + '...' if row.formula and len(row.formula) > 100 else row.formula
+        })
+    
+    groups = sorted(groups_map.values(), key=lambda grp: len(grp['metrics']), reverse=True)
+    for grp in groups:
+        grp['metric_count'] = len(grp['metrics'])
+    
+    return jsonify({
+        'total_count': len(rows),
+        'datasource_count': len(groups),
+        'groups': groups
+    })
+
+
+@api_bp.route('/metrics/governance/complex')
+def get_metrics_complex():
+    """获取高复杂度指标分析（基于全量数据，公式长度 > 200 或复杂度 > 5）"""
+    session = g.db_session
+    from sqlalchemy import text
+    
+    sql = """
+        SELECT 
+            f.id, f.name, f.datasource_id, d.name as datasource_name,
+            cf.formula, cf.complexity_score, cf.reference_count
+        FROM fields f
+        JOIN calculated_fields cf ON f.id = cf.field_id
+        LEFT JOIN datasources d ON f.datasource_id = d.id
+        WHERE LENGTH(cf.formula) > 200 OR cf.complexity_score > 5
+        ORDER BY LENGTH(cf.formula) DESC
+    """
+    rows = session.execute(text(sql)).fetchall()
+    
+    items = []
+    for row in rows:
+        formula_len = len(row.formula) if row.formula else 0
+        if formula_len >= 500:
+            complexity_level = '超高'
+        elif formula_len >= 300:
+            complexity_level = '高'
+        elif formula_len >= 200:
+            complexity_level = '中高'
+        else:
+            complexity_level = '正常'
+        
+        items.append({
+            'id': row.id,
+            'name': row.name,
+            'datasource_name': row.datasource_name or '-',
+            'formula_length': formula_len,
+            'complexity_score': row.complexity_score or 0,
+            'reference_count': row.reference_count or 0,
+            'complexity_level': complexity_level
+        })
+    
+    # 统计
+    super_complex = len([x for x in items if x['formula_length'] >= 500])
+    avg_length = round(sum(x['formula_length'] for x in items) / len(items)) if items else 0
+    
+    return jsonify({
+        'total_count': len(items),
+        'super_complex_count': super_complex,
+        'avg_formula_length': avg_length,
+        'items': items
+    })
+
+
+# -------------------- 指标列表 API --------------------
 
 @api_bp.route('/metrics')
 def get_metrics():
@@ -1810,25 +2327,6 @@ def get_lineage(item_type, item_id):
                 upstream.append({'type': 'table', 'name': table.name, 'schema': table.schema})
             for wb in ds.workbooks:
                 downstream.append({'type': 'workbook', 'name': wb.name})
-
-    elif item_type == 'view':
-        view = session.query(View).filter(View.id == item_id).first()
-        if view:
-            # 上游：工作簿
-            if view.workbook:
-                upstream.append({'type': 'workbook', 'id': view.workbook.id, 'name': view.workbook.name})
-
-            # 上游：父级仪表盘 (如果是 Sheet)
-            for dash in view.parent_dashboards:
-                upstream.append({'type': 'view', 'id': dash.id, 'name': dash.name, 'subtype': 'dashboard'})
-
-            # 上游：使用的字段 (只列前20个)
-            for field in view.fields[:20]:
-                 upstream.append({'type': 'field', 'id': field.id, 'name': field.name})
-
-            # 下游：包含的工作表 (如果是 Dashboard)
-            for sheet in view.contained_sheets:
-                downstream.append({'type': 'view', 'id': sheet.id, 'name': sheet.name, 'subtype': 'sheet'})
     
     return jsonify({'upstream': upstream, 'downstream': downstream})
 
@@ -2009,35 +2507,6 @@ def get_lineage_graph(item_type, item_id):
             for wb in ds.workbooks[:10]:
                 add_node(wb.id, wb.name, 'workbook')
                 add_edge(ds.id, wb.id, '使用')
-
-    elif item_type == 'view':
-        view = session.query(View).filter(View.id == item_id).first()
-        if view:
-            # 区分类型
-            v_type = view.view_type or 'sheet'
-            add_node(view.id, view.name, v_type, is_center=True)
-
-            # 上游：工作簿
-            if view.workbook:
-                add_node(view.workbook.id, view.workbook.name, 'workbook')
-                add_edge(view.workbook.id, view.id, '包含')
-
-            # 上游：父级仪表盘 (如果是 Sheet)
-            if v_type == 'sheet':
-                for dash in view.parent_dashboards:
-                    add_node(dash.id, dash.name, 'dashboard')
-                    add_edge(dash.id, view.id, '包含')
-
-            # 下游：包含的工作表 (如果是 Dashboard)
-            if v_type == 'dashboard':
-                for sheet in view.contained_sheets:
-                    add_node(sheet.id, sheet.name, 'sheet')
-                    add_edge(view.id, sheet.id, '包含')
-
-            # 上游：使用的字段 (只列前10个，避免图太大)
-            for field in view.fields[:10]:
-                add_node(field.id, field.name, 'field')
-                add_edge(field.id, view.id, '提供数据')
     
     # 生成 Mermaid 代码
     mermaid_code = "graph LR\n"
@@ -2049,9 +2518,7 @@ def get_lineage_graph(item_type, item_id):
         'table': '[{}]',
         'datasource': '[({})]',
         'workbook': '(({}))' ,
-        'view': '>{}]',
-        'dashboard': '[[{}]]',  # 双框矩形
-        'sheet': '>{}]'        # 旗帜形
+        'view': '>{}]'
     }
     
     node_ids = set()

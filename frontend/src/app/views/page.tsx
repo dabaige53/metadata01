@@ -178,15 +178,37 @@ function ViewsContent() {
                             onFilterChange={handleFilterChange}
                         />
                         {activeTab === 'list' && (
-                            <InlineFilter
-                                label="视图类型"
-                                options={[
+                            <div className="flex items-center gap-2 bg-gray-50/50 px-3 py-1 rounded-lg border border-gray-200">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">类型:</span>
+                                {[
+                                    { label: '全部', value: 'all' },
                                     { label: '仪表盘', value: 'dashboard' },
                                     { label: '工作表', value: 'sheet' }
-                                ]}
-                                value={activeFilters.view_type || 'all'}
-                                onChange={(val) => handleFilterChange('view_type', val === 'all' ? undefined : val)}
-                            />
+                                ].map(opt => {
+                                    const isActive = (activeFilters.view_type?.[0] || 'all') === opt.value;
+                                    return (
+                                        <button
+                                            key={opt.value}
+                                            type="button"
+                                            onClick={() => {
+                                                const current = activeFilters.view_type?.[0];
+                                                if (current && current !== opt.value) {
+                                                    handleFilterChange('view_type', current, false);
+                                                }
+                                                if (opt.value !== 'all' && current !== opt.value) {
+                                                    handleFilterChange('view_type', opt.value, true);
+                                                }
+                                            }}
+                                            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${isActive
+                                                ? 'bg-white text-indigo-600 shadow-sm'
+                                                : 'text-gray-500 hover:text-gray-700'
+                                                }`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         )}
                     </div>
                 )

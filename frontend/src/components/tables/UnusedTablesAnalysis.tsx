@@ -32,18 +32,14 @@ export default function UnusedTablesAnalysis() {
     const { openDrawer } = useDrawer();
 
     useEffect(() => {
-        fetch('/api/tables?page=1&page_size=500')
-            .then(res => res.json())
-            .then(result => {
-                const items = Array.isArray(result) ? result : (result.items || []);
-
-                // 未使用表：未被数据源引用
-                const unused = items.filter((t: TableItem) => !t.datasource_count || t.datasource_count === 0);
-                setUnusedTables(unused);
-
-                // 宽表：字段数超过50
-                const wide = items.filter((t: TableItem) => (t.column_count || 0) > 50);
-                setWideTables(wide.sort((a: TableItem, b: TableItem) => (b.column_count || 0) - (a.column_count || 0)));
+        // 并行获取未使用表和宽表数据
+        Promise.all([
+            fetch('/api/tables/governance/unused').then(res => res.json()),
+            fetch('/api/tables/governance/wide').then(res => res.json())
+        ])
+            .then(([unusedResult, wideResult]) => {
+                setUnusedTables(unusedResult.items || []);
+                setWideTables(wideResult.items || []);
             })
             .catch(console.error)
             .finally(() => setLoading(false));

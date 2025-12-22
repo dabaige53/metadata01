@@ -33,22 +33,12 @@ export default function HotFieldsAnalysis() {
     const { openDrawer } = useDrawer();
 
     useEffect(() => {
-        // 获取高频使用字段
-        fetch('/api/fields?page=1&page_size=100&sort=usageCount&order=desc')
+        // 使用专用治理API获取完整的热门字段数据
+        fetch('/api/fields/governance/hot')
             .then(res => res.json())
             .then(result => {
-                const items = result.items || result || [];
-                // 筛选高频字段 (usage_count > 20)
-                const hotFields = items.filter((f: FieldItem) => {
-                    const usageCount = f.usage_count ?? f.usageCount ?? 0;
-                    return usageCount > 20;
-                }).sort((a: FieldItem, b: FieldItem) => {
-                    const aCount = a.usage_count ?? a.usageCount ?? 0;
-                    const bCount = b.usage_count ?? b.usageCount ?? 0;
-                    return bCount - aCount;
-                });
-
-                setData(hotFields);
+                // 直接使用后端返回的数据
+                setData(result.fields || []);
             })
             .catch(console.error)
             .finally(() => setLoading(false));
