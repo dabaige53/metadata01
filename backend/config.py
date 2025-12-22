@@ -33,8 +33,8 @@ class Config:
     HOST = os.environ.get('HOST', '0.0.0.0')
     PORT = int(os.environ.get('PORT', 8101))
     
-    # Tableau 配置
-    TABLEAU_BASE_URL = os.environ.get('TABLEAU_BASE_URL', 'https://prod-apnortheast-a.online.tableau.com')
+    # Tableau 配置 (吉祥航空 Tableau Server)
+    TABLEAU_BASE_URL = os.environ.get('TABLEAU_BASE_URL', 'http://tbi.juneyaoair.com')
     TABLEAU_USERNAME = os.environ.get('TABLEAU_USERNAME', '')
     TABLEAU_PASSWORD = os.environ.get('TABLEAU_PASSWORD', '')
     TABLEAU_PAT_NAME = os.environ.get('TABLEAU_PAT_NAME', '')

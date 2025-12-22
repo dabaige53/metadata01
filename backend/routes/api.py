@@ -9,6 +9,7 @@ from ..models import (
     CalculatedField, Metric, MetricVariant, MetricDuplicate,
     TableauUser, Project, FieldDependency, Glossary, TermEnum
 )
+from ..config import Config
 
 api_bp = Blueprint('api', __name__)
 
@@ -98,7 +99,55 @@ def get_field_usage_by_name(session, field_name):
     return result
 
 
-# ==================== 仪表盘分析接口 ====================
+from typing import Optional
+
+def build_tableau_url(asset_type: str, path: Optional[str] = None, uri: Optional[str] = None, luid: Optional[str] = None) -> Optional[str]:
+    """
+    构建 Tableau Server 在线查看 URL
+    
+    参数:
+        asset_type: 资产类型 ('view', 'workbook', 'datasource')
+        path: 视图路径 (视图使用完整路径，工作簿使用第一个视图的路径)
+        uri: 资产 URI (数据源使用)
+        luid: 资产的 LUID (备用)
+    
+    返回:
+        Tableau Server 在线查看 URL，或 None (如果无法构建)
+    
+    URL 格式示例:
+        视图: http://tbi.juneyaoair.com/views/WorkbookName/ViewName
+        工作簿: http://tbi.juneyaoair.com/views/WorkbookName (使用第一个视图的路径)
+        数据源: http://tbi.juneyaoair.com/#/datasources/{luid}
+    """
+    base_url = Config.TABLEAU_BASE_URL.rstrip('/')
+    
+    if asset_type == 'view' and path:
+        # 视图路径格式: WorkbookName/ViewName
+        if path.startswith('/'):
+            return f"{base_url}{path}"
+        else:
+            return f"{base_url}/views/{path}"
+    
+    if asset_type == 'workbook':
+        # 优先使用视图路径构建工作簿 URL (取第一个视图的路径)
+        if path:
+            # path 格式为 "WorkbookName/ViewName"，我们直接使用完整路径打开第一个视图
+            if path.startswith('/'):
+                return f"{base_url}{path}"
+            else:
+                return f"{base_url}/views/{path}"
+        # 如果没有视图路径，返回 None（不生成链接）
+        return None
+    
+    if asset_type == 'datasource':
+        if luid:
+            return f"{base_url}/#/datasources/{luid}"
+        if uri and '/' in uri:
+            parts = uri.split('/')
+            if len(parts) >= 2:
+                return f"{base_url}/#/datasources/{parts[-1]}"
+    
+    return None
 
 @api_bp.route('/dashboard/analysis')
 def get_dashboard_analysis():
@@ -972,6 +1021,9 @@ def get_datasource_detail(ds_id):
         'field_count': len(full_fields),
         'metric_count': len(metrics_list)
     }
+    
+    # 构建 Tableau Server 在线查看链接
+    data['tableau_url'] = build_tableau_url('datasource', uri=ds.uri, luid=ds.luid)
 
     return jsonify(data)
 
@@ -1165,6 +1217,16 @@ def get_workbook_detail(wb_id):
     data['used_fields'] = list(fields_set.values())
     data['used_metrics'] = list(metrics_set.values())
     
+    # 构建 Tableau Server 在线查看链接
+    # 对于工作簿，使用第一个视图的路径来构建可访问的 URL
+    first_view_path = None
+    if wb.views:
+        for v in wb.views:
+            if v.path:
+                first_view_path = v.path
+                break
+    data['tableau_url'] = build_tableau_url('workbook', path=first_view_path, uri=wb.uri, luid=wb.luid)
+    
     return jsonify(data)
 
 
@@ -1317,6 +1379,7 @@ def get_views():
     views = query.limit(page_size).offset(offset).all()
     
     # Facets 统计
+    from sqlalchemy import text
     facets = {}
     
     # view_type facet
@@ -1408,6 +1471,9 @@ def get_view_detail(view_id):
         # 聚合访问量：仪表盘自身访问量 + 所有包含视图的访问量
         dashboard_own_views = view.total_view_count or 0
         data['aggregatedViewCount'] = dashboard_own_views + sheets_total_views
+    
+    # 构建 Tableau Server 在线查看链接
+    data['tableau_url'] = build_tableau_url('view', path=view.path)
     
     return jsonify(data)
 
@@ -1795,6 +1861,237 @@ def get_fields_catalog():
     })
 
 
+# -------------------- 字段目录治理 API (聚合视角) --------------------
+
+@api_bp.route('/fields/catalog/no-description')
+def get_fields_catalog_no_description():
+    """
+    获取无描述字段分析 - 聚合视角
+    
+    聚合规则：按 (upstream_column_name OR name) + table_id 分组
+    筛选条件：聚合后 description 为空的字段
+    """
+    session = g.db_session
+    from sqlalchemy import text
+    
+    # 聚合查询 - 筛选无描述的聚合字段
+    sql = """
+        SELECT 
+            MIN(f.id) as representative_id,
+            COALESCE(f.upstream_column_name, f.name) as canonical_name,
+            f.table_id,
+            t.name as table_name,
+            t.schema as table_schema,
+            db.name as database_name,
+            MAX(f.role) as role,
+            MAX(f.data_type) as data_type,
+            MAX(f.remote_type) as remote_type,
+            MAX(f.description) as description,
+            COUNT(*) as instance_count,
+            COALESCE(SUM(f.usage_count), 0) as total_usage,
+            GROUP_CONCAT(DISTINCT f.datasource_id) as datasource_ids,
+            GROUP_CONCAT(DISTINCT d.name) as datasource_names
+        FROM fields f
+        LEFT JOIN tables t ON f.table_id = t.id
+        LEFT JOIN databases db ON t.database_id = db.id
+        LEFT JOIN datasources d ON f.datasource_id = d.id
+        WHERE (f.is_calculated = 0 OR f.is_calculated IS NULL)
+        GROUP BY COALESCE(f.upstream_column_name, f.name), f.table_id
+        HAVING MAX(f.description) IS NULL OR MAX(f.description) = ''
+        ORDER BY instance_count DESC, canonical_name
+    """
+    rows = session.execute(text(sql)).fetchall()
+    
+    # 构建结果
+    items = []
+    for row in rows:
+        ds_ids = row.datasource_ids.split(',') if row.datasource_ids else []
+        ds_names = row.datasource_names.split(',') if row.datasource_names else []
+        datasources = [{'id': ds_ids[i] if i < len(ds_ids) else None, 'name': ds_names[i]} 
+                       for i in range(len(ds_names))]
+        
+        items.append({
+            'representative_id': row.representative_id,
+            'canonical_name': row.canonical_name,
+            'table_id': row.table_id,
+            'table_name': row.table_name or '-',
+            'table_schema': row.table_schema,
+            'database_name': row.database_name,
+            'role': row.role,
+            'data_type': row.data_type,
+            'remote_type': row.remote_type,
+            'description': row.description or '',
+            'instance_count': row.instance_count,
+            'total_usage': row.total_usage or 0,
+            'datasources': datasources,
+            'datasource_count': len(datasources)
+        })
+    
+    return jsonify({
+        'total_count': len(items),
+        'items': items
+    })
+
+
+@api_bp.route('/fields/catalog/orphan')
+def get_fields_catalog_orphan():
+    """
+    获取孤立字段分析 - 聚合视角
+    
+    聚合规则：按 (upstream_column_name OR name) + table_id 分组
+    筛选条件：聚合后 total_usage = 0 的字段
+    """
+    session = g.db_session
+    from sqlalchemy import text
+    
+    # 聚合查询 - 筛选孤立的聚合字段（总使用次数为0）
+    sql = """
+        SELECT 
+            MIN(f.id) as representative_id,
+            COALESCE(f.upstream_column_name, f.name) as canonical_name,
+            f.table_id,
+            t.name as table_name,
+            t.schema as table_schema,
+            db.name as database_name,
+            MAX(f.role) as role,
+            MAX(f.data_type) as data_type,
+            MAX(f.remote_type) as remote_type,
+            MAX(f.description) as description,
+            COUNT(*) as instance_count,
+            COALESCE(SUM(f.usage_count), 0) as total_usage,
+            GROUP_CONCAT(DISTINCT f.datasource_id) as datasource_ids,
+            GROUP_CONCAT(DISTINCT d.name) as datasource_names
+        FROM fields f
+        LEFT JOIN tables t ON f.table_id = t.id
+        LEFT JOIN databases db ON t.database_id = db.id
+        LEFT JOIN datasources d ON f.datasource_id = d.id
+        WHERE (f.is_calculated = 0 OR f.is_calculated IS NULL)
+        GROUP BY COALESCE(f.upstream_column_name, f.name), f.table_id
+        HAVING COALESCE(SUM(f.usage_count), 0) = 0
+        ORDER BY instance_count DESC, canonical_name
+    """
+    rows = session.execute(text(sql)).fetchall()
+    
+    # 构建结果
+    items = []
+    for row in rows:
+        ds_ids = row.datasource_ids.split(',') if row.datasource_ids else []
+        ds_names = row.datasource_names.split(',') if row.datasource_names else []
+        datasources = [{'id': ds_ids[i] if i < len(ds_ids) else None, 'name': ds_names[i]} 
+                       for i in range(len(ds_names))]
+        
+        items.append({
+            'representative_id': row.representative_id,
+            'canonical_name': row.canonical_name,
+            'table_id': row.table_id,
+            'table_name': row.table_name or '-',
+            'table_schema': row.table_schema,
+            'database_name': row.database_name,
+            'role': row.role,
+            'data_type': row.data_type,
+            'remote_type': row.remote_type,
+            'description': row.description or '',
+            'instance_count': row.instance_count,
+            'total_usage': row.total_usage or 0,
+            'datasources': datasources,
+            'datasource_count': len(datasources)
+        })
+    
+    return jsonify({
+        'total_count': len(items),
+        'items': items
+    })
+
+
+@api_bp.route('/fields/catalog/hot')
+def get_fields_catalog_hot():
+    """
+    获取热门字段排行榜 - 聚合视角
+    
+    聚合规则：按 (upstream_column_name OR name) + table_id 分组
+    筛选条件：聚合后 total_usage > 20 的字段
+    """
+    session = g.db_session
+    from sqlalchemy import text
+    
+    # 聚合查询 - 筛选热门的聚合字段（总使用次数 > 20）
+    sql = """
+        SELECT 
+            MIN(f.id) as representative_id,
+            COALESCE(f.upstream_column_name, f.name) as canonical_name,
+            f.table_id,
+            t.name as table_name,
+            t.schema as table_schema,
+            db.name as database_name,
+            MAX(f.role) as role,
+            MAX(f.data_type) as data_type,
+            MAX(f.remote_type) as remote_type,
+            MAX(f.description) as description,
+            COUNT(*) as instance_count,
+            COALESCE(SUM(f.usage_count), 0) as total_usage,
+            GROUP_CONCAT(DISTINCT f.datasource_id) as datasource_ids,
+            GROUP_CONCAT(DISTINCT d.name) as datasource_names
+        FROM fields f
+        LEFT JOIN tables t ON f.table_id = t.id
+        LEFT JOIN databases db ON t.database_id = db.id
+        LEFT JOIN datasources d ON f.datasource_id = d.id
+        WHERE (f.is_calculated = 0 OR f.is_calculated IS NULL)
+        GROUP BY COALESCE(f.upstream_column_name, f.name), f.table_id
+        HAVING COALESCE(SUM(f.usage_count), 0) > 20
+        ORDER BY total_usage DESC, canonical_name
+    """
+    rows = session.execute(text(sql)).fetchall()
+    
+    # 计算统计数据
+    usage_counts = [row.total_usage for row in rows]
+    max_usage = max(usage_counts) if usage_counts else 0
+    avg_usage = round(sum(usage_counts) / len(usage_counts)) if usage_counts else 0
+    
+    # 构建结果
+    items = []
+    for row in rows:
+        ds_ids = row.datasource_ids.split(',') if row.datasource_ids else []
+        ds_names = row.datasource_names.split(',') if row.datasource_names else []
+        datasources = [{'id': ds_ids[i] if i < len(ds_ids) else None, 'name': ds_names[i]} 
+                       for i in range(len(ds_names))]
+        
+        # 计算热度等级
+        usage = row.total_usage or 0
+        if usage >= 200:
+            heat_level = '超热门'
+        elif usage >= 100:
+            heat_level = '热门'
+        elif usage >= 50:
+            heat_level = '活跃'
+        else:
+            heat_level = '常用'
+        
+        items.append({
+            'representative_id': row.representative_id,
+            'canonical_name': row.canonical_name,
+            'table_id': row.table_id,
+            'table_name': row.table_name or '-',
+            'table_schema': row.table_schema,
+            'database_name': row.database_name,
+            'role': row.role,
+            'data_type': row.data_type,
+            'remote_type': row.remote_type,
+            'description': row.description or '',
+            'instance_count': row.instance_count,
+            'total_usage': usage,
+            'heat_level': heat_level,
+            'datasources': datasources,
+            'datasource_count': len(datasources)
+        })
+    
+    return jsonify({
+        'total_count': len(items),
+        'max_usage': max_usage,
+        'avg_usage': avg_usage,
+        'items': items
+    })
+
+
 # -------------------- 字段列表 API --------------------
 
 @api_bp.route('/fields')
@@ -2070,8 +2367,38 @@ def get_field_detail(field_id):
     data['stats'] = {
         'view_count': len(views_data),
         'workbook_count': len(workbooks_set),
-        'metric_count': len(data.get('used_by_metrics', []))
+        'metric_count': len(data.get('used_by_metrics', [])),
+        'related_datasource_count': 0
     }
+
+    # 获取关联数据源 (相同表 + 相同规范名称)
+    # 规范名称 = upstream_column_name OR name
+    canonical_name = field.upstream_column.name if field.upstream_column else field.name
+    if field.table_id:
+        siblings = session.query(Field).filter(
+            Field.table_id == field.table_id,
+            case(
+                (Field.upstream_column_id != None, Field.upstream_column.has(name=canonical_name)),
+                else_=Field.name == canonical_name
+            )
+        ).options(selectinload(Field.datasource)).all()
+
+        related_datasources = []
+        ds_ids = set()
+        for sib in siblings:
+            if sib.datasource and sib.datasource.id not in ds_ids:
+                ds_ids.add(sib.datasource.id)
+                related_datasources.append({
+                    'id': sib.datasource.id,
+                    'name': sib.datasource.name,
+                    'project_name': sib.datasource.project_name,
+                    'is_certified': sib.datasource.is_certified,
+                    'field_id': sib.id, # Link back to the specific field instance in that datasource
+                    'field_name': sib.name
+                })
+        
+        data['related_datasources'] = related_datasources
+        data['stats']['related_datasource_count'] = len(related_datasources)
 
     return jsonify(data)
 
@@ -2347,6 +2674,240 @@ def get_metrics_catalog():
     })
 
 
+# -------------------- 指标目录治理 API (聚合视角) --------------------
+
+@api_bp.route('/metrics/catalog/duplicate')
+def get_metrics_catalog_duplicate():
+    """
+    获取重复指标分析 - 聚合视角
+    
+    聚合规则：按 (name + formula_hash) 分组
+    筛选条件：instance_count > 1 的指标（同一公式在多个数据源使用）
+    """
+    session = g.db_session
+    from sqlalchemy import text
+    
+    sql = """
+        SELECT 
+            MIN(f.id) as representative_id,
+            f.name,
+            cf.formula,
+            cf.formula_hash,
+            MAX(f.role) as role,
+            MAX(f.data_type) as data_type,
+            MAX(f.description) as description,
+            COUNT(*) as instance_count,
+            MAX(cf.complexity_score) as complexity,
+            COALESCE(SUM(cf.reference_count), 0) as total_references,
+            GROUP_CONCAT(DISTINCT f.datasource_id) as datasource_ids,
+            GROUP_CONCAT(DISTINCT d.name) as datasource_names,
+            GROUP_CONCAT(DISTINCT f.workbook_id) as workbook_ids,
+            GROUP_CONCAT(DISTINCT w.name) as workbook_names
+        FROM fields f
+        INNER JOIN calculated_fields cf ON f.id = cf.field_id
+        LEFT JOIN datasources d ON f.datasource_id = d.id
+        LEFT JOIN workbooks w ON f.workbook_id = w.id
+        WHERE f.is_calculated = 1
+        GROUP BY f.name, cf.formula_hash
+        HAVING COUNT(*) > 1
+        ORDER BY instance_count DESC, f.name
+    """
+    rows = session.execute(text(sql)).fetchall()
+    
+    items = []
+    for row in rows:
+        ds_ids = row.datasource_ids.split(',') if row.datasource_ids else []
+        ds_names = row.datasource_names.split(',') if row.datasource_names else []
+        datasources = [{'id': ds_ids[i] if i < len(ds_ids) else None, 'name': ds_names[i]} 
+                       for i in range(len(ds_names))]
+        
+        wb_ids = row.workbook_ids.split(',') if row.workbook_ids else []
+        wb_names = row.workbook_names.split(',') if row.workbook_names else []
+        workbooks = [{'id': wb_ids[i] if i < len(wb_ids) else None, 'name': wb_names[i]} 
+                     for i in range(len(wb_names))]
+        
+        items.append({
+            'representative_id': row.representative_id,
+            'name': row.name,
+            'formula': row.formula,
+            'formula_hash': row.formula_hash,
+            'role': row.role,
+            'data_type': row.data_type,
+            'description': row.description or '',
+            'instance_count': row.instance_count,
+            'complexity': row.complexity or 0,
+            'total_references': row.total_references or 0,
+            'datasources': datasources,
+            'datasource_count': len(datasources),
+            'workbooks': workbooks,
+            'workbook_count': len(workbooks)
+        })
+    
+    return jsonify({
+        'total_count': len(items),
+        'items': items
+    })
+
+
+@api_bp.route('/metrics/catalog/complex')
+def get_metrics_catalog_complex():
+    """
+    获取高复杂度指标分析 - 聚合视角
+    
+    聚合规则：按 (name + formula_hash) 分组
+    筛选条件：公式长度 > 100 的指标
+    """
+    session = g.db_session
+    from sqlalchemy import text
+    
+    sql = """
+        SELECT 
+            MIN(f.id) as representative_id,
+            f.name,
+            cf.formula,
+            cf.formula_hash,
+            MAX(f.role) as role,
+            MAX(f.data_type) as data_type,
+            MAX(f.description) as description,
+            COUNT(*) as instance_count,
+            MAX(cf.complexity_score) as complexity,
+            LENGTH(cf.formula) as formula_length,
+            COALESCE(SUM(cf.reference_count), 0) as total_references,
+            GROUP_CONCAT(DISTINCT f.datasource_id) as datasource_ids,
+            GROUP_CONCAT(DISTINCT d.name) as datasource_names,
+            GROUP_CONCAT(DISTINCT f.workbook_id) as workbook_ids,
+            GROUP_CONCAT(DISTINCT w.name) as workbook_names
+        FROM fields f
+        INNER JOIN calculated_fields cf ON f.id = cf.field_id
+        LEFT JOIN datasources d ON f.datasource_id = d.id
+        LEFT JOIN workbooks w ON f.workbook_id = w.id
+        WHERE f.is_calculated = 1 AND LENGTH(cf.formula) > 100
+        GROUP BY f.name, cf.formula_hash
+        ORDER BY formula_length DESC, f.name
+    """
+    rows = session.execute(text(sql)).fetchall()
+    
+    items = []
+    for row in rows:
+        ds_ids = row.datasource_ids.split(',') if row.datasource_ids else []
+        ds_names = row.datasource_names.split(',') if row.datasource_names else []
+        datasources = [{'id': ds_ids[i] if i < len(ds_ids) else None, 'name': ds_names[i]} 
+                       for i in range(len(ds_names))]
+        
+        wb_ids = row.workbook_ids.split(',') if row.workbook_ids else []
+        wb_names = row.workbook_names.split(',') if row.workbook_names else []
+        workbooks = [{'id': wb_ids[i] if i < len(wb_ids) else None, 'name': wb_names[i]} 
+                     for i in range(len(wb_names))]
+        
+        # 计算复杂度等级
+        formula_len = row.formula_length or 0
+        if formula_len >= 500:
+            complexity_level = '超高'
+        elif formula_len >= 300:
+            complexity_level = '高'
+        elif formula_len >= 100:
+            complexity_level = '中'
+        else:
+            complexity_level = '低'
+        
+        items.append({
+            'representative_id': row.representative_id,
+            'name': row.name,
+            'formula': row.formula,
+            'formula_hash': row.formula_hash,
+            'role': row.role,
+            'data_type': row.data_type,
+            'description': row.description or '',
+            'instance_count': row.instance_count,
+            'complexity': row.complexity or 0,
+            'complexity_level': complexity_level,
+            'formula_length': formula_len,
+            'total_references': row.total_references or 0,
+            'datasources': datasources,
+            'datasource_count': len(datasources),
+            'workbooks': workbooks,
+            'workbook_count': len(workbooks)
+        })
+    
+    return jsonify({
+        'total_count': len(items),
+        'items': items
+    })
+
+
+@api_bp.route('/metrics/catalog/unused')
+def get_metrics_catalog_unused():
+    """
+    获取未使用指标分析 - 聚合视角
+    
+    聚合规则：按 (name + formula_hash) 分组
+    筛选条件：total_references = 0 的指标
+    """
+    session = g.db_session
+    from sqlalchemy import text
+    
+    sql = """
+        SELECT 
+            MIN(f.id) as representative_id,
+            f.name,
+            cf.formula,
+            cf.formula_hash,
+            MAX(f.role) as role,
+            MAX(f.data_type) as data_type,
+            MAX(f.description) as description,
+            COUNT(*) as instance_count,
+            MAX(cf.complexity_score) as complexity,
+            COALESCE(SUM(cf.reference_count), 0) as total_references,
+            GROUP_CONCAT(DISTINCT f.datasource_id) as datasource_ids,
+            GROUP_CONCAT(DISTINCT d.name) as datasource_names,
+            GROUP_CONCAT(DISTINCT f.workbook_id) as workbook_ids,
+            GROUP_CONCAT(DISTINCT w.name) as workbook_names
+        FROM fields f
+        INNER JOIN calculated_fields cf ON f.id = cf.field_id
+        LEFT JOIN datasources d ON f.datasource_id = d.id
+        LEFT JOIN workbooks w ON f.workbook_id = w.id
+        WHERE f.is_calculated = 1
+        GROUP BY f.name, cf.formula_hash
+        HAVING COALESCE(SUM(cf.reference_count), 0) = 0
+        ORDER BY instance_count DESC, f.name
+    """
+    rows = session.execute(text(sql)).fetchall()
+    
+    items = []
+    for row in rows:
+        ds_ids = row.datasource_ids.split(',') if row.datasource_ids else []
+        ds_names = row.datasource_names.split(',') if row.datasource_names else []
+        datasources = [{'id': ds_ids[i] if i < len(ds_ids) else None, 'name': ds_names[i]} 
+                       for i in range(len(ds_names))]
+        
+        wb_ids = row.workbook_ids.split(',') if row.workbook_ids else []
+        wb_names = row.workbook_names.split(',') if row.workbook_names else []
+        workbooks = [{'id': wb_ids[i] if i < len(wb_ids) else None, 'name': wb_names[i]} 
+                     for i in range(len(wb_names))]
+        
+        items.append({
+            'representative_id': row.representative_id,
+            'name': row.name,
+            'formula': row.formula,
+            'formula_hash': row.formula_hash,
+            'role': row.role,
+            'data_type': row.data_type,
+            'description': row.description or '',
+            'instance_count': row.instance_count,
+            'complexity': row.complexity or 0,
+            'total_references': row.total_references or 0,
+            'datasources': datasources,
+            'datasource_count': len(datasources),
+            'workbooks': workbooks,
+            'workbook_count': len(workbooks)
+        })
+    
+    return jsonify({
+        'total_count': len(items),
+        'items': items
+    })
+
+
 # -------------------- 指标列表 API --------------------
 
 @api_bp.route('/metrics')
@@ -2557,10 +3118,6 @@ def get_metric_detail(metric_id):
         ).filter(
             CalculatedField.formula_hash == calc_field.formula_hash,
             Field.id != field.id
-        ).add_columns(
-            Field.id.label('representative_id'), # Add this line
-            Field.name.label('name'), # Add this line
-            CalculatedField.formula_hash # Add this line
         ).all()
         
         for s_field, s_calc in similar_results:

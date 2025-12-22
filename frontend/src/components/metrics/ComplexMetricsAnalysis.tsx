@@ -5,36 +5,24 @@ import { useDrawer } from '@/lib/drawer-context';
 import {
     Loader2,
     Zap,
-    ExternalLink,
     AlertTriangle,
-    Code,
-    Eye
+    FunctionSquare,
+    GitBranch
 } from 'lucide-react';
-
-interface MetricItem {
-    id: string;
-    name: string;
-    formula?: string;
-    complexity_score?: number;
-    complexityScore?: number;
-    reference_count?: number;
-    referenceCount?: number;
-    datasource_name?: string;
-    datasourceName?: string;
-}
+import { MetricCatalogItem } from '../cards/MetricCatalogCard';
 
 export default function ComplexMetricsAnalysis() {
-    const [data, setData] = useState<MetricItem[]>([]);
+    const [items, setItems] = useState<MetricCatalogItem[]>([]);
+    const [totalCount, setTotalCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
 
     useEffect(() => {
-        // 使用专用治理API获取完整的高复杂度指标数据
-        fetch('/api/metrics/governance/complex')
+        fetch('/api/metrics/catalog/complex')
             .then(res => res.json())
             .then(result => {
-                // 直接使用后端返回的数据
-                setData(result.items || []);
+                setItems(result.items || []);
+                setTotalCount(result.total_count || 0);
             })
             .catch(console.error)
             .finally(() => setLoading(false));
@@ -47,6 +35,13 @@ export default function ComplexMetricsAnalysis() {
         return { color: 'text-gray-600 bg-gray-50', label: '正常', icon: '🟢' };
     };
 
+    // 统计
+    const superComplex = items.filter(m => (m.formula_length || 0) >= 500).length;
+    const multiDatasourceCount = items.filter(m => m.datasource_count > 1).length;
+    const avgLength = items.length > 0
+        ? Math.round(items.reduce((sum, m) => sum + (m.formula_length || 0), 0) / items.length)
+        : 0;
+
     if (loading) {
         return (
             <div className="flex justify-center py-20">
@@ -55,7 +50,7 @@ export default function ComplexMetricsAnalysis() {
         );
     }
 
-    if (data.length === 0) {
+    if (totalCount === 0) {
         return (
             <div className="bg-green-50 border border-green-100 rounded-lg p-12 text-center">
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -67,28 +62,24 @@ export default function ComplexMetricsAnalysis() {
         );
     }
 
-    // 统计数据
-    const superComplex = data.filter(m => (m.formula?.length || 0) >= 500).length;
-    const avgLength = Math.round(data.reduce((sum, m) => sum + (m.formula?.length || 0), 0) / data.length);
-
     return (
         <div className="space-y-6">
             {/* 概览统计 */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-orange-500">
                     <div className="text-xs text-gray-500 uppercase mb-1">高复杂度指标</div>
-                    <div className="text-2xl font-bold text-orange-600">{data.length}</div>
-                    <div className="text-xs text-gray-400 mt-1">公式&gt;200字符</div>
+                    <div className="text-2xl font-bold text-orange-600">{totalCount}</div>
+                    <div className="text-xs text-gray-400 mt-1">公式&gt;100字符</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-red-500">
                     <div className="text-xs text-gray-500 uppercase mb-1">超高复杂度</div>
                     <div className="text-2xl font-bold text-red-600">{superComplex}</div>
                     <div className="text-xs text-gray-400 mt-1">公式&gt;500字符</div>
                 </div>
-                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                    <div className="text-xs text-gray-500 uppercase mb-1">平均长度</div>
-                    <div className="text-2xl font-bold text-gray-700">{avgLength}</div>
-                    <div className="text-xs text-gray-400 mt-1">字符</div>
+                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-purple-500">
+                    <div className="text-xs text-gray-500 uppercase mb-1">跨数据源</div>
+                    <div className="text-2xl font-bold text-purple-600">{multiDatasourceCount}</div>
+                    <div className="text-xs text-gray-400 mt-1">复杂度可能传播</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
                     <div className="text-xs text-gray-500 uppercase mb-1">治理建议</div>
@@ -99,77 +90,78 @@ export default function ComplexMetricsAnalysis() {
                 </div>
             </div>
 
-            {/* 复杂指标列表 */}
+            {/* 复杂指标卡片列表 */}
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                 <div className="p-4 bg-gradient-to-r from-orange-50 to-red-50 border-b border-gray-100">
                     <h3 className="font-bold text-gray-800 flex items-center gap-2">
                         <Zap className="w-5 h-5 text-orange-500" />
                         高复杂度指标列表
-                        <span className="text-xs text-gray-500 font-normal">按公式长度排序</span>
+                        <span className="text-xs text-gray-500 font-normal">按公式长度排序（聚合视角）</span>
                     </h3>
                 </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                        <thead className="bg-white text-gray-400 text-[11px] uppercase tracking-wider font-semibold border-b border-gray-50">
-                            <tr>
-                                <th className="px-6 py-3 text-left">指标名称</th>
-                                <th className="px-6 py-3 text-left">公式长度</th>
-                                <th className="px-6 py-3 text-left">复杂度</th>
-                                <th className="px-6 py-3 text-left">引用数</th>
-                                <th className="px-6 py-3 text-left">数据源</th>
-                                <th className="px-6 py-3 text-right">操作</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                            {data.slice(0, 30).map((metric) => {
-                                const formulaLen = metric.formula?.length || 0;
-                                const level = getComplexityLevel(formulaLen);
-                                const refCount = metric.reference_count ?? metric.referenceCount ?? 0;
-                                return (
-                                    <tr key={metric.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-2">
-                                                <Code className="w-4 h-4 text-purple-500" />
-                                                <span className="font-medium text-gray-800">{metric.name}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className="font-bold text-gray-800">{formulaLen}</span>
-                                            <span className="text-gray-400 text-xs ml-1">字符</span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className={`px-2 py-1 text-[10px] rounded-full font-medium ${level.color}`}>
-                                                {level.icon} {level.label}
+                <div className="space-y-0 divide-y divide-gray-100">
+                    {items.slice(0, 30).map((item, idx) => {
+                        const formulaLen = item.formula_length || 0;
+                        const level = getComplexityLevel(formulaLen);
+                        return (
+                            <div
+                                key={`${item.name}-${item.formula_hash || idx}`}
+                                className="p-4 hover:bg-gray-50 transition-colors cursor-pointer"
+                                onClick={() => openDrawer(item.representative_id || '', 'metric')}
+                            >
+                                <div className="flex items-start gap-4">
+                                    {/* 图标 */}
+                                    <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 bg-orange-50 text-orange-600">
+                                        <FunctionSquare className="w-5 h-5" />
+                                    </div>
+
+                                    {/* 指标信息 */}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="font-bold text-gray-800">{item.name}</span>
+                                            {/* 复杂度标签 */}
+                                            <span className={`px-2 py-0.5 text-[10px] rounded-full font-medium ${level.color}`}>
+                                                {level.icon} {level.label} ({formulaLen}字符)
                                             </span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-1 text-gray-500">
-                                                <Eye className="w-3.5 h-3.5" />
-                                                {refCount}
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-gray-500 text-[13px] max-w-[150px] truncate">
-                                            {metric.datasource_name || metric.datasourceName || '-'}
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <button
-                                                onClick={() => openDrawer(metric.id, 'metrics', metric.name)}
-                                                className="inline-flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 rounded-lg transition-all border border-indigo-100 hover:border-indigo-600 shadow-sm active:scale-95"
-                                            >
-                                                查看详情 <ExternalLink className="w-3 h-3" />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                    {data.length > 30 && (
-                        <div className="p-4 text-center text-gray-400 text-sm border-t border-gray-50">
-                            还有 {data.length - 30} 个高复杂度指标未显示
-                        </div>
-                    )}
+                                            {/* 实例数标签 */}
+                                            {item.instance_count > 1 && (
+                                                <span className="px-2 py-0.5 text-[10px] rounded-full bg-gray-100 text-gray-600">
+                                                    {item.instance_count} 实例
+                                                </span>
+                                            )}
+                                            {/* 多数据源血缘标记 */}
+                                            {item.datasource_count > 1 && (
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 border border-purple-200 rounded-full text-xs text-purple-600">
+                                                    <GitBranch className="w-3 h-3" />
+                                                    跨 {item.datasource_count} 数据源
+                                                </span>
+                                            )}
+                                        </div>
+                                        {/* 公式预览 */}
+                                        <div className="mt-2">
+                                            <code className="bg-gray-100/50 px-2 py-1 rounded text-[11px] text-gray-600 font-mono line-clamp-2">
+                                                {item.formula}
+                                            </code>
+                                        </div>
+                                    </div>
+
+                                    {/* 引用数 */}
+                                    <div className="text-right flex-shrink-0">
+                                        <div className="text-lg font-bold text-gray-700">{item.total_references || 0}</div>
+                                        <div className="text-xs text-gray-400">引用</div>
+                                    </div>
+
+                                    <div className="text-gray-300">→</div>
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
+                {items.length > 30 && (
+                    <div className="p-4 text-center text-gray-400 text-sm border-t border-gray-50">
+                        还有 {items.length - 30} 个高复杂度指标未显示
+                    </div>
+                )}
             </div>
         </div>
     );

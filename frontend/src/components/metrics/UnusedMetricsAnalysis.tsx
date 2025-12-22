@@ -5,53 +5,31 @@ import { useDrawer } from '@/lib/drawer-context';
 import {
     Loader2,
     Ghost,
-    ExternalLink,
     AlertTriangle,
-    Code,
-    Database
+    FunctionSquare,
+    GitBranch
 } from 'lucide-react';
-
-interface MetricItem {
-    id: string;
-    name: string;
-    formula?: string;
-    reference_count?: number;
-    referenceCount?: number;
-    datasource_name?: string;
-    datasourceName?: string;
-}
-
-interface DatasourceGroup {
-    name: string;
-    metrics: MetricItem[];
-}
+import { MetricCatalogItem } from '../cards/MetricCatalogCard';
 
 export default function UnusedMetricsAnalysis() {
-    const [groupedData, setGroupedData] = useState<DatasourceGroup[]>([]);
+    const [items, setItems] = useState<MetricCatalogItem[]>([]);
     const [totalCount, setTotalCount] = useState(0);
     const [loading, setLoading] = useState(true);
-    const [expandedGroups, setExpandedGroups] = useState<Record<number, boolean>>({});
     const { openDrawer } = useDrawer();
 
     useEffect(() => {
-        // 使用专用治理API获取完整的未使用指标数据
-        fetch('/api/metrics/governance/unused')
+        fetch('/api/metrics/catalog/unused')
             .then(res => res.json())
             .then(result => {
-                // 直接使用后端返回的分组数据
-                setGroupedData(result.groups || []);
+                setItems(result.items || []);
                 setTotalCount(result.total_count || 0);
             })
             .catch(console.error)
             .finally(() => setLoading(false));
     }, []);
 
-    const toggleGroup = (index: number) => {
-        setExpandedGroups(prev => ({
-            ...prev,
-            [index]: !prev[index]
-        }));
-    };
+    // 统计多数据源数量
+    const multiDatasourceCount = items.filter(m => m.datasource_count > 1).length;
 
     if (loading) {
         return (
@@ -78,13 +56,14 @@ export default function UnusedMetricsAnalysis() {
             {/* 概览统计 */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-gray-500">
-                    <div className="text-xs text-gray-500 uppercase mb-1">未使用指标</div>
+                    <div className="text-xs text-gray-500 uppercase mb-1">未使用规范指标</div>
                     <div className="text-2xl font-bold text-gray-600">{totalCount.toLocaleString()}</div>
-                    <div className="text-xs text-gray-400 mt-1">引用次数为0</div>
+                    <div className="text-xs text-gray-400 mt-1">聚合后引用次数为0</div>
                 </div>
-                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-amber-500">
-                    <div className="text-xs text-gray-500 uppercase mb-1">涉及数据源</div>
-                    <div className="text-2xl font-bold text-amber-600">{groupedData.length}</div>
+                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-purple-500">
+                    <div className="text-xs text-gray-500 uppercase mb-1">跨数据源</div>
+                    <div className="text-2xl font-bold text-purple-600">{multiDatasourceCount}</div>
+                    <div className="text-xs text-gray-400 mt-1">同一指标跨多个数据源</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
                     <div className="text-xs text-gray-500 uppercase mb-1">治理建议</div>
@@ -95,84 +74,82 @@ export default function UnusedMetricsAnalysis() {
                 </div>
             </div>
 
-            <div className="space-y-4">
-                {groupedData.map((group, idx) => (
-                    <div key={idx} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                        {/* 组头部 */}
-                        <div
-                            className="p-4 bg-gray-50/50 flex items-center justify-between cursor-pointer"
-                            onClick={() => toggleGroup(idx)}
-                        >
-                            <div className="flex items-center gap-4 flex-1 min-w-0">
-                                <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 bg-gray-100 text-gray-600">
-                                    <Database className="w-5 h-5" />
+            {/* 未使用指标卡片列表 */}
+            <div className="space-y-3">
+                {items.map((item, idx) => (
+                    <div
+                        key={`${item.name}-${item.formula_hash || idx}`}
+                        className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow cursor-pointer"
+                        onClick={() => openDrawer(item.representative_id || '', 'metric')}
+                    >
+                        <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-start gap-3 flex-1 min-w-0">
+                                <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 bg-gray-100 text-gray-500">
+                                    <FunctionSquare className="w-5 h-5" />
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                    <h4 className="font-bold text-gray-800 text-[15px] flex items-center gap-2">
-                                        {group.name}
-                                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-gray-100 text-gray-600 border border-gray-200">
-                                            {group.metrics.length} 个未使用指标
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <h4 className="font-bold text-gray-800 text-[15px]">
+                                            {item.name}
+                                        </h4>
+                                        {/* 未使用标签 */}
+                                        <span className="px-1.5 py-0.5 text-[10px] rounded font-medium bg-gray-100 text-gray-500">
+                                            未使用
                                         </span>
-                                    </h4>
-                                    <div className="mt-1 text-xs text-gray-400">
-                                        这些指标未被任何视图引用，可能为冗余资产
+                                        {/* 实例数标签 */}
+                                        {item.instance_count > 1 && (
+                                            <span className="px-2 py-0.5 text-[10px] rounded-full bg-gray-100 text-gray-600">
+                                                {item.instance_count} 实例
+                                            </span>
+                                        )}
+                                        {/* 多数据源血缘标记 */}
+                                        {item.datasource_count > 1 && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 border border-purple-200 rounded-full text-xs text-purple-600">
+                                                <GitBranch className="w-3 h-3" />
+                                                跨 {item.datasource_count} 数据源
+                                            </span>
+                                        )}
+                                    </div>
+                                    {/* 公式预览 */}
+                                    <div className="mt-2">
+                                        <code className="bg-gray-100/50 px-2 py-1 rounded text-[11px] text-gray-600 font-mono line-clamp-2">
+                                            {item.formula}
+                                        </code>
                                     </div>
                                 </div>
                             </div>
-                            <div className="ml-4 text-gray-400">
-                                {expandedGroups[idx] ? '▲' : '▼'}
+
+                            {/* 右侧箭头 */}
+                            <div className="flex items-center gap-2">
+                                <div className="text-gray-300">→</div>
                             </div>
                         </div>
 
-                        {/* 详情内容 */}
-                        {expandedGroups[idx] && (
-                            <div className="border-t border-gray-100">
-                                <div className="p-0 overflow-x-auto">
-                                    <table className="w-full text-sm">
-                                        <thead className="bg-white text-gray-400 text-[11px] uppercase tracking-wider font-semibold border-b border-gray-50">
-                                            <tr>
-                                                <th className="px-6 py-3 text-left">指标名称</th>
-                                                <th className="px-6 py-3 text-left">公式预览</th>
-                                                <th className="px-6 py-3 text-right">操作</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-50">
-                                            {group.metrics.slice(0, 15).map((metric) => (
-                                                <tr key={metric.id} className="hover:bg-gray-50 transition-colors">
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex items-center gap-2">
-                                                            <Code className="w-4 h-4 text-gray-400" />
-                                                            <span className="font-medium text-gray-800">{metric.name}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-gray-500 text-[12px] max-w-[300px] truncate font-mono">
-                                                        {metric.formula?.slice(0, 50) || '-'}
-                                                        {(metric.formula?.length || 0) > 50 && '...'}
-                                                    </td>
-                                                    <td className="px-6 py-4 text-right">
-                                                        <button
-                                                            onClick={() => openDrawer(metric.id, 'metrics', metric.name)}
-                                                            className="inline-flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 rounded-lg transition-all border border-indigo-100 hover:border-indigo-600 shadow-sm active:scale-95"
-                                                        >
-                                                            查看详情 <ExternalLink className="w-3 h-3" />
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                            {group.metrics.length > 15 && (
-                                                <tr>
-                                                    <td colSpan={3} className="px-6 py-3 text-center text-gray-400 text-[12px]">
-                                                        还有 {group.metrics.length - 15} 个指标未显示...
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </tbody>
-                                    </table>
+                        {/* 数据源列表（多数据源时展示） */}
+                        {item.datasource_count > 1 && item.datasources && (
+                            <div className="mt-3 pt-3 border-t border-gray-100">
+                                <div className="text-xs text-gray-400 mb-1">涉及数据源：</div>
+                                <div className="flex flex-wrap gap-1">
+                                    {item.datasources.map((ds, i) => (
+                                        <span key={i} className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-md">
+                                            {ds.name}
+                                        </span>
+                                    ))}
                                 </div>
                             </div>
                         )}
                     </div>
                 ))}
+            </div>
+
+            {/* 治理建议 */}
+            <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg flex items-start gap-3">
+                <div className="p-1 bg-gray-200 rounded text-gray-600 flex-shrink-0 mt-0.5">
+                    <Ghost className="w-4 h-4" />
+                </div>
+                <div className="text-[13px] text-gray-600 leading-relaxed">
+                    <strong>说明：</strong> 未使用的指标可能是历史遗留或预留功能。建议定期清理确认无用的指标，或将其隐藏以保持数据源整洁。
+                </div>
             </div>
         </div>
     );

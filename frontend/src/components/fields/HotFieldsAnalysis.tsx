@@ -5,55 +5,32 @@ import { useDrawer } from '@/lib/drawer-context';
 import {
     Loader2,
     Flame,
-    Database,
-    ExternalLink,
     Columns,
     TrendingUp,
-    Eye
+    Eye,
+    GitBranch,
+    Table
 } from 'lucide-react';
-
-interface FieldItem {
-    id: string;
-    name: string;
-    dataType?: string;
-    data_type?: string;
-    role?: string;
-    datasource_name?: string;
-    datasourceName?: string;
-    isCalculated?: boolean;
-    is_calculated?: boolean;
-    usage_count?: number;
-    usageCount?: number;
-    used_in_views?: Array<{ id: string; name: string }>;
-}
+import { FieldCatalogItem } from '../cards/FieldCatalogCard';
 
 export default function HotFieldsAnalysis() {
-    const [data, setData] = useState<FieldItem[]>([]);
+    const [items, setItems] = useState<FieldCatalogItem[]>([]);
+    const [maxUsage, setMaxUsage] = useState(0);
+    const [avgUsage, setAvgUsage] = useState(0);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
 
     useEffect(() => {
-        // 使用专用治理API获取完整的热门字段数据
-        fetch('/api/fields/governance/hot')
+        fetch('/api/fields/catalog/hot')
             .then(res => res.json())
             .then(result => {
-                // 直接使用后端返回的数据
-                setData(result.fields || []);
+                setItems(result.items || []);
+                setMaxUsage(result.max_usage || 0);
+                setAvgUsage(result.avg_usage || 0);
             })
             .catch(console.error)
             .finally(() => setLoading(false));
     }, []);
-
-    const getRoleLabel = (role?: string) => {
-        if (!role) return null;
-        const isMeasure = role.toLowerCase().includes('measure');
-        return (
-            <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${isMeasure ? 'bg-green-50 text-green-600' : 'bg-blue-50 text-blue-600'
-                }`}>
-                {isMeasure ? '度量' : '维度'}
-            </span>
-        );
-    };
 
     const getHeatLevel = (count: number) => {
         if (count >= 200) return { color: 'text-red-600 bg-red-50', label: '🔥🔥🔥 超热门' };
@@ -61,6 +38,9 @@ export default function HotFieldsAnalysis() {
         if (count >= 50) return { color: 'text-amber-600 bg-amber-50', label: '🔥 活跃' };
         return { color: 'text-yellow-600 bg-yellow-50', label: '⚡ 常用' };
     };
+
+    // 统计多数据源字段数量
+    const multiDatasourceCount = items.filter(f => f.datasource_count > 1).length;
 
     if (loading) {
         return (
@@ -70,7 +50,7 @@ export default function HotFieldsAnalysis() {
         );
     }
 
-    if (data.length === 0) {
+    if (items.length === 0) {
         return (
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-12 text-center">
                 <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -82,28 +62,24 @@ export default function HotFieldsAnalysis() {
         );
     }
 
-    // 统计数据
-    const maxUsage = Math.max(...data.map(f => f.usage_count ?? f.usageCount ?? 0));
-    const avgUsage = Math.round(data.reduce((sum, f) => sum + (f.usage_count ?? f.usageCount ?? 0), 0) / data.length);
-
     return (
         <div className="space-y-6">
             {/* 概览统计 */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-orange-500">
-                    <div className="text-xs text-gray-500 uppercase mb-1">热门字段数</div>
-                    <div className="text-2xl font-bold text-orange-600">{data.length}</div>
-                    <div className="text-xs text-gray-400 mt-1">被引用&gt;20次</div>
+                    <div className="text-xs text-gray-500 uppercase mb-1">热门规范字段</div>
+                    <div className="text-2xl font-bold text-orange-600">{items.length}</div>
+                    <div className="text-xs text-gray-400 mt-1">聚合后引用&gt;20次</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-red-500">
                     <div className="text-xs text-gray-500 uppercase mb-1">最高引用</div>
                     <div className="text-2xl font-bold text-red-600">{maxUsage}</div>
                     <div className="text-xs text-gray-400 mt-1">次</div>
                 </div>
-                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                    <div className="text-xs text-gray-500 uppercase mb-1">平均引用</div>
-                    <div className="text-2xl font-bold text-gray-700">{avgUsage}</div>
-                    <div className="text-xs text-gray-400 mt-1">次</div>
+                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-purple-500">
+                    <div className="text-xs text-gray-500 uppercase mb-1">跨数据源字段</div>
+                    <div className="text-2xl font-bold text-purple-600">{multiDatasourceCount}</div>
+                    <div className="text-xs text-gray-400 mt-1">核心共享资产</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
                     <div className="text-xs text-gray-500 uppercase mb-1">治理建议</div>
@@ -114,79 +90,80 @@ export default function HotFieldsAnalysis() {
                 </div>
             </div>
 
-            {/* 热门字段排行榜 */}
+            {/* 热门字段卡片列表 */}
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                 <div className="p-4 bg-gradient-to-r from-orange-50 to-red-50 border-b border-gray-100">
                     <h3 className="font-bold text-gray-800 flex items-center gap-2">
                         <Flame className="w-5 h-5 text-orange-500" />
                         热门字段排行榜
-                        <span className="text-xs text-gray-500 font-normal">按视图引用次数排序</span>
+                        <span className="text-xs text-gray-500 font-normal">按聚合引用次数排序</span>
                     </h3>
                 </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                        <thead className="bg-white text-gray-400 text-[11px] uppercase tracking-wider font-semibold border-b border-gray-50">
-                            <tr>
-                                <th className="px-6 py-3 text-left w-12">排名</th>
-                                <th className="px-6 py-3 text-left">字段名称</th>
-                                <th className="px-6 py-3 text-left">引用次数</th>
-                                <th className="px-6 py-3 text-left">热度</th>
-                                <th className="px-6 py-3 text-left">角色</th>
-                                <th className="px-6 py-3 text-left">数据源</th>
-                                <th className="px-6 py-3 text-right">操作</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                            {data.slice(0, 50).map((field, idx) => {
-                                const usageCount = field.usage_count ?? field.usageCount ?? 0;
-                                const heatLevel = getHeatLevel(usageCount);
-                                return (
-                                    <tr key={field.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-6 py-4">
-                                            <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${idx < 3 ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'
-                                                }`}>
-                                                {idx + 1}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-2">
-                                                <Columns className="w-4 h-4 text-gray-400" />
-                                                <span className="font-medium text-gray-800">{field.name}</span>
-                                                {(field.isCalculated || field.is_calculated) && (
-                                                    <span className="px-1.5 py-0.5 text-[10px] rounded font-medium bg-purple-50 text-purple-600">计算</span>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-2">
-                                                <Eye className="w-4 h-4 text-gray-400" />
-                                                <span className="font-bold text-gray-800">{usageCount}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className={`px-2 py-1 text-[10px] rounded-full font-medium ${heatLevel.color}`}>
-                                                {heatLevel.label}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            {getRoleLabel(field.role)}
-                                        </td>
-                                        <td className="px-6 py-4 text-gray-500 text-[13px] max-w-[200px] truncate">
-                                            {field.datasource_name || field.datasourceName || '-'}
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <button
-                                                onClick={() => openDrawer(field.id, 'fields', field.name)}
-                                                className="inline-flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 rounded-lg transition-all border border-indigo-100 hover:border-indigo-600 shadow-sm active:scale-95"
-                                            >
-                                                查看详情 <ExternalLink className="w-3 h-3" />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                <div className="space-y-0 divide-y divide-gray-100">
+                    {items.slice(0, 50).map((item, idx) => {
+                        const usageCount = item.total_usage || 0;
+                        const heatLevel = getHeatLevel(usageCount);
+                        return (
+                            <div
+                                key={`${item.canonical_name}-${item.table_id || idx}`}
+                                className="p-4 hover:bg-gray-50 transition-colors cursor-pointer"
+                                onClick={() => openDrawer(item.representative_id || '', 'field')}
+                            >
+                                <div className="flex items-center gap-4">
+                                    {/* 排名 */}
+                                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold flex-shrink-0 ${idx < 3 ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'
+                                        }`}>
+                                        {idx + 1}
+                                    </span>
+
+                                    {/* 字段信息 */}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <Columns className="w-4 h-4 text-gray-400" />
+                                            <span className="font-bold text-gray-800">{item.canonical_name}</span>
+                                            {/* 角色标签 */}
+                                            {item.role && (
+                                                <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${item.role.toLowerCase().includes('measure')
+                                                    ? 'bg-green-50 text-green-600'
+                                                    : 'bg-blue-50 text-blue-600'
+                                                    }`}>
+                                                    {item.role.toLowerCase().includes('measure') ? '度量' : '维度'}
+                                                </span>
+                                            )}
+                                            {/* 多数据源血缘标记 */}
+                                            {item.datasource_count > 1 && (
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 border border-purple-200 rounded-full text-xs text-purple-600">
+                                                    <GitBranch className="w-3 h-3" />
+                                                    跨 {item.datasource_count} 数据源
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                                            {item.table_name && item.table_name !== '-' && (
+                                                <span className="flex items-center gap-1">
+                                                    <Table className="w-3 h-3" />
+                                                    {item.table_schema ? `${item.table_schema}.` : ''}{item.table_name}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* 引用次数 */}
+                                    <div className="flex items-center gap-2">
+                                        <Eye className="w-4 h-4 text-gray-400" />
+                                        <span className="font-bold text-gray-800 text-lg">{usageCount}</span>
+                                    </div>
+
+                                    {/* 热度标签 */}
+                                    <span className={`px-2 py-1 text-[10px] rounded-full font-medium ${heatLevel.color}`}>
+                                        {heatLevel.label}
+                                    </span>
+
+                                    <div className="text-gray-300">→</div>
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         </div>

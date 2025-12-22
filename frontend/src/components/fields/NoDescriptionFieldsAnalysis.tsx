@@ -5,70 +5,31 @@ import { useDrawer } from '@/lib/drawer-context';
 import {
     Loader2,
     FileQuestion,
-    Database,
-    ExternalLink,
-    ChevronDown,
-    ChevronUp,
-    Columns
+    Columns,
+    GitBranch,
+    Table
 } from 'lucide-react';
-
-interface FieldItem {
-    id: string;
-    name: string;
-    dataType?: string;
-    data_type?: string;
-    role?: string;
-    datasource_name?: string;
-    datasourceName?: string;
-    table?: string;
-    table_name?: string;
-    description?: string;
-    isCalculated?: boolean;
-    is_calculated?: boolean;
-    [key: string]: string | boolean | undefined;
-}
-
-interface DatasourceGroup {
-    datasource_name: string;
-    fields: FieldItem[];
-}
+import FieldCatalogCard, { FieldCatalogItem } from '../cards/FieldCatalogCard';
 
 export default function NoDescriptionFieldsAnalysis() {
-    const [groupedData, setGroupedData] = useState<DatasourceGroup[]>([]);
+    const [items, setItems] = useState<FieldCatalogItem[]>([]);
     const [totalCount, setTotalCount] = useState(0);
     const [loading, setLoading] = useState(true);
-    const [expandedGroups, setExpandedGroups] = useState<Record<number, boolean>>({});
     const { openDrawer } = useDrawer();
 
     useEffect(() => {
-        fetch('/api/fields/governance/no-description')
+        fetch('/api/fields/catalog/no-description')
             .then(res => res.json())
             .then(result => {
-                // 直接使用后端返回的分组数据
-                setGroupedData(result.groups || []);
+                setItems(result.items || []);
                 setTotalCount(result.total_count || 0);
             })
             .catch(console.error)
             .finally(() => setLoading(false));
     }, []);
 
-    const toggleGroup = (index: number) => {
-        setExpandedGroups(prev => ({
-            ...prev,
-            [index]: !prev[index]
-        }));
-    };
-
-    const getRoleLabel = (role?: string) => {
-        if (!role) return null;
-        const isMeasure = role.toLowerCase().includes('measure');
-        return (
-            <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${isMeasure ? 'bg-green-50 text-green-600' : 'bg-blue-50 text-blue-600'
-                }`}>
-                {isMeasure ? '度量' : '维度'}
-            </span>
-        );
-    };
+    // 统计多数据源字段数量
+    const multiDatasourceCount = items.filter(f => f.datasource_count > 1).length;
 
     if (loading) {
         return (
@@ -95,94 +56,97 @@ export default function NoDescriptionFieldsAnalysis() {
             {/* 概览统计报告 */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                    <div className="text-xs text-gray-500 uppercase mb-1">无描述字段数</div>
+                    <div className="text-xs text-gray-500 uppercase mb-1">无描述规范字段</div>
                     <div className="text-2xl font-bold text-gray-800">{totalCount.toLocaleString()}</div>
+                    <div className="text-xs text-gray-400 mt-1">按物理列聚合后</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-amber-500">
-                    <div className="text-xs text-gray-500 uppercase mb-1">涉及数据源</div>
-                    <div className="text-2xl font-bold text-amber-600">{groupedData.length}</div>
+                    <div className="text-xs text-gray-500 uppercase mb-1">跨数据源字段</div>
+                    <div className="text-2xl font-bold text-amber-600">{multiDatasourceCount}</div>
+                    <div className="text-xs text-gray-400 mt-1">同一字段被多个数据源使用</div>
                 </div>
-                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-red-500">
-                    <div className="text-xs text-gray-500 uppercase mb-1">最严重数据源</div>
-                    <div className="text-lg font-bold text-red-600 truncate" title={groupedData[0]?.datasource_name}>
-                        {groupedData[0]?.datasource_name || '-'} ({groupedData[0]?.fields.length || 0})
+                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-blue-500">
+                    <div className="text-xs text-gray-500 uppercase mb-1">涉及数据表</div>
+                    <div className="text-2xl font-bold text-blue-600">
+                        {new Set(items.filter(f => f.table_id).map(f => f.table_id)).size}
                     </div>
                 </div>
             </div>
 
-            <div className="space-y-4">
-                {groupedData.map((group, idx) => (
-                    <div key={idx} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                        {/* 组头部 */}
-                        <div
-                            className="p-4 bg-gray-50/50 flex items-center justify-between cursor-pointer"
-                            onClick={() => toggleGroup(idx)}
-                        >
-                            <div className="flex items-center gap-4 flex-1 min-w-0">
-                                <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 bg-amber-100 text-amber-600">
-                                    <Database className="w-5 h-5" />
+            {/* 字段卡片列表 */}
+            <div className="space-y-3">
+                {items.map((item, idx) => (
+                    <div
+                        key={`${item.canonical_name}-${item.table_id || idx}`}
+                        className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow cursor-pointer"
+                        onClick={() => openDrawer(item.representative_id || '', 'field')}
+                    >
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                                <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 bg-indigo-50 text-indigo-600">
+                                    <Columns className="w-5 h-5" />
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                    <h4 className="font-bold text-gray-800 text-[15px] flex items-center gap-2">
-                                        {group.datasource_name}
-                                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-100">
-                                            {group.fields.length} 个字段缺少描述
-                                        </span>
-                                    </h4>
-                                    <div className="mt-1 text-xs text-gray-400">
-                                        完善字段描述可提升数据可理解性和业务可追溯性
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <h4 className="font-bold text-gray-800 text-[15px]">
+                                            {item.canonical_name}
+                                        </h4>
+                                        {/* 角色标签 */}
+                                        {item.role && (
+                                            <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${item.role.toLowerCase().includes('measure')
+                                                ? 'bg-green-50 text-green-600'
+                                                : 'bg-blue-50 text-blue-600'
+                                                }`}>
+                                                {item.role.toLowerCase().includes('measure') ? '度量' : '维度'}
+                                            </span>
+                                        )}
+                                        {/* 多数据源血缘标记 */}
+                                        {item.datasource_count > 1 && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 border border-purple-200 rounded-full text-xs text-purple-600">
+                                                <GitBranch className="w-3 h-3" />
+                                                跨 {item.datasource_count} 数据源
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                                        {item.table_name && item.table_name !== '-' && (
+                                            <span className="flex items-center gap-1">
+                                                <Table className="w-3 h-3" />
+                                                {item.table_schema ? `${item.table_schema}.` : ''}{item.table_name}
+                                            </span>
+                                        )}
+                                        {item.data_type && (
+                                            <span className="text-gray-400">
+                                                {item.data_type}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                             </div>
-                            <div className="ml-4 text-gray-400">
-                                {expandedGroups[idx] ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+
+                            {/* 右侧统计信息 */}
+                            <div className="flex items-center gap-4 text-right">
+                                <div>
+                                    <div className="text-lg font-bold text-gray-700">{item.total_usage || 0}</div>
+                                    <div className="text-xs text-gray-400">使用次数</div>
+                                </div>
+                                <div className="text-gray-300">→</div>
                             </div>
                         </div>
 
-                        {/* 详情内容 */}
-                        {expandedGroups[idx] && (
-                            <div className="border-t border-gray-100">
-                                <div className="p-0 overflow-x-auto">
-                                    <table className="w-full text-sm">
-                                        <thead className="bg-white text-gray-400 text-[11px] uppercase tracking-wider font-semibold border-b border-gray-50">
-                                            <tr>
-                                                <th className="px-6 py-3 text-left">字段名称</th>
-                                                <th className="px-6 py-3 text-left">角色</th>
-                                                <th className="px-6 py-3 text-left">数据类型</th>
-                                                <th className="px-6 py-3 text-left">所属表</th>
-                                                <th className="px-6 py-3 text-right">操作</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-50">
-                                            {group.fields.map((field) => (
-                                                <tr key={field.id} className="hover:bg-gray-50 transition-colors">
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex items-center gap-2">
-                                                            <Columns className="w-4 h-4 text-gray-400" />
-                                                            <span className="font-medium text-gray-800">{field.name}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        {getRoleLabel(field.role)}
-                                                    </td>
-                                                    <td className="px-6 py-4 text-gray-500 text-[13px]">
-                                                        {field.dataType || field.data_type || '-'}
-                                                    </td>
-                                                    <td className="px-6 py-4 text-gray-500 text-[13px]">
-                                                        {field.table || field.table_name || '-'}
-                                                    </td>
-                                                    <td className="px-6 py-4 text-right">
-                                                        <button
-                                                            onClick={() => openDrawer(field.id, 'fields', field.name)}
-                                                            className="inline-flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 rounded-lg transition-all border border-indigo-100 hover:border-indigo-600 shadow-sm active:scale-95"
-                                                        >
-                                                            查看详情 <ExternalLink className="w-3 h-3" />
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                        {/* 数据源列表（多数据源时展示） */}
+                        {item.datasource_count > 1 && item.datasources && (
+                            <div className="mt-3 pt-3 border-t border-gray-100">
+                                <div className="text-xs text-gray-400 mb-2">涉及数据源：</div>
+                                <div className="flex flex-wrap gap-2">
+                                    {item.datasources.map((ds, i) => (
+                                        <span
+                                            key={i}
+                                            className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-md"
+                                        >
+                                            {ds.name}
+                                        </span>
+                                    ))}
                                 </div>
                             </div>
                         )}

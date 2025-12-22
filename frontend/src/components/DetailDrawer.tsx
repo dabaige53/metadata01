@@ -30,7 +30,8 @@ import {
     Flame,
     HelpCircle,
     TrendingUp,
-    BarChart3
+    BarChart3,
+    ExternalLink
 } from 'lucide-react';
 
 interface DetailItem {
@@ -74,6 +75,7 @@ interface DetailItem {
     updated_at?: string;
     createdAt?: string;
     updatedAt?: string;
+    tableau_url?: string;  // Tableau Server 在线查看链接
     [key: string]: any;
 }
 
@@ -238,6 +240,12 @@ export default function DetailDrawer() {
 
             const deps = data.dependencyFields || [];
             if (deps.length > 0) tabs.push({ id: 'deps', label: `依赖字段 (${deps.length})`, icon: Columns });
+
+            // 新增：关联数据源 (从后端 related_datasources 获取)
+            const relatedDs = data.related_datasources || [];
+            if (relatedDs.length > 0) {
+                tabs.push({ id: 'datasources', label: `所属数据源 (${relatedDs.length})`, icon: Layers });
+            }
 
             const m_down = data.used_by_metrics || [];
             if (m_down.length > 0) tabs.push({ id: 'impact_metrics', label: `影响指标 (${m_down.length})`, icon: FunctionSquare });
@@ -441,6 +449,54 @@ export default function DetailDrawer() {
                 <div className="bg-gray-50 rounded-lg border p-4 overflow-auto">
                     <div className="text-xs font-bold text-gray-700 mb-2">Mermaid 血缘图</div>
                     <pre className="text-[10px] font-mono bg-white p-2 rounded border overflow-x-auto">{lineageData.mermaid}</pre>
+                </div>
+            </div>
+        );
+    };
+
+    // ========== 关联数据源渲染 (新) ==========
+    const renderDatasourcesTab = () => {
+        const items = data?.related_datasources || [];
+        if (items.length === 0) return <div className="text-center text-gray-400 py-8">无关联数据源</div>;
+
+        return (
+            <div className="space-y-4 animate-in slide-in-up">
+                <div className="bg-indigo-50/50 rounded-lg border border-indigo-100 p-4">
+                    <h3 className="text-xs font-bold text-indigo-900 mb-3 flex items-center gap-2">
+                        <Layers className="w-3.5 h-3.5 text-indigo-600" /> 包含此字段的数据源
+                    </h3>
+                    <div className="space-y-2">
+                        {items.map((ds: any, i: number) => (
+                            <div key={i}
+                                onClick={() => handleAssetClick(ds.id, 'datasources', ds.name)}
+                                className="flex items-center justify-between bg-white p-3 rounded border border-indigo-50 hover:border-indigo-200 hover:shadow-sm transition-all cursor-pointer">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-1.5 bg-indigo-50 rounded text-indigo-600">
+                                        <Database className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                        <div className="text-sm font-bold text-gray-800">{ds.name}</div>
+                                        <div className="text-[10px] text-gray-500 flex items-center gap-2">
+                                            <span>项目: {ds.project_name || '-'}</span>
+                                            {ds.field_name && ds.field_name !== data?.name && (
+                                                <span className="bg-gray-100 px-1.5 rounded text-gray-600">
+                                                    字段重命名为: {ds.field_name}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {ds.is_certified && (
+                                        <span className="text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded-full border border-green-100 flex items-center gap-1">
+                                            <ShieldCheck className="w-3 h-3" /> 已认证
+                                        </span>
+                                    )}
+                                    <ChevronRight className="w-4 h-4 text-gray-300" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             </div>
         );
@@ -661,21 +717,21 @@ export default function DetailDrawer() {
                     </div>
                 )}
 
-                {/* 核心属性列表 - Grid 布局 */}
+                {/* 核心属性列表 - Flex 布局，解决 Grid 空洞感 */}
                 <div>
                     <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 px-1">
                         {isProjectType ? '项目信息' : isUserType ? '用户信息' : '基础属性'}
                     </h3>
-                    <div className="grid grid-cols-2 gap-px bg-gray-200 rounded-lg border border-gray-200">
+                    <div className="flex flex-wrap gap-3">
                         {/* 资产类型 */}
-                        <div className="bg-white p-3">
-                            <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                        <div className="flex-1 min-w-[140px] bg-gray-50/50 rounded-xl border border-gray-100 p-3 hover:bg-white hover:shadow-sm transition-all duration-300">
+                            <div className="text-[10px] text-gray-400 mb-1 flex items-center gap-1 font-medium italic">
                                 {isUserType ? '站点角色' : '资产类型'}
                                 <span data-tooltip="元数据资产的具体分类">
-                                    <HelpCircle className="w-2.5 h-2.5" />
+                                    <HelpCircle className="w-2.5 h-2.5 opacity-50" />
                                 </span>
                             </div>
-                            <div className="text-xs font-medium text-gray-800">
+                            <div className="text-xs font-bold text-gray-800">
                                 {isUserType ? (
                                     <span className={`px-1.5 py-0.5 rounded text-[10px] ${data.site_role?.includes('Admin') ? 'bg-red-50 text-red-700' :
                                         data.site_role?.includes('Creator') ? 'bg-blue-50 text-blue-700' :
@@ -690,39 +746,41 @@ export default function DetailDrawer() {
                         </div>
 
                         {/* 所有者 - 项目/用户不显示 */}
-                        {!isProjectType && !isUserType && (
-                            <div className="bg-white p-3">
-                                <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                        {!isProjectType && !isUserType && ownerName && (
+                            <div className="flex-1 min-w-[140px] bg-gray-50/50 rounded-xl border border-gray-100 p-3 hover:bg-white hover:shadow-sm transition-all duration-300">
+                                <div className="text-[10px] text-gray-400 mb-1 flex items-center gap-1 font-medium italic">
                                     所有者
                                     <span data-tooltip="该资产在 Tableau Server 上的负责人或创建者">
-                                        <HelpCircle className="w-2.5 h-2.5" />
+                                        <HelpCircle className="w-2.5 h-2.5 opacity-50" />
                                     </span>
                                 </div>
-                                <div className="text-xs font-medium text-gray-800 flex items-center gap-1.5">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
-                                    {ownerName || '-'}
+                                <div className="text-xs font-bold text-gray-800 flex items-center gap-1.5 overflow-hidden">
+                                    <div className="w-4 h-4 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 text-[8px] flex-shrink-0">
+                                        {ownerName.substring(0, 1)}
+                                    </div>
+                                    <span className="truncate" title={ownerName}>{ownerName}</span>
                                 </div>
                             </div>
                         )}
 
                         {/* 用户邮箱 */}
                         {isUserType && data.email && (
-                            <div className="bg-white p-3">
-                                <div className="text-[10px] text-gray-400 mb-0.5">邮箱</div>
-                                <div className="text-xs font-medium text-gray-800 truncate">{data.email}</div>
+                            <div className="flex-1 min-w-[140px] bg-gray-50/50 rounded-xl border border-gray-100 p-3 hover:bg-white hover:shadow-sm transition-all duration-300">
+                                <div className="text-[10px] text-gray-400 mb-1 font-medium italic">邮箱</div>
+                                <div className="text-xs font-bold text-gray-800 truncate" title={data.email}>{data.email}</div>
                             </div>
                         )}
 
                         {/* 项目统计 - 字段数/认证率 */}
                         {isProjectType && data.stats && (
                             <>
-                                <div className="bg-white p-3">
-                                    <div className="text-[10px] text-gray-400 mb-0.5">总字段数</div>
-                                    <div className="text-xs font-medium text-gray-800">{data.stats.total_fields || 0}</div>
+                                <div className="flex-1 min-w-[140px] bg-gray-50/50 rounded-xl border border-gray-100 p-3 hover:bg-white hover:shadow-sm transition-all duration-300">
+                                    <div className="text-[10px] text-gray-400 mb-1 font-medium italic">总字段数</div>
+                                    <div className="text-xs font-bold text-gray-800">{data.stats.total_fields || 0}</div>
                                 </div>
-                                <div className="bg-white p-3">
-                                    <div className="text-[10px] text-gray-400 mb-0.5">认证率</div>
-                                    <div className="text-xs font-medium text-gray-800 flex items-center gap-1">
+                                <div className="flex-1 min-w-[140px] bg-gray-50/50 rounded-xl border border-gray-100 p-3 hover:bg-white hover:shadow-sm transition-all duration-300">
+                                    <div className="text-[10px] text-gray-400 mb-1 font-medium italic">认证率</div>
+                                    <div className="text-xs font-bold text-gray-800 flex items-center gap-1">
                                         {data.stats.certified_datasources || 0} 已认证
                                         {(data.stats.certification_rate || 0) > 0 && (
                                             <span className="text-[9px] bg-green-50 text-green-600 px-1 rounded">
@@ -736,63 +794,66 @@ export default function DetailDrawer() {
 
                         {/* 项目归属 - 仅对有项目属性的资产显示 */}
                         {!isProjectType && !isUserType && projectName && (
-                            <div className="bg-white p-3">
-                                <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                            <div className="flex-1 min-w-[140px] bg-gray-50/50 rounded-xl border border-gray-100 p-3 hover:bg-white hover:shadow-sm transition-all duration-300">
+                                <div className="text-[10px] text-gray-400 mb-1 flex items-center gap-1 font-medium italic">
                                     项目归属
                                     <span data-tooltip="该资产所属的 Tableau 项目路径">
-                                        <HelpCircle className="w-2.5 h-2.5" />
+                                        <HelpCircle className="w-2.5 h-2.5 opacity-50" />
                                     </span>
                                 </div>
-                                <div className="text-xs font-medium text-gray-800 truncate" title={projectName}>
+                                <div className="text-xs font-bold text-gray-800 truncate" title={projectName}>
                                     {projectName}
                                 </div>
                             </div>
                         )}
 
                         {/* 引用次数/关联资产 */}
-                        <div className="bg-white p-3">
-                            <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                        <div className="flex-1 min-w-[140px] bg-gray-50/50 rounded-xl border border-gray-100 p-3 hover:bg-white hover:shadow-sm transition-all duration-300">
+                            <div className="text-[10px] text-gray-400 mb-1 flex items-center gap-1 font-medium italic">
                                 {getReferenceLabel()}
                                 <span data-tooltip="该资产被下游引用的总次数或关联的资产数量">
-                                    <HelpCircle className="w-2.5 h-2.5" />
+                                    <HelpCircle className="w-2.5 h-2.5 opacity-50" />
                                 </span>
                             </div>
-                            <div className="text-xs font-medium text-gray-800 flex items-center gap-1">
+                            <div className="text-xs font-bold text-gray-800 flex items-center gap-1">
                                 {getReferenceCount()}
                                 {getReferenceCount() > 5 && <span className="text-[8px] bg-amber-50 text-amber-600 px-1 rounded border border-amber-100">🔥 Hot</span>}
                             </div>
                         </div>
+
                         {createdAt && (
-                            <div className="bg-white p-3">
-                                <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                            <div className="flex-1 min-w-[140px] bg-gray-50/50 rounded-xl border border-gray-100 p-3 hover:bg-white hover:shadow-sm transition-all duration-300">
+                                <div className="text-[10px] text-gray-400 mb-1 flex items-center gap-1 font-medium italic">
                                     创建时间
                                     <span data-tooltip="该资产首次同步到治理平台的时间">
-                                        <HelpCircle className="w-2.5 h-2.5" />
+                                        <HelpCircle className="w-2.5 h-2.5 opacity-50" />
                                     </span>
                                 </div>
-                                <div className="text-xs font-medium text-gray-800">{formatDateWithRelative(createdAt)}</div>
+                                <div className="text-xs font-bold text-gray-800">{formatDateWithRelative(createdAt)}</div>
                             </div>
                         )}
+
                         {updatedAt && (
-                            <div className="bg-white p-3">
-                                <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                            <div className="flex-1 min-w-[140px] bg-gray-50/50 rounded-xl border border-gray-100 p-3 hover:bg-white hover:shadow-sm transition-all duration-300">
+                                <div className="text-[10px] text-gray-400 mb-1 flex items-center gap-1 font-medium italic">
                                     更新时间
                                     <span data-tooltip="该资产最近一次变更（字段、公式或血缘）的时间">
-                                        <HelpCircle className="w-2.5 h-2.5" />
+                                        <HelpCircle className="w-2.5 h-2.5 opacity-50" />
                                     </span>
                                 </div>
-                                <div className="text-xs font-medium text-gray-800 flex items-center gap-1.5">
+                                <div className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
                                     <span>{formatDateWithRelative(updatedAt)}</span>
                                     {isRecent(updatedAt) && <span className="text-[9px] px-1 py-0.5 rounded bg-green-50 text-green-700 border border-green-100">近期</span>}
                                 </div>
                             </div>
                         )}
+
                         {data.role && (
-                            <div className="bg-white p-3 col-span-2">
-                                <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                            <div className="w-full bg-gray-50/50 rounded-xl border border-gray-100 p-3 hover:bg-white hover:shadow-sm transition-all duration-300">
+                                <div className="text-[10px] text-gray-400 mb-1 flex items-center gap-1 font-medium italic">
                                     字段角色
                                     <span data-tooltip="区分该字段是维度（分类）还是度量（数值）">
-                                        <HelpCircle className="w-2.5 h-2.5" />
+                                        <HelpCircle className="w-2.5 h-2.5 opacity-50" />
                                     </span>
                                 </div>
                                 <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${data.role === 'measure' ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'}`}>
@@ -893,6 +954,7 @@ export default function DetailDrawer() {
         switch (activeTab) {
             case 'overview': return renderOverviewTab();
             case 'duplicates': return renderDuplicatesTab();
+            case 'datasources': return renderDatasourcesTab();
             case 'lineage': return renderLineageTab();
             case 'usage': return renderUsageTab();
 
@@ -1034,6 +1096,19 @@ export default function DetailDrawer() {
                                             <CheckCircle2 className="w-3 h-3" /> 已认证
                                         </span>
                                     )}
+                                    {/* Tableau Server 在线查看链接 - 放在标题旁边 */}
+                                    {safeData?.tableau_url && (
+                                        <a
+                                            href={safeData.tableau_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 text-[10px] font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                                            title="在 Tableau Server 中打开"
+                                        >
+                                            <ExternalLink className="w-3 h-3" />
+                                            在 Tableau 中查看
+                                        </a>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -1044,6 +1119,7 @@ export default function DetailDrawer() {
                                 <ShieldCheck className="w-3.5 h-3.5" />
                                 状态: {isCertified ? '已认证' : '未认证'}
                             </div>
+                            {/* 引用数徽章 */}
                             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gray-100 bg-gray-50 text-xs font-medium text-gray-600">
                                 <Flame className="w-3.5 h-3.5 text-orange-500" />
                                 引用数: {safeData?.referenceCount ?? (safeData?.views?.length || 0)}
@@ -1082,7 +1158,9 @@ export default function DetailDrawer() {
                 className={`fixed inset-0 bg-gray-900/20 backdrop-blur-[2px] z-40 transition-opacity duration-500 ${isOpen && readyToShow ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                 onClick={closeDrawer}
             />
-            <div className={`fixed inset-y-0 right-0 w-[640px] bg-white shadow-2xl z-50 transform transition-transform duration-[800ms] ease-[cubic-bezier(0.16,1,0.3,1)] border-l border-gray-100 ${isOpen && readyToShow ? 'translate-x-0' : 'translate-x-full'}`}>
+            <div
+                className={`fixed inset-y-0 right-0 w-[800px] bg-white shadow-2xl z-50 transform transition-transform duration-500 ease-out flex flex-col ${isOpen && readyToShow ? 'translate-x-0' : 'translate-x-full'}`}
+            >
                 <div className="h-full flex flex-col">
 
                     {/* Navigation Buttons */}
@@ -1127,3 +1205,4 @@ export default function DetailDrawer() {
         </>
     );
 }
+
