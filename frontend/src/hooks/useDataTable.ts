@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import type { FacetConfig, ActiveFilters } from '@/components/data-table/InlineFilter';
+import type { FacetConfig, ActiveFilters } from '@/components/data-table/FacetFilterBar';
 import type { SortState } from '@/components/data-table/SortButtons';
 import type { PaginationState } from '@/components/data-table/Pagination';
 
@@ -192,7 +192,7 @@ export function useDataTable<T extends Record<string, any>>({
     }
   }, [sortState, currentPage, searchTerm, activeFilters, pageSize, router, serverSide]);
 
-  // 处理筛选变化
+  // 处理筛选变化（单项）
   const handleFilterChange = (key: string, value: string, checked: boolean) => {
     setActiveFilters((prev) => {
       const current = prev[key] || [];
@@ -206,6 +206,21 @@ export function useDataTable<T extends Record<string, any>>({
       };
     });
     setCurrentPage(1); // 重置到第一页
+  };
+
+  // 处理筛选变化（批量更新，用于下拉面板确认）
+  const handleBatchFilterChange = (key: string, values: string[]) => {
+    setActiveFilters((prev) => ({
+      ...prev,
+      [key]: values,
+    }));
+    setCurrentPage(1);
+  };
+
+  // 清空所有筛选
+  const handleClearAllFilters = () => {
+    setActiveFilters({});
+    setCurrentPage(1);
   };
 
   // 处理排序变化
@@ -248,6 +263,8 @@ export function useDataTable<T extends Record<string, any>>({
     facets,
     activeFilters,
     handleFilterChange,
+    handleBatchFilterChange,
+    handleClearAllFilters,
 
     // 排序
     sortState,

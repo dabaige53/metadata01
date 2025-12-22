@@ -29,25 +29,42 @@ from backend.models import (
 class TableauMetadataClient:
     """Tableau Metadata API 客户端"""
     
-    def __init__(self, base_url: str, username: str, password: str):
+    def __init__(self, base_url: str, username: str = None, password: str = None, 
+                 pat_name: str = None, pat_secret: str = None):
         self.base_url = base_url.rstrip('/')
         self.username = username
         self.password = password
+        self.pat_name = pat_name
+        self.pat_secret = pat_secret
         self.auth_token: Optional[str] = None
         self.site_id: Optional[str] = None
         self.api_version = "3.10"
     
     def sign_in(self) -> bool:
-        """登录获取认证 token"""
+        """登录获取认证 token (支持用户名密码或 PAT)"""
         signin_url = f"{self.base_url}/api/{self.api_version}/auth/signin"
         
-        payload = {
-            "credentials": {
-                "name": self.username,
-                "password": self.password,
-                "site": {"contentUrl": ""}
+        # 根据配置选择认证方式
+        if self.pat_name and self.pat_secret:
+            # PAT 认证
+            payload = {
+                "credentials": {
+                    "personalAccessTokenName": self.pat_name,
+                    "personalAccessTokenSecret": self.pat_secret,
+                    "site": {"contentUrl": ""}
+                }
             }
-        }
+            print(f"  使用 PAT 认证: {self.pat_name}")
+        else:
+            # 用户名密码认证
+            payload = {
+                "credentials": {
+                    "name": self.username,
+                    "password": self.password,
+                    "site": {"contentUrl": ""}
+                }
+            }
+            print(f"  使用用户名密码认证: {self.username}")
         
         headers = {
             "Content-Type": "application/json",
@@ -222,11 +239,8 @@ class TableauMetadataClient:
                 name
                 schema
                 fullName
-                tableType
                 description
                 isEmbedded
-                isCertified
-                certificationNote
                 projectName
                 database {
                     id
@@ -236,8 +250,8 @@ class TableauMetadataClient:
                 columns {
                     id
                     name
-                    remoteType
                     description
+                    remoteType
                     isNullable
                 }
             }
@@ -362,7 +376,6 @@ class TableauMetadataClient:
                 createdAt
                 updatedAt
                 containsUnsupportedCustomSql
-                hasActiveWarning
                 owner {
                     id
                     username
@@ -391,6 +404,28 @@ class TableauMetadataClient:
                     updatedAt
                     sheets {
                         id
+                    }
+                }
+                embeddedDatasources {
+                    id
+                    name
+                    fields {
+                        id
+                        name
+                        description
+                        ... on ColumnField {
+                            dataType
+                            role
+                            isHidden
+                            folderName
+                        }
+                        ... on CalculatedField {
+                            dataType
+                            role
+                            isHidden
+                            folderName
+                            formula
+                        }
                     }
                 }
             }
@@ -432,6 +467,15 @@ class TableauMetadataClient:
                     luid
                     name
                 }
+                embeddedDatasources {
+                    id
+                    name
+                    fields {
+                        id
+                        name
+                        description
+                    }
+                }
             }
         }
         """
@@ -446,12 +490,30 @@ class TableauMetadataClient:
                 id
                 name
                 fields {
+                    __typename
                     id
                     name
                     description
-                    dataType
-                    role
-                    isCalculated
+                    ... on ColumnField {
+                        dataType
+                        role
+                        isHidden
+                        folderName
+                        upstreamColumns {
+                            id
+                            name
+                            table {
+                                id
+                            }
+                        }
+                    }
+                    ... on CalculatedField {
+                        dataType
+                        role
+                        isHidden
+                        folderName
+                        formula
+                    }
                 }
             }
         }
@@ -459,9 +521,10 @@ class TableauMetadataClient:
         result = self.execute_query(query)
         
         # 检查是否有错误
+        # 检查是否有错误 (不立即返回，尝试获取部分数据)
         if "errors" in result:
-            print(f"  ⚠️ GraphQL 错误: {result['errors']}")
-            return []
+            print(f"  ⚠️ GraphQL 警告/错误: {result['errors']}")
+            # return [] # 允许部分结果
         
         data = result.get("data")
         if data is None:
@@ -525,21 +588,25 @@ class TableauMetadataClient:
         return calc_fields
     
     def fetch_views_with_fields(self) -> List[Dict]:
-        """获取视图及其使用的字段（用于填充 field_to_view 关联表）"""
+        """获取视图及其使用的字段（不分页采集，因为工作簿数量较少）"""
+        all_view_fields = []
+        
+        print(f"  正在获取视图字段关联...")
+        
         query = """
         {
-            sheets {
+            workbooks {
                 id
                 name
-                workbook {
+                sheets {
                     id
                     name
-                }
-                sheetFieldInstances {
-                    id
-                    name
-                    datasource {
+                    sheetFieldInstances {
                         id
+                        name
+                        datasource {
+                            id
+                        }
                     }
                 }
             }
@@ -547,41 +614,35 @@ class TableauMetadataClient:
         """
         result = self.execute_query(query)
         
-        # 检查是否有错误
         if "errors" in result:
-            print(f"  ⚠️ GraphQL 错误 (sheetFieldInstances): {result['errors']}")
-            # 尝试备用查询
-            return self._fetch_views_with_fields_fallback()
-        
-        data = result.get("data")
-        if data is None:
-            print(f"  ⚠️ 未获取到数据")
+            print(f"  ⚠️ GraphQL 错误 (workbook-sheets): {result['errors']}")
             return []
         
-        sheets = data.get("sheets") or []
-        
-        # 构建视图→字段映射
-        view_fields = []
-        for sheet in sheets:
-            if not sheet:
-                continue
-            view_id = sheet.get("id")
-            view_name = sheet.get("name")
-            workbook = sheet.get("workbook") or {}
-            fields = sheet.get("sheetFieldInstances") or []
+        workbooks = result.get("data", {}).get("workbooks") or []
+        for wb in workbooks:
+            if not wb: continue
+            wb_id = wb.get("id")
+            sheets = wb.get("sheets") or []
             
-            for field in fields:
-                if field and field.get("id"):
-                    view_fields.append({
-                        "view_id": view_id,
-                        "view_name": view_name,
-                        "workbook_id": workbook.get("id"),
-                        "field_id": field.get("id"),
-                        "field_name": field.get("name"),
-                        "datasource_id": (field.get("datasource") or {}).get("id")
-                    })
+            for sheet in sheets:
+                if not sheet: continue
+                view_id = sheet.get("id")
+                view_name = sheet.get("name")
+                fields = sheet.get("sheetFieldInstances") or []
+                
+                for field in fields:
+                    if field and field.get("id"):
+                        all_view_fields.append({
+                            "view_id": view_id,
+                            "view_name": view_name,
+                            "workbook_id": wb_id,
+                            "field_id": field.get("id"),
+                            "field_name": field.get("name"),
+                            "datasource_id": (field.get("datasource") or {}).get("id")
+                        })
         
-        return view_fields
+        print(f"  ✅ 抓取到 {len(all_view_fields)} 个字段关联关系")
+        return all_view_fields
     
     def _fetch_views_with_fields_fallback(self) -> List[Dict]:
         """备用方法：通过工作簿的数据源关系间接获取"""
@@ -1057,27 +1118,40 @@ class MetadataSync:
                 
                 wb_count += 1
                 
-                # 同步数据源到工作簿的关系
+                # 同步数据源到工作簿的关系 (Published)
                 upstream_ds = wb_data.get("upstreamDatasources", [])
                 for ds in upstream_ds:
                     if not ds or not ds.get("id"):
                         continue
-                    rel = self.session.execute(
-                        select(datasource_to_workbook).where(
-                            datasource_to_workbook.c.datasource_id == ds["id"],
-                            datasource_to_workbook.c.workbook_id == wb_data["id"]
-                        )
-                    ).first()
-                    if not rel:
-                        try:
-                            self.session.execute(
-                                datasource_to_workbook.insert().values(
-                                    datasource_id=ds["id"],
-                                    workbook_id=wb_data["id"]
-                                )
-                            )
-                        except:
-                            pass
+                    self._link_datasource_to_workbook(ds["id"], wb_data["id"])
+
+                # 同步嵌入式数据源 (Embedded)
+                embedded_ds = wb_data.get("embeddedDatasources", [])
+                for eds in embedded_ds:
+                    if not eds or not eds.get("id"):
+                        continue
+                    
+                    # 1. 创建/更新嵌入式数据源
+                    ds = self.session.query(Datasource).filter_by(id=eds["id"]).first()
+                    if not ds:
+                        ds = Datasource(id=eds["id"])
+                        self.session.add(ds)
+                    
+                    ds.name = eds.get("name") or "Embedded Datasource"
+                    ds.is_embedded = True
+                    ds.project_name = wb_data.get("projectName", "")
+                    # 嵌入式数据源 owner 跟随工作簿
+                    if wb_data.get("owner"):
+                        ds.owner = wb_data["owner"].get("username", "")
+                        ds.owner_id = wb_data["owner"].get("id")
+                    
+                    # 2. 建立关联
+                    self._link_datasource_to_workbook(eds["id"], wb_data["id"])
+                    
+                    # 3. 同步嵌入式字段
+                    eds_fields = eds.get("fields", [])
+                    for f_data in eds_fields:
+                       self._sync_field(f_data, eds["id"])
                 
                 # 同步视图 (sheets + dashboards)
                 all_views = wb_data.get("sheets", []) + wb_data.get("dashboards", [])
@@ -1198,20 +1272,50 @@ class MetadataSync:
                 
                 field.name = f_data.get("name") or ""
                 field.description = f_data.get("description") or ""
-                field.data_type = f_data.get("dataType") or ""
-                field.is_calculated = f_data.get("isCalculated") or False
-                field.formula = f_data.get("formula") or ""
-                field.role = f_data.get("role") or ""
                 field.datasource_id = f_data.get("datasource_id")
                 
-                # 关联上游表
-                upstream_cols = f_data.get("upstreamColumns") or []
-                if upstream_cols and len(upstream_cols) > 0:
-                    first_col = upstream_cols[0]
-                    if first_col:
-                        table_info = first_col.get("table")
-                        if table_info:
-                            field.table_id = table_info.get("id")
+                # 默认值
+                field.data_type = ""
+                field.role = ""
+                field.is_calculated = False
+                field.formula = ""
+                field.is_hidden = False
+                field.folder_name = f_data.get("folderName")
+                field.fully_qualified_name = ""
+                
+                # 根据类型解析字段
+                typename = f_data.get("__typename")
+                if typename == "CalculatedField":
+                    field.is_calculated = True
+                    field.formula = f_data.get("formula") or ""
+                    field.data_type = f_data.get("dataType") or ""
+                    field.role = f_data.get("role") or ""
+                    field.is_hidden = f_data.get("isHidden") or False
+                    field.folder_name = f_data.get("folderName")
+                elif typename == "ColumnField":
+                    field.data_type = f_data.get("dataType") or ""
+                    field.role = f_data.get("role") or ""
+                    field.is_hidden = f_data.get("isHidden") or False
+                    field.folder_name = f_data.get("folderName")
+                    
+                    # 关联上游表和列
+                    upstream_cols = f_data.get("upstreamColumns") or []
+                    if upstream_cols and len(upstream_cols) > 0:
+                        first_col = upstream_cols[0]
+                        if first_col:
+                            field.upstream_column_id = first_col.get("id")
+                            field.upstream_column_name = first_col.get("name")
+                            
+                            # 从本地 DBColumn 获取 Remote Type (避免 API schema 错误)
+                            if field.upstream_column_id:
+                                from backend.models import DBColumn
+                                db_col = self.session.query(DBColumn).filter_by(id=field.upstream_column_id).first()
+                                if db_col and db_col.remote_type:
+                                    field.remote_type = db_col.remote_type
+                            
+                            table_info = first_col.get("table")
+                            if table_info:
+                                field.table_id = table_info.get("id")
                 
                 count += 1
                 
@@ -1502,6 +1606,72 @@ class MetadataSync:
             import traceback
             traceback.print_exc()
             return 0
+    
+    def _link_datasource_to_workbook(self, datasource_id: str, workbook_id: str):
+        """建立数据源与工作簿的关联"""
+        rel = self.session.execute(
+            select(datasource_to_workbook).where(
+                datasource_to_workbook.c.datasource_id == datasource_id,
+                datasource_to_workbook.c.workbook_id == workbook_id
+            )
+        ).first()
+        if not rel:
+            try:
+                self.session.execute(
+                    datasource_to_workbook.insert().values(
+                        datasource_id=datasource_id,
+                        workbook_id=workbook_id
+                    )
+                )
+            except:
+                pass
+
+    def _sync_field(self, f_data: Dict, datasource_id: str):
+        """同步单个字段（嵌入式或发布）"""
+        if not f_data or not f_data.get("id"):
+            return
+
+        field = self.session.query(Field).filter_by(id=f_data["id"]).first()
+        if not field:
+            field = Field(id=f_data["id"])
+            self.session.add(field)
+        
+        field.name = f_data.get("name") or ""
+        field.description = f_data.get("description") or ""
+        field.datasource_id = datasource_id
+        
+        # 默认值
+        if not field.data_type: field.data_type = ""
+        if not field.role: field.role = ""
+        field.is_calculated = False
+        if not field.formula: field.formula = ""
+        field.is_hidden = False
+        field.folder_name = f_data.get("folderName")
+        
+        # 根据类型解析字段
+        typename = f_data.get("__typename")
+        # 某些 embedded field 可能没有 __typename，尝试推断或读取直接属性
+        if typename == "CalculatedField" or f_data.get("formula"):
+            field.is_calculated = True
+            field.formula = f_data.get("formula") or ""
+            field.data_type = f_data.get("dataType") or field.data_type
+            field.role = f_data.get("role") or field.role
+            field.is_hidden = f_data.get("isHidden") or False
+            
+            # 确保 CalculatedField 记录
+            calc_sub = self.session.query(CalculatedField).filter_by(field_id=field.id).first()
+            if not calc_sub:
+                calc_sub = CalculatedField(field_id=field.id)
+                self.session.add(calc_sub)
+            calc_sub.name = field.name
+            calc_sub.formula = field.formula
+
+        elif typename == "ColumnField" or f_data.get("remoteType"):
+            field.data_type = f_data.get("dataType") or field.data_type
+            field.role = f_data.get("role") or field.role
+            field.is_hidden = f_data.get("isHidden") or False
+            # 嵌入式列通常没有 upstreamColumns 因为它是直接连接
+
     
     def sync_all(self):
         """全量同步所有实体"""

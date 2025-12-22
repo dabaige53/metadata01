@@ -554,7 +554,10 @@ export default function DetailDrawer() {
     // ========== 概览 Tab 重构 PRO (Description List 风格) ==========
     const renderOverviewTab = () => {
         if (!data) return null;
-        const isFieldType = currentItem?.type === 'fields' || currentItem?.type === 'metrics';
+        const type = currentItem?.type;
+        const isFieldType = type === 'fields' || type === 'metrics';
+        const isProjectType = type === 'projects';
+        const isUserType = type === 'users';
         const createdAt = data.createdAt || data.created_at;
         const updatedAt = data.updatedAt || data.updated_at;
 
@@ -562,14 +565,65 @@ export default function DetailDrawer() {
         const ownerName = data.owner || data.workbook_info?.owner;
         const projectName = data.projectName || data.project_name || data.workbook_info?.project_name;
 
-        // Mock数据策略: 如果后端没返回，通过现有字段计算一些 "假的" 治理状态
-        // [MODIFIED] Removed mock logic. Using real data or defaulting to safe values.
-        // const mockQuality = (data.description ? 90 : 60);
-        // const mockCertified = data.is_certified === true;
-        // const mockHotness = (data.referenceCount || data.views?.length || 0) > 5 ? 'High' : 'Normal';
+        // 获取资产类型显示名
+        const getAssetTypeName = () => {
+            if (data.dataType) return data.dataType;
+            if (data.viewType) return data.viewType === 'dashboard' ? '仪表盘' : '视图';
+            return getModuleName(type || '');
+        };
+
+        // 计算引用次数 - 根据类型使用不同逻辑
+        const getReferenceCount = () => {
+            if (data.referenceCount !== undefined) return data.referenceCount;
+            if (isProjectType) return (data.stats?.datasource_count || 0) + (data.stats?.workbook_count || 0);
+            if (isUserType) return (data.datasources?.length || 0) + (data.workbooks?.length || 0);
+            return data.views?.length || data.workbooks?.length || 0;
+        };
+
+        // 获取引用次数标签
+        const getReferenceLabel = () => {
+            if (isProjectType) return '包含资产';
+            if (isUserType) return '拥有资产';
+            if (isFieldType) return '引用次数';
+            if (type === 'datasources') return '关联工作簿';
+            if (type === 'workbooks') return '包含视图';
+            return '关联资产';
+        };
 
         return (
             <div className="space-y-6 animate-in slide-in-up">
+                {/* 项目类型特有的统计卡片 */}
+                {isProjectType && data.stats && (
+                    <div className="grid grid-cols-3 gap-3">
+                        <div className="bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-100 p-4 text-center">
+                            <div className="text-2xl font-bold text-blue-700">{data.stats.datasource_count || 0}</div>
+                            <div className="text-[10px] text-gray-500 mt-1">数据源</div>
+                        </div>
+                        <div className="bg-gradient-to-br from-purple-50 to-white rounded-lg border border-purple-100 p-4 text-center">
+                            <div className="text-2xl font-bold text-purple-700">{data.stats.workbook_count || 0}</div>
+                            <div className="text-[10px] text-gray-500 mt-1">工作簿</div>
+                        </div>
+                        <div className="bg-gradient-to-br from-green-50 to-white rounded-lg border border-green-100 p-4 text-center">
+                            <div className="text-2xl font-bold text-green-700">{data.stats.total_views || 0}</div>
+                            <div className="text-[10px] text-gray-500 mt-1">视图</div>
+                        </div>
+                    </div>
+                )}
+
+                {/* 用户类型特有的统计卡片 */}
+                {isUserType && (
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-100 p-4 text-center">
+                            <div className="text-2xl font-bold text-blue-700">{data.datasources?.length || 0}</div>
+                            <div className="text-[10px] text-gray-500 mt-1">拥有的数据源</div>
+                        </div>
+                        <div className="bg-gradient-to-br from-purple-50 to-white rounded-lg border border-purple-100 p-4 text-center">
+                            <div className="text-2xl font-bold text-purple-700">{data.workbooks?.length || 0}</div>
+                            <div className="text-[10px] text-gray-500 mt-1">拥有的工作簿</div>
+                        </div>
+                    </div>
+                )}
+
                 {/* 描述信息 - 增加高亮 */}
                 {data.description ? (
                     <div className="bg-gradient-to-br from-indigo-50 to-white rounded-lg border border-indigo-100 p-4 shadow-sm hover:shadow-md transition-shadow duration-300">
@@ -595,50 +649,103 @@ export default function DetailDrawer() {
 
                 {/* 核心属性列表 - Grid 布局 */}
                 <div>
-                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 px-1">基础属性</h3>
+                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 px-1">
+                        {isProjectType ? '项目信息' : isUserType ? '用户信息' : '基础属性'}
+                    </h3>
                     <div className="grid grid-cols-2 gap-px bg-gray-200 rounded-lg border border-gray-200">
+                        {/* 资产类型 */}
                         <div className="bg-white p-3">
                             <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
-                                资产类型
-                                <span data-tooltip="元数据资产的具体分类，如字段、指标、视图等">
+                                {isUserType ? '站点角色' : '资产类型'}
+                                <span data-tooltip="元数据资产的具体分类">
                                     <HelpCircle className="w-2.5 h-2.5" />
                                 </span>
                             </div>
-                            <div className="text-xs font-medium text-gray-800 capitalize">{data.dataType || data.type}</div>
-                        </div>
-                        <div className="bg-white p-3">
-                            <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
-                                所有者
-                                <span data-tooltip="该资产在 Tableau Server 上的负责人或创建者">
-                                    <HelpCircle className="w-2.5 h-2.5" />
-                                </span>
-                            </div>
-                            <div className="text-xs font-medium text-gray-800 flex items-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
-                                {ownerName || '-'}
-                            </div>
-                        </div>
-                        <div className="bg-white p-3">
-                            <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
-                                项目归属
-                                <span data-tooltip="该资产所属的 Tableau 项目路径">
-                                    <HelpCircle className="w-2.5 h-2.5" />
-                                </span>
-                            </div>
-                            <div className="text-xs font-medium text-gray-800 truncate" title={projectName}>
-                                {projectName || '-'}
+                            <div className="text-xs font-medium text-gray-800">
+                                {isUserType ? (
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${data.site_role?.includes('Admin') ? 'bg-red-50 text-red-700' :
+                                            data.site_role?.includes('Creator') ? 'bg-blue-50 text-blue-700' :
+                                                'bg-gray-100 text-gray-600'
+                                        }`}>
+                                        {data.site_role || '-'}
+                                    </span>
+                                ) : (
+                                    <span className="capitalize">{getAssetTypeName()}</span>
+                                )}
                             </div>
                         </div>
+
+                        {/* 所有者 - 项目/用户不显示 */}
+                        {!isProjectType && !isUserType && (
+                            <div className="bg-white p-3">
+                                <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                                    所有者
+                                    <span data-tooltip="该资产在 Tableau Server 上的负责人或创建者">
+                                        <HelpCircle className="w-2.5 h-2.5" />
+                                    </span>
+                                </div>
+                                <div className="text-xs font-medium text-gray-800 flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
+                                    {ownerName || '-'}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 用户邮箱 */}
+                        {isUserType && data.email && (
+                            <div className="bg-white p-3">
+                                <div className="text-[10px] text-gray-400 mb-0.5">邮箱</div>
+                                <div className="text-xs font-medium text-gray-800 truncate">{data.email}</div>
+                            </div>
+                        )}
+
+                        {/* 项目统计 - 字段数/认证率 */}
+                        {isProjectType && data.stats && (
+                            <>
+                                <div className="bg-white p-3">
+                                    <div className="text-[10px] text-gray-400 mb-0.5">总字段数</div>
+                                    <div className="text-xs font-medium text-gray-800">{data.stats.total_fields || 0}</div>
+                                </div>
+                                <div className="bg-white p-3">
+                                    <div className="text-[10px] text-gray-400 mb-0.5">认证率</div>
+                                    <div className="text-xs font-medium text-gray-800 flex items-center gap-1">
+                                        {data.stats.certified_datasources || 0} 已认证
+                                        {(data.stats.certification_rate || 0) > 0 && (
+                                            <span className="text-[9px] bg-green-50 text-green-600 px-1 rounded">
+                                                {data.stats.certification_rate}%
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {/* 项目归属 - 仅对有项目属性的资产显示 */}
+                        {!isProjectType && !isUserType && projectName && (
+                            <div className="bg-white p-3">
+                                <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                                    项目归属
+                                    <span data-tooltip="该资产所属的 Tableau 项目路径">
+                                        <HelpCircle className="w-2.5 h-2.5" />
+                                    </span>
+                                </div>
+                                <div className="text-xs font-medium text-gray-800 truncate" title={projectName}>
+                                    {projectName}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 引用次数/关联资产 */}
                         <div className="bg-white p-3">
                             <div className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
-                                引用次数
-                                <span data-tooltip="该资产被下游视图或指标引用的总次数">
+                                {getReferenceLabel()}
+                                <span data-tooltip="该资产被下游引用的总次数或关联的资产数量">
                                     <HelpCircle className="w-2.5 h-2.5" />
                                 </span>
                             </div>
                             <div className="text-xs font-medium text-gray-800 flex items-center gap-1">
-                                {data.referenceCount !== undefined ? data.referenceCount : (data.views?.length || 0)}
-                                {((data.referenceCount || 0) > 5) && <span className="text-[8px] bg-amber-50 text-amber-600 px-1 rounded border border-amber-100">🔥 Hot</span>}
+                                {getReferenceCount()}
+                                {getReferenceCount() > 5 && <span className="text-[8px] bg-amber-50 text-amber-600 px-1 rounded border border-amber-100">🔥 Hot</span>}
                             </div>
                         </div>
                         {createdAt && (

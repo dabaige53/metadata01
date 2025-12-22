@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 import { Loader2, LayoutGrid } from 'lucide-react';
-import InlineFilter from '@/components/data-table/InlineFilter';
+import FacetFilterBar from '@/components/data-table/FacetFilterBar';
 import SortButtons from '@/components/data-table/SortButtons';
 import Pagination from '@/components/data-table/Pagination';
 import ViewCard from '@/components/cards/ViewCard';
@@ -63,7 +63,8 @@ function ViewsContent() {
         displayData,
         facets,
         activeFilters,
-        handleFilterChange,
+        handleBatchFilterChange,
+        handleClearAllFilters,
         sortState,
         handleSortChange,
         paginationState,
@@ -72,7 +73,7 @@ function ViewsContent() {
     } = useDataTable({
         moduleName: 'views',
         data: data,
-        facetFields: ['workbook'],
+        facetFields: ['view_type', 'workbook_name'],
         serverSide: true,
         totalOverride: total,
         facetsOverride: facetsData,
@@ -168,49 +169,15 @@ function ViewsContent() {
                 )}
             </div>
 
-            {/* 标签页内容切换 */}
+            {/* 筛选器工具栏 */}
             {
                 (activeTab === 'list' || activeTab === 'dashboard') && (
-                    <div className="flex gap-4 mb-4">
-                        <InlineFilter
-                            facets={facets}
-                            activeFilters={activeFilters}
-                            onFilterChange={handleFilterChange}
-                        />
-                        {activeTab === 'list' && (
-                            <div className="flex items-center gap-2 bg-gray-50/50 px-3 py-1 rounded-lg border border-gray-200">
-                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">类型:</span>
-                                {[
-                                    { label: '全部', value: 'all' },
-                                    { label: '仪表盘', value: 'dashboard' },
-                                    { label: '工作表', value: 'sheet' }
-                                ].map(opt => {
-                                    const isActive = (activeFilters.view_type?.[0] || 'all') === opt.value;
-                                    return (
-                                        <button
-                                            key={opt.value}
-                                            type="button"
-                                            onClick={() => {
-                                                const current = activeFilters.view_type?.[0];
-                                                if (current && current !== opt.value) {
-                                                    handleFilterChange('view_type', current, false);
-                                                }
-                                                if (opt.value !== 'all' && current !== opt.value) {
-                                                    handleFilterChange('view_type', opt.value, true);
-                                                }
-                                            }}
-                                            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${isActive
-                                                ? 'bg-white text-indigo-600 shadow-sm'
-                                                : 'text-gray-500 hover:text-gray-700'
-                                                }`}
-                                        >
-                                            {opt.label}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
+                    <FacetFilterBar
+                        facets={facets}
+                        activeFilters={activeFilters}
+                        onFilterChange={handleBatchFilterChange}
+                        onClearAll={handleClearAllFilters}
+                    />
                 )
             }
 

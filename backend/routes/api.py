@@ -61,23 +61,16 @@ def get_stats():
     return jsonify(stats)
 
 
+
 import re
 from collections import defaultdict
 
-# ==================== 辅助函数：指标索引构建（优化版） ====================
+# ==================== 辅助函数 ====================
 
 def get_field_usage_by_name(session, field_name):
     """
     按需查询：获取指定字段被哪些指标引用
-    替代 build_metric_index 的 field_usage 功能
     """
-def get_field_usage_by_name(session, field_name):
-    """
-    按需查询：获取指定字段被哪些指标引用
-    替代 build_metric_index 的 field_usage 功能
-    """
-    # Join Field, Datasource, CalculatedField, and Workbook to get rich info
-    # Use outer joins because not all fields have datasource or workbook or calc info
     deps = session.query(Field, Datasource, CalculatedField, Workbook).join(
         FieldDependency, Field.id == FieldDependency.source_field_id
     ).outerjoin(
@@ -104,18 +97,6 @@ def get_field_usage_by_name(session, field_name):
         })
     return result
 
-
-def get_metric_dependencies(session, metric_id):
-    """
-    按需查询：获取指定指标依赖的字段列表
-    替代 build_metric_index 的 metric_deps 功能
-    """
-    deps = session.query(FieldDependency).filter(
-        FieldDependency.source_field_id == metric_id
-    ).all()
-    
-# ========== 辅助函数移除 (已由预计算字段替代) ==========
-# build_metric_index, get_field_usage_by_name, get_metric_dependencies, get_duplicate_formulas 已废弃
 
 # ==================== 仪表盘分析接口 ====================
 
@@ -541,7 +522,7 @@ def get_tables_unused():
         SELECT 
             t.id, t.name, t.schema, t.database_id,
             db.name as database_name,
-            (SELECT COUNT(*) FROM columns c WHERE c.table_id = t.id) as column_count
+            (SELECT COUNT(*) FROM db_columns c WHERE c.table_id = t.id) as column_count
         FROM tables t
         LEFT JOIN databases db ON t.database_id = db.id
         LEFT JOIN table_to_datasource td ON t.id = td.table_id
@@ -574,7 +555,7 @@ def get_tables_wide():
         SELECT 
             t.id, t.name, t.schema, t.database_id,
             db.name as database_name,
-            (SELECT COUNT(*) FROM columns c WHERE c.table_id = t.id) as column_count,
+            (SELECT COUNT(*) FROM db_columns c WHERE c.table_id = t.id) as column_count,
             (SELECT COUNT(DISTINCT td.datasource_id) FROM table_to_datasource td WHERE td.table_id = t.id) as datasource_count
         FROM tables t
         LEFT JOIN databases db ON t.database_id = db.id
@@ -643,12 +624,24 @@ def get_tables():
     total_count = query.count()
     tables = query.limit(page_size).offset(offset).all()
     
-    # Facets 统计 (schema)
+    # Facets 统计 (schema, database_name)
     schema_stats = session.execute(text("""
         SELECT schema, COUNT(*) as cnt FROM tables WHERE schema IS NOT NULL GROUP BY schema
     """)).fetchall()
+    
+    database_stats = session.execute(text("""
+        SELECT d.name as database_name, COUNT(*) as cnt 
+        FROM tables t
+        LEFT JOIN databases d ON t.database_id = d.id
+        WHERE d.name IS NOT NULL
+        GROUP BY d.name
+        ORDER BY cnt DESC
+        LIMIT 20
+    """)).fetchall()
+    
     facets = {
-        'schema': {row[0]: row[1] for row in schema_stats if row[0]}
+        'schema': {row[0]: row[1] for row in schema_stats if row[0]},
+        'database_name': {row[0]: row[1] for row in database_stats if row[0]}
     }
     
     # 预查询统计数据
@@ -889,12 +882,37 @@ def get_datasources():
         # 如果前端需要详情，应使用详情接口
         results.append(data)
 
+    # Facets 统计
+    facets = {}
+    
+    # is_certified facet
+    cert_stats = session.execute(text("""
+        SELECT 
+            CASE WHEN is_certified = 1 THEN 'true' ELSE 'false' END as certified,
+            COUNT(*) as cnt
+        FROM datasources
+        GROUP BY is_certified
+    """)).fetchall()
+    facets['is_certified'] = {row[0]: row[1] for row in cert_stats}
+    
+    # project_name facet
+    project_stats = session.execute(text("""
+        SELECT project_name, COUNT(*) as cnt
+        FROM datasources
+        WHERE project_name IS NOT NULL AND project_name != ''
+        GROUP BY project_name
+        ORDER BY cnt DESC
+        LIMIT 20
+    """)).fetchall()
+    facets['project_name'] = {row[0]: row[1] for row in project_stats if row[0]}
+
     return jsonify({
         'items': results,
         'total': total_count,
         'page': page,
         'page_size': page_size,
-        'total_pages': (total_count + page_size - 1) // page_size
+        'total_pages': (total_count + page_size - 1) // page_size,
+        'facets': facets
     })
 
 @api_bp.route('/datasources/<ds_id>')
@@ -971,7 +989,7 @@ def get_workbooks_empty():
     # 查询视图数为0的工作簿
     sql = """
         SELECT 
-            w.id, w.name, w.project_name, w.owner, w.site_name
+            w.id, w.name, w.project_name, w.owner
         FROM workbooks w
         LEFT JOIN views v ON w.id = v.workbook_id
         GROUP BY w.id
@@ -984,8 +1002,7 @@ def get_workbooks_empty():
         'id': row.id,
         'name': row.name,
         'project_name': row.project_name or '-',
-        'owner': row.owner or '-',
-        'site_name': row.site_name or '-'
+        'owner': row.owner or '-'
     } for row in rows]
     
     return jsonify({
@@ -1047,12 +1064,27 @@ def get_workbooks():
         data = wb.to_dict()
         data['upstream_datasources'] = [ds.name for ds in wb.datasources]
         results.append(data)
+    # Facets 统计
+    from sqlalchemy import text
+    facets = {}
+    
+    # project_name facet
+    project_stats = session.execute(text("""
+        SELECT project_name, COUNT(*) as cnt
+        FROM workbooks
+        WHERE project_name IS NOT NULL AND project_name != ''
+        GROUP BY project_name
+        ORDER BY cnt DESC
+        LIMIT 20
+    """)).fetchall()
+    facets['project_name'] = {row[0]: row[1] for row in project_stats if row[0]}
         
     return jsonify({
         'items': results,
         'total': len(results),
         'page': 1,
-        'page_size': len(results)
+        'page_size': len(results),
+        'facets': facets
     })
 
 
@@ -1265,11 +1297,36 @@ def get_views():
     
     views = query.limit(page_size).offset(offset).all()
     
+    # Facets 统计
+    facets = {}
+    
+    # view_type facet
+    view_type_stats = session.execute(text("""
+        SELECT view_type, COUNT(*) as cnt
+        FROM views
+        WHERE view_type IS NOT NULL
+        GROUP BY view_type
+    """)).fetchall()
+    facets['view_type'] = {row[0]: row[1] for row in view_type_stats if row[0]}
+    
+    # workbook_name facet
+    workbook_stats = session.execute(text("""
+        SELECT w.name as workbook_name, COUNT(*) as cnt
+        FROM views v
+        LEFT JOIN workbooks w ON v.workbook_id = w.id
+        WHERE w.name IS NOT NULL
+        GROUP BY w.name
+        ORDER BY cnt DESC
+        LIMIT 20
+    """)).fetchall()
+    facets['workbook_name'] = {row[0]: row[1] for row in workbook_stats if row[0]}
+    
     return jsonify({
         'items': [v.to_dict() for v in views],
         'total': total,
         'page': page,
-        'page_size': page_size
+        'page_size': page_size,
+        'facets': facets
     })
 
 
@@ -1312,6 +1369,26 @@ def get_view_detail(view_id):
     
     data['used_fields'] = fields_data
     data['used_metrics'] = metrics_data
+    
+    # 如果是仪表盘，包含的视图列表
+    if view.view_type == 'dashboard' and view.contained_sheets:
+        contained_views = []
+        sheets_total_views = 0
+        for sheet in view.contained_sheets:
+            sheet_views = sheet.total_view_count or 0
+            sheets_total_views += sheet_views
+            contained_views.append({
+                'id': sheet.id,
+                'name': sheet.name,
+                'viewType': sheet.view_type,
+                'totalViewCount': sheet_views,
+                'path': sheet.path
+            })
+        data['contained_views'] = contained_views
+        data['containedViewCount'] = len(contained_views)
+        # 聚合访问量：仪表盘自身访问量 + 所有包含视图的访问量
+        dashboard_own_views = view.total_view_count or 0
+        data['aggregatedViewCount'] = dashboard_own_views + sheets_total_views
     
     return jsonify(data)
 
@@ -1440,14 +1517,15 @@ def get_fields_orphan():
     session = g.db_session
     from sqlalchemy import text
     
-    # 查询所有 usage_count = 0 的字段
+    # 查询所有 usage_count = 0 的非计算字段（与字段列表保持一致）
     sql = """
         SELECT 
             f.id, f.name, f.role, f.data_type, f.is_calculated,
             f.datasource_id, d.name as datasource_name
         FROM fields f
         LEFT JOIN datasources d ON f.datasource_id = d.id
-        WHERE (f.usage_count IS NULL OR f.usage_count = 0)
+        WHERE (f.is_calculated = 0 OR f.is_calculated IS NULL)
+          AND (f.usage_count IS NULL OR f.usage_count = 0)
         ORDER BY d.name, f.name
     """
     rows = session.execute(text(sql)).fetchall()
@@ -1491,14 +1569,15 @@ def get_fields_hot():
     session = g.db_session
     from sqlalchemy import text
     
-    # 查询所有高频使用的字段（usage_count > 20）
+    # 查询所有高频使用的非计算字段（usage_count > 20）
     sql = """
         SELECT 
             f.id, f.name, f.role, f.data_type, f.is_calculated,
             f.usage_count, f.datasource_id, d.name as datasource_name
         FROM fields f
         LEFT JOIN datasources d ON f.datasource_id = d.id
-        WHERE f.usage_count > 20
+        WHERE (f.is_calculated = 0 OR f.is_calculated IS NULL)
+          AND f.usage_count > 20
         ORDER BY f.usage_count DESC
     """
     rows = session.execute(text(sql)).fetchall()
@@ -1538,6 +1617,142 @@ def get_fields_hot():
         'max_usage': max_usage,
         'avg_usage': avg_usage,
         'fields': fields
+    })
+
+
+# -------------------- 字段目录 API (去重聚合) --------------------
+
+@api_bp.route('/fields/catalog')
+def get_fields_catalog():
+    """
+    获取字段目录 - 按物理列聚合去重
+    
+    聚合规则：按 (upstream_column_name OR name) + table_id 分组
+    返回：canonical_name, table_name, role, data_type, instance_count, total_usage, datasources
+    """
+    session = g.db_session
+    from sqlalchemy import text
+    
+    # 分页参数
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 50, type=int)
+    page_size = min(page_size, 200)
+    
+    # 筛选参数
+    search = request.args.get('search', '')
+    role_filter = request.args.get('role', '')
+    sort = request.args.get('sort', 'total_usage')
+    order = request.args.get('order', 'desc')
+    
+    # 构建动态条件
+    conditions = ["(f.is_calculated = 0 OR f.is_calculated IS NULL)"]
+    params = {}
+    
+    if search:
+        conditions.append("(COALESCE(f.upstream_column_name, f.name) LIKE :search)")
+        params['search'] = f'%{search}%'
+    
+    if role_filter:
+        conditions.append("f.role = :role")
+        params['role'] = role_filter
+    
+    where_clause = "WHERE " + " AND ".join(conditions)
+    
+    # 聚合查询
+    # 使用 COALESCE(upstream_column_name, name) 作为规范名称
+    # 按 (规范名称 + table_id) 分组
+    base_sql = f"""
+        SELECT 
+            COALESCE(f.upstream_column_name, f.name) as canonical_name,
+            f.table_id,
+            t.name as table_name,
+            t.schema as table_schema,
+            db.name as database_name,
+            MAX(f.role) as role,
+            MAX(f.data_type) as data_type,
+            MAX(f.remote_type) as remote_type,
+            MAX(f.description) as description,
+            COUNT(*) as instance_count,
+            COALESCE(SUM(f.usage_count), 0) as total_usage,
+            GROUP_CONCAT(DISTINCT f.datasource_id) as datasource_ids,
+            GROUP_CONCAT(DISTINCT d.name) as datasource_names
+        FROM fields f
+        LEFT JOIN tables t ON f.table_id = t.id
+        LEFT JOIN databases db ON t.database_id = db.id
+        LEFT JOIN datasources d ON f.datasource_id = d.id
+        {where_clause}
+        GROUP BY COALESCE(f.upstream_column_name, f.name), f.table_id
+    """
+    
+    # 统计总数
+    count_sql = f"SELECT COUNT(*) FROM ({base_sql}) sub"
+    total = session.execute(text(count_sql), params).scalar() or 0
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 0
+    
+    # 排序
+    order_dir = 'DESC' if order == 'desc' else 'ASC'
+    if sort == 'total_usage':
+        order_clause = f"ORDER BY total_usage {order_dir}"
+    elif sort == 'instance_count':
+        order_clause = f"ORDER BY instance_count {order_dir}"
+    elif sort == 'name':
+        order_clause = f"ORDER BY canonical_name {order_dir}"
+    else:
+        order_clause = f"ORDER BY total_usage {order_dir}"
+    
+    # 分页
+    offset = (page - 1) * page_size
+    params['limit'] = page_size
+    params['offset'] = offset
+    
+    data_sql = f"{base_sql} {order_clause} LIMIT :limit OFFSET :offset"
+    rows = session.execute(text(data_sql), params).fetchall()
+    
+    # 构建结果
+    items = []
+    for row in rows:
+        # 解析数据源列表
+        ds_ids = row.datasource_ids.split(',') if row.datasource_ids else []
+        ds_names = row.datasource_names.split(',') if row.datasource_names else []
+        datasources = [{'id': ds_ids[i] if i < len(ds_ids) else None, 'name': ds_names[i]} 
+                       for i in range(len(ds_names))]
+        
+        items.append({
+            'canonical_name': row.canonical_name,
+            'table_id': row.table_id,
+            'table_name': row.table_name or '-',
+            'table_schema': row.table_schema,
+            'database_name': row.database_name,
+            'role': row.role,
+            'data_type': row.data_type,
+            'remote_type': row.remote_type,
+            'description': row.description or '',
+            'instance_count': row.instance_count,
+            'total_usage': row.total_usage or 0,
+            'datasources': datasources,
+            'datasource_count': len(datasources)
+        })
+    
+    # Facets 统计
+    facets = {}
+    role_sql = f"""
+        SELECT sub.role, COUNT(*) FROM (
+            SELECT MAX(f.role) as role
+            FROM fields f
+            {where_clause}
+            GROUP BY COALESCE(f.upstream_column_name, f.name), f.table_id
+        ) sub GROUP BY sub.role
+    """
+    role_counts = session.execute(text(role_sql), params).fetchall()
+    facets['role'] = {str(r or 'unknown'): c for r, c in role_counts}
+    
+    return jsonify({
+        'items': items,
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': total_pages,
+        'facets': facets
     })
 
 
@@ -1931,6 +2146,163 @@ def get_metrics_complex():
         'super_complex_count': super_complex,
         'avg_formula_length': avg_length,
         'items': items
+    })
+
+
+# -------------------- 指标目录 API (去重聚合) --------------------
+
+@api_bp.route('/metrics/catalog')
+def get_metrics_catalog():
+    """
+    获取指标目录 - 按公式哈希聚合去重
+    
+    聚合规则：按 (name + formula_hash) 分组
+    返回：name, formula, role, instance_count, total_references, complexity, datasources, workbooks
+    """
+    session = g.db_session
+    from sqlalchemy import text
+    
+    # 分页参数
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 50, type=int)
+    page_size = min(page_size, 200)
+    
+    # 筛选参数
+    search = request.args.get('search', '')
+    role_filter = request.args.get('role', '')
+    sort = request.args.get('sort', 'total_references')
+    order = request.args.get('order', 'desc')
+    
+    # 构建动态条件
+    conditions = ["f.is_calculated = 1"]
+    params = {}
+    
+    if search:
+        conditions.append("(f.name LIKE :search OR cf.formula LIKE :search)")
+        params['search'] = f'%{search}%'
+    
+    if role_filter:
+        conditions.append("f.role = :role")
+        params['role'] = role_filter
+    
+    where_clause = "WHERE " + " AND ".join(conditions)
+    
+    # 聚合查询
+    # 按 (name + formula_hash) 分组
+    base_sql = f"""
+        SELECT 
+            f.name,
+            cf.formula,
+            cf.formula_hash,
+            MAX(f.role) as role,
+            MAX(f.data_type) as data_type,
+            MAX(f.description) as description,
+            COUNT(*) as instance_count,
+            MAX(cf.complexity_score) as complexity,
+            COALESCE(SUM(cf.reference_count), 0) as total_references,
+            GROUP_CONCAT(DISTINCT f.datasource_id) as datasource_ids,
+            GROUP_CONCAT(DISTINCT d.name) as datasource_names,
+            GROUP_CONCAT(DISTINCT f.workbook_id) as workbook_ids,
+            GROUP_CONCAT(DISTINCT w.name) as workbook_names
+        FROM fields f
+        INNER JOIN calculated_fields cf ON f.id = cf.field_id
+        LEFT JOIN datasources d ON f.datasource_id = d.id
+        LEFT JOIN workbooks w ON f.workbook_id = w.id
+        {where_clause}
+        GROUP BY f.name, cf.formula_hash
+    """
+    
+    # 统计总数
+    count_sql = f"SELECT COUNT(*) FROM ({base_sql}) sub"
+    total = session.execute(text(count_sql), params).scalar() or 0
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 0
+    
+    # 排序
+    order_dir = 'DESC' if order == 'desc' else 'ASC'
+    if sort == 'total_references':
+        order_clause = f"ORDER BY total_references {order_dir}"
+    elif sort == 'instance_count':
+        order_clause = f"ORDER BY instance_count {order_dir}"
+    elif sort == 'complexity':
+        order_clause = f"ORDER BY complexity {order_dir}"
+    elif sort == 'name':
+        order_clause = f"ORDER BY name {order_dir}"
+    else:
+        order_clause = f"ORDER BY total_references {order_dir}"
+    
+    # 分页
+    offset = (page - 1) * page_size
+    params['limit'] = page_size
+    params['offset'] = offset
+    
+    data_sql = f"{base_sql} {order_clause} LIMIT :limit OFFSET :offset"
+    rows = session.execute(text(data_sql), params).fetchall()
+    
+    # 构建结果
+    items = []
+    for row in rows:
+        # 解析数据源列表
+        ds_ids = row.datasource_ids.split(',') if row.datasource_ids else []
+        ds_names = row.datasource_names.split(',') if row.datasource_names else []
+        datasources = [{'id': ds_ids[i] if i < len(ds_ids) else None, 'name': ds_names[i]} 
+                       for i in range(len(ds_names))]
+        
+        # 解析工作簿列表
+        wb_ids = row.workbook_ids.split(',') if row.workbook_ids else []
+        wb_names = row.workbook_names.split(',') if row.workbook_names else []
+        workbooks = [{'id': wb_ids[i] if i < len(wb_ids) else None, 'name': wb_names[i]} 
+                     for i in range(len(wb_names))]
+        
+        # 计算复杂度等级
+        formula_len = len(row.formula) if row.formula else 0
+        if formula_len >= 500:
+            complexity_level = '超高'
+        elif formula_len >= 300:
+            complexity_level = '高'
+        elif formula_len >= 100:
+            complexity_level = '中'
+        else:
+            complexity_level = '低'
+        
+        items.append({
+            'name': row.name,
+            'formula': row.formula,
+            'formula_hash': row.formula_hash,
+            'role': row.role,
+            'data_type': row.data_type,
+            'description': row.description or '',
+            'instance_count': row.instance_count,
+            'complexity': row.complexity or 0,
+            'complexity_level': complexity_level,
+            'formula_length': formula_len,
+            'total_references': row.total_references or 0,
+            'datasources': datasources,
+            'datasource_count': len(datasources),
+            'workbooks': workbooks,
+            'workbook_count': len(workbooks)
+        })
+    
+    # Facets 统计
+    facets = {}
+    role_sql = f"""
+        SELECT sub.role, COUNT(*) FROM (
+            SELECT MAX(f.role) as role
+            FROM fields f
+            INNER JOIN calculated_fields cf ON f.id = cf.field_id
+            {where_clause}
+            GROUP BY f.name, cf.formula_hash
+        ) sub GROUP BY sub.role
+    """
+    role_counts = session.execute(text(role_sql), params).fetchall()
+    facets['role'] = {str(r or 'unknown'): c for r, c in role_counts}
+    
+    return jsonify({
+        'items': items,
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': total_pages,
+        'facets': facets
     })
 
 
@@ -2492,7 +2864,6 @@ def get_lineage_graph(item_type, item_id):
             for view in field.views[:5]:
                 add_node(view.id, view.name, 'view')
                 add_edge(field.id, view.id, '使用于')
-    
     elif item_type == 'datasource':
         ds = session.query(Datasource).filter(Datasource.id == item_id).first()
         if ds:
@@ -2507,6 +2878,69 @@ def get_lineage_graph(item_type, item_id):
             for wb in ds.workbooks[:10]:
                 add_node(wb.id, wb.name, 'workbook')
                 add_edge(ds.id, wb.id, '使用')
+
+    elif item_type == 'table':
+        table = session.query(DBTable).filter(DBTable.id == item_id).first()
+        if table:
+            add_node(table.id, table.name, 'table', is_center=True)
+            
+            # Upstream: Database
+            if table.database:
+                add_node(table.database.id, table.database.name, 'database')
+                add_edge(table.database.id, table.id, '存储于')
+
+            # Downstream: Datasources
+            for ds in table.datasources:
+                add_node(ds.id, ds.name, 'datasource')
+                add_edge(table.id, ds.id, '提供数据')
+
+            # Downstream: Fields (Direct)
+            for f in table.fields[:10]:
+                add_node(f.id, f.name, 'field')
+                add_edge(table.id, f.id, '包含')
+
+    elif item_type == 'workbook':
+        wb = session.query(Workbook).filter(Workbook.id == item_id).first()
+        if wb:
+            add_node(wb.id, wb.name, 'workbook', is_center=True)
+            
+            # Upstream: Datasources
+            for ds in wb.datasources:
+                add_node(ds.id, ds.name, 'datasource')
+                add_edge(ds.id, wb.id, '支持')
+
+            # Downstream: Views
+            for v in wb.views:
+                add_node(v.id, v.name, 'view')
+                add_edge(wb.id, v.id, '包含')
+
+    elif item_type == 'view':
+        view = session.query(View).filter(View.id == item_id).first()
+        if view:
+            add_node(view.id, view.name, 'view', is_center=True)
+            
+            # Upstream: Workbook
+            if view.workbook:
+                add_node(view.workbook.id, view.workbook.name, 'workbook')
+                add_edge(view.workbook.id, view.id, '包含')
+            
+            # Upstream: Fields/Metrics usage
+            # Distinct data sources via fields
+            ds_seen = set()
+            for f in view.fields:
+                if f.datasource and f.datasource.id not in ds_seen:
+                    ds_seen.add(f.datasource.id)
+                    add_node(f.datasource.id, f.datasource.name, 'datasource')
+                    add_edge(f.datasource.id, view.id, '数据来源')
+    
+    elif item_type == 'database':
+        db = session.query(Database).filter(Database.id == item_id).first()
+        if db:
+            add_node(db.id, db.name, 'database', is_center=True)
+            # Downstream: Tables
+            for t in db.tables[:15]:
+                add_node(t.id, t.name, 'table')
+                add_edge(db.id, t.id, '包含')
     
     # 生成 Mermaid 代码
     mermaid_code = "graph LR\n"

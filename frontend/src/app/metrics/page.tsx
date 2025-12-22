@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 import { Loader2, FunctionSquare } from 'lucide-react';
-import InlineFilter from '@/components/data-table/InlineFilter';
+import FacetFilterBar from '@/components/data-table/FacetFilterBar';
 import SortButtons from '@/components/data-table/SortButtons';
 import Pagination from '@/components/data-table/Pagination';
 import MetricCard from '@/components/cards/MetricCard';
@@ -11,6 +11,7 @@ import { useDataTable } from '@/hooks/useDataTable';
 import DuplicateMetricsAnalysis from '@/components/metrics/DuplicateMetricsAnalysis';
 import ComplexMetricsAnalysis from '@/components/metrics/ComplexMetricsAnalysis';
 import UnusedMetricsAnalysis from '@/components/metrics/UnusedMetricsAnalysis';
+import MetricCatalog from '@/components/metrics/MetricCatalog';
 
 interface MetricItem {
     id: string;
@@ -34,7 +35,7 @@ function MetricsContent() {
     const [total, setTotal] = useState(0);
     const [facetsData, setFacetsData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'list' | 'duplicate' | 'complex' | 'unused'>('list');
+    const [activeTab, setActiveTab] = useState<'catalog' | 'list' | 'duplicate' | 'complex' | 'unused'>('catalog');
     const { openDrawer } = useDrawer();
 
     const fetchMetrics = async (params: Record<string, any>) => {
@@ -63,7 +64,8 @@ function MetricsContent() {
         displayData,
         facets,
         activeFilters,
-        handleFilterChange,
+        handleBatchFilterChange,
+        handleClearAllFilters,
         sortState,
         handleSortChange,
         paginationState,
@@ -114,6 +116,15 @@ function MetricsContent() {
                     {/* 标签页切换 */}
                     <div className="flex p-1 bg-gray-100/80 rounded-lg">
                         <button
+                            onClick={() => setActiveTab('catalog')}
+                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'catalog'
+                                ? 'bg-white text-indigo-600 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            指标目录
+                        </button>
+                        <button
                             onClick={() => setActiveTab('list')}
                             className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'list'
                                 ? 'bg-white text-indigo-600 shadow-sm'
@@ -161,12 +172,13 @@ function MetricsContent() {
                 )}
             </div>
 
-            {/* 标签页内容切换 */}
+            {/* 筛选器工具栏 */}
             {activeTab === 'list' && (
-                <InlineFilter
+                <FacetFilterBar
                     facets={facets}
                     activeFilters={activeFilters}
-                    onFilterChange={handleFilterChange}
+                    onFilterChange={handleBatchFilterChange}
+                    onClearAll={handleClearAllFilters}
                 />
             )}
 
@@ -204,6 +216,8 @@ function MetricsContent() {
                         />
                     )}
                 </>
+            ) : activeTab === 'catalog' ? (
+                <MetricCatalog onMetricClick={(metric) => openDrawer('metric', metric.name)} />
             ) : activeTab === 'duplicate' ? (
                 <DuplicateMetricsAnalysis />
             ) : activeTab === 'complex' ? (

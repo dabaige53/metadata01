@@ -116,25 +116,48 @@ function DatabasesContent() {
                         <div
                             key={db.id || i}
                             onClick={() => openDrawer(db.id, 'databases', db.name)}
-                            className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all cursor-pointer group"
+                            className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all cursor-pointer group flex flex-col h-full"
                         >
                             <div className="flex justify-between items-start mb-3">
-                                <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
+                                <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 group-hover:bg-indigo-100 transition-colors">
                                     <Database className="w-5 h-5" />
                                 </div>
-                                <div className="px-2 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-700">
-                                    使用中
+                                <div className="flex flex-col items-end gap-1">
+                                    <div className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-600 text-white uppercase tracking-wider">
+                                        {db.connectionType || db.connection_type || 'Unknown'}
+                                    </div>
+                                    <div className="px-2 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-700">
+                                        使用中
+                                    </div>
                                 </div>
                             </div>
 
-                            <h3 className="font-bold text-gray-800 mb-1 truncate text-sm" title={db.name}>{db.name}</h3>
-                            <p className="text-[11px] text-gray-500 font-mono mb-4">{db.connectionType || db.connection_type || 'Unknown'}</p>
-
-                            <div className="border-t border-gray-50 pt-3 flex items-center justify-between text-xs text-gray-500">
-                                <div className="flex items-center gap-1">
-                                    <span className="font-semibold text-gray-700">{db.table_count || db.tables || 0}</span> 数据表
+                            <div className="flex-grow">
+                                <h3 className="font-bold text-gray-800 mb-1 truncate text-base group-hover:text-indigo-600 transition-colors" title={db.name}>
+                                    {db.name}
+                                </h3>
+                                <div className="flex items-center gap-1.5 mb-4 text-gray-500 min-h-[1.5rem]">
+                                    <div className="shrink-0 w-1 h-1 rounded-full bg-gray-300"></div>
+                                    <p className="text-[11px] font-mono truncate" title={db.hostName || db.host_name || 'N/A'}>
+                                        {db.hostName || db.host_name || '无物理地址信息'}
+                                    </p>
                                 </div>
-                                <ArrowRight className="w-3.5 h-3.5 text-gray-300 group-hover:text-indigo-500 transition-colors" />
+                            </div>
+
+                            <div className="border-t border-gray-50 pt-3 mt-auto flex items-center justify-between text-xs text-gray-500">
+                                <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-1">
+                                        <span className="font-bold text-gray-900 text-sm">{db.table_count || db.tables || 0}</span>
+                                        <span className="text-gray-400">数据表</span>
+                                    </div>
+                                    {db.total_field_count !== undefined && (
+                                        <div className="flex items-center gap-1">
+                                            <span className="font-bold text-gray-900 text-sm">{db.total_field_count}</span>
+                                            <span className="text-gray-400">字段</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
                             </div>
                         </div>
                     ))

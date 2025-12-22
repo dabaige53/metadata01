@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 import { api } from '@/lib/api';
 import { Loader2, Layers } from 'lucide-react';
-import InlineFilter from '@/components/data-table/InlineFilter';
+import FacetFilterBar from '@/components/data-table/FacetFilterBar';
 import SortButtons from '@/components/data-table/SortButtons';
 import Pagination from '@/components/data-table/Pagination';
 import DatasourceCard from '@/components/cards/DatasourceCard';
@@ -68,7 +68,8 @@ function DatasourcesContent() {
         displayData,
         facets,
         activeFilters,
-        handleFilterChange,
+        handleBatchFilterChange,
+        handleClearAllFilters,
         sortState,
         handleSortChange,
         paginationState,
@@ -77,6 +78,7 @@ function DatasourcesContent() {
     } = useDataTable({
         moduleName: 'datasources',
         data: data,
+        facetFields: ['is_certified', 'project_name'],
         serverSide: true,
         totalOverride: total,
         facetsOverride: facetsData,
@@ -157,12 +159,13 @@ function DatasourcesContent() {
                 )}
             </div>
 
-            {/* 标签页内容切换 */}
+            {/* 筛选器工具栏 */}
             {activeTab === 'list' && (
-                <InlineFilter
+                <FacetFilterBar
                     facets={facets}
                     activeFilters={activeFilters}
-                    onFilterChange={handleFilterChange}
+                    onFilterChange={handleBatchFilterChange}
+                    onClearAll={handleClearAllFilters}
                 />
             )}
 

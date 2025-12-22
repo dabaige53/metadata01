@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 import { Loader2, Columns } from 'lucide-react';
-import InlineFilter from '@/components/data-table/InlineFilter';
+import FacetFilterBar from '@/components/data-table/FacetFilterBar';
 import SortButtons from '@/components/data-table/SortButtons';
 import Pagination from '@/components/data-table/Pagination';
 import FieldCard from '@/components/cards/FieldCard';
@@ -11,6 +11,7 @@ import { useDataTable } from '@/hooks/useDataTable';
 import NoDescriptionFieldsAnalysis from '@/components/fields/NoDescriptionFieldsAnalysis';
 import OrphanFieldsAnalysis from '@/components/fields/OrphanFieldsAnalysis';
 import HotFieldsAnalysis from '@/components/fields/HotFieldsAnalysis';
+import FieldCatalog from '@/components/fields/FieldCatalog';
 
 interface FieldItem {
     id: string;
@@ -36,7 +37,7 @@ function FieldsContent() {
     const [total, setTotal] = useState(0);
     const [facetsData, setFacetsData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'list' | 'noDescription' | 'orphan' | 'hot'>('list');
+    const [activeTab, setActiveTab] = useState<'catalog' | 'list' | 'noDescription' | 'orphan' | 'hot'>('catalog');
     const { openDrawer } = useDrawer();
 
     const fetchFields = async (params: Record<string, any>) => {
@@ -66,7 +67,8 @@ function FieldsContent() {
         displayData,
         facets,
         activeFilters,
-        handleFilterChange,
+        handleBatchFilterChange,
+        handleClearAllFilters,
         sortState,
         handleSortChange,
         paginationState,
@@ -107,6 +109,15 @@ function FieldsContent() {
 
                     {/* 标签页切换 */}
                     <div className="flex p-1 bg-gray-100/80 rounded-lg">
+                        <button
+                            onClick={() => setActiveTab('catalog')}
+                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'catalog'
+                                ? 'bg-white text-indigo-600 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            字段目录
+                        </button>
                         <button
                             onClick={() => setActiveTab('list')}
                             className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'list'
@@ -155,12 +166,13 @@ function FieldsContent() {
                 )}
             </div>
 
-            {/* 标签页内容切换 */}
+            {/* 筛选器工具栏 */}
             {activeTab === 'list' && (
-                <InlineFilter
+                <FacetFilterBar
                     facets={facets}
                     activeFilters={activeFilters}
-                    onFilterChange={handleFilterChange}
+                    onFilterChange={handleBatchFilterChange}
+                    onClearAll={handleClearAllFilters}
                 />
             )}
 
@@ -198,6 +210,8 @@ function FieldsContent() {
                         />
                     )}
                 </>
+            ) : activeTab === 'catalog' ? (
+                <FieldCatalog onFieldClick={(field) => openDrawer('field', field.canonical_name)} />
             ) : activeTab === 'noDescription' ? (
                 <NoDescriptionFieldsAnalysis />
             ) : activeTab === 'orphan' ? (

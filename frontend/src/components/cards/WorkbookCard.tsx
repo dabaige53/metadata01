@@ -24,6 +24,10 @@ export interface WorkbookCardData {
   createdAt?: string;
   updated_at?: string;
   updatedAt?: string;
+  field_count?: number;
+  fieldCount?: number;
+  metric_count?: number;
+  metricCount?: number;
 }
 
 export interface WorkbookCardProps {
@@ -78,6 +82,14 @@ export default function WorkbookCard({ workbook, onClick, onMouseEnter }: Workbo
       label: '数据源数',
       value: `${datasourceCount} 个`,
     },
+    {
+      label: '使用字段',
+      value: `${workbook.field_count ?? workbook.fieldCount ?? 0}`,
+    },
+    {
+      label: '使用指标',
+      value: `${workbook.metric_count ?? workbook.metricCount ?? 0}`,
+    },
     createdAt && {
       label: '创建',
       value: formatDateWithRelative(createdAt),
@@ -100,6 +112,21 @@ export default function WorkbookCard({ workbook, onClick, onMouseEnter }: Workbo
     details.push({
       label: '上游数据源',
       value: dsNames + (upstreamDatasources.length > 3 ? `... +${upstreamDatasources.length - 3}` : ''),
+    });
+  }
+
+  // Explicitly add Usage Metrics (Field & Metric counts)
+  if (workbook.fieldCount !== undefined && workbook.fieldCount > 0) {
+    details.push({
+      label: '使用字段',
+      value: `${workbook.fieldCount} 个`
+    });
+  }
+
+  if (workbook.metricCount !== undefined && workbook.metricCount > 0) {
+    details.push({
+      label: '使用指标',
+      value: `${workbook.metricCount} 个`
     });
   }
 

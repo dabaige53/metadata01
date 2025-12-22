@@ -176,6 +176,7 @@ class DBTable(Base):
             'description': self.description,
             'isEmbedded': self.is_embedded,
             'isCertified': self.is_certified,
+            'certificationNote': self.certification_note,
             'projectName': self.project_name,
             'columnCount': len(self.columns) if self.columns else 0,
             'fieldCount': len(self.fields) if self.fields else 0,
@@ -210,6 +211,7 @@ class DBColumn(Base):
             'description': self.description,
             'isNullable': self.is_nullable,
             'isCertified': self.is_certified,
+            'certificationNote': self.certification_note,
             'tableId': self.table_id,
             'tableName': self.table.name if self.table else None
         }
@@ -327,6 +329,7 @@ class Datasource(Base):
     project_name = Column(String(255))
     owner = Column(String(255))
     owner_id = Column(String(255))  # 所有者ID
+    is_embedded = Column(Boolean, default=False)  # 是否为嵌入式数据源
     has_extract = Column(Boolean, default=False)
     extract_last_refresh_time = Column(DateTime)
     extract_last_incremental_update_time = Column(DateTime)  # 增量更新时间
