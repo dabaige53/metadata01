@@ -341,6 +341,7 @@ class Datasource(Base):
     has_active_warning = Column(Boolean, default=False)  # 活动警告
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
+    vizportal_url_id = Column(String(255))  # Vizportal URL ID（用于构建准确的 Tableau URL）
     
     # ========== 预计算统计字段（同步时写入）==========
     table_count = Column(Integer, default=0)
@@ -395,6 +396,7 @@ class Workbook(Base):
     has_active_warning = Column(Boolean, default=False)  # 活动警告
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
+    vizportal_url_id = Column(String(255))  # Vizportal URL ID（用于构建准确的 Tableau URL）
     
     # ========== 预计算统计字段（同步时写入）==========
     view_count = Column(Integer, default=0)

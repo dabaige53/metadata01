@@ -26,10 +26,10 @@ def get_stats():
     # 对于 orphanedFields，使用 NOT EXISTS 子查询比 JOIN 更直观（且在 SQLite 中通常性能相当）
     stats_rows = session.execute(text("""
         SELECT 'databases' as key, COUNT(*) as cnt FROM databases
-        UNION ALL SELECT 'tables', COUNT(*) FROM tables
+        UNION ALL SELECT 'tables', COUNT(*) FROM tables WHERE is_embedded = 0 OR is_embedded IS NULL
         UNION ALL SELECT 'fields', COUNT(*) FROM fields WHERE is_calculated = 0 OR is_calculated IS NULL
-        UNION ALL SELECT 'calculatedFields', COUNT(*) FROM calculated_fields
-        UNION ALL SELECT 'datasources', COUNT(*) FROM datasources
+        UNION ALL SELECT 'metrics', COUNT(*) FROM fields WHERE is_calculated = 1 AND (role = 'measure' OR role IS NULL)
+        UNION ALL SELECT 'datasources', COUNT(*) FROM datasources WHERE is_embedded = 0 OR is_embedded IS NULL
         UNION ALL SELECT 'workbooks', COUNT(*) FROM workbooks
         UNION ALL SELECT 'views', COUNT(*) FROM views
         UNION ALL SELECT 'projects', COUNT(*) FROM projects
@@ -41,18 +41,15 @@ def get_stats():
     
     stats_map = {row[0]: row[1] for row in stats_rows}
     
-    # 指标数量 = 计算字段数量
-    calc_count = stats_map.get('calculatedFields', 0)
-    
     stats = {
         'databases': stats_map.get('databases', 0),
         'tables': stats_map.get('tables', 0),
         'fields': stats_map.get('fields', 0),
-        'calculatedFields': calc_count,
+        'calculatedFields': stats_map.get('metrics', 0), # 兼容旧版统计
         'datasources': stats_map.get('datasources', 0),
         'workbooks': stats_map.get('workbooks', 0),
         'views': stats_map.get('views', 0),
-        'metrics': calc_count,
+        'metrics': stats_map.get('metrics', 0),
         'duplicateMetrics': 0,
         'orphanedFields': stats_map.get('orphanedFields', 0),
         'projects': stats_map.get('projects', 0),
@@ -101,16 +98,17 @@ def get_field_usage_by_name(session, field_name):
 
 from typing import Optional
 
-def build_tableau_url(asset_type: str, path: Optional[str] = None, uri: Optional[str] = None, luid: Optional[str] = None, asset_id: Optional[str] = None) -> Optional[str]:
+def build_tableau_url(asset_type: str, path: Optional[str] = None, uri: Optional[str] = None, luid: Optional[str] = None, asset_id: Optional[str] = None, vizportal_url_id: Optional[str] = None) -> Optional[str]:
     """
     构建 Tableau Server 在线查看 URL
     
     参数:
         asset_type: 资产类型 ('view', 'workbook', 'datasource', 'database', 'table')
         path: 视图路径 (视图使用完整路径，工作簿使用第一个视图的路径)
-        uri: 资产 URI (数据源使用)
+        uri: 资产 URI (备用)
         luid: 资产的 LUID (用于构建 Catalog URL)
         asset_id: 资产 ID (Metadata API 返回的 ID，用于 Catalog URL)
+        vizportal_url_id: Vizportal URL ID (最准确的 ID，优先使用)
     
     返回:
         Tableau Server 在线查看 URL，或 None (如果无法构建)
@@ -118,7 +116,7 @@ def build_tableau_url(asset_type: str, path: Optional[str] = None, uri: Optional
     URL 格式示例:
         视图: http://tbi.juneyaoair.com/views/WorkbookName/ViewName
         工作簿: http://tbi.juneyaoair.com/views/WorkbookName (使用第一个视图的路径)
-        数据源: http://tbi.juneyaoair.com/#/datasources/{luid}
+        数据源: http://tbi.juneyaoair.com/#/datasources/{vizportal_url_id}/askData
         数据库: http://tbi.juneyaoair.com/#/catalog/databases/{id}/tables
         数据表: http://tbi.juneyaoair.com/#/catalog/tables/{id}/columns
     """
@@ -143,13 +141,16 @@ def build_tableau_url(asset_type: str, path: Optional[str] = None, uri: Optional
         return None
     
     if asset_type == 'datasource':
-        # 优先从 URI 提取数字 ID（格式：sites/1/datasources/1589）
+        # 优先使用 vizportal_url_id（最准确）
+        if vizportal_url_id:
+            return f"{base_url}/#/datasources/{vizportal_url_id}/askData"
+        # 回退：从 URI 提取数字 ID（格式：sites/1/datasources/1589）
         if uri and '/' in uri:
             parts = uri.split('/')
             if len(parts) >= 2:
-                ds_id = parts[-1]  # 获取最后一部分作为数字 ID
+                ds_id = parts[-1]
                 return f"{base_url}/#/datasources/{ds_id}/askData"
-        # 回退使用 luid
+        # 最后回退使用 luid
         if luid:
             return f"{base_url}/#/datasources/{luid}/askData"
     
@@ -181,25 +182,25 @@ def get_dashboard_analysis():
     import datetime
     from sqlalchemy import text
     
-    # ===== 1. 基础统计 - 合并为单条查询 =====
-    
-    # 使用 UNION ALL 合并多个 COUNT 查询为一次数据库往返
-    basic_stats = session.execute(text("""
-        SELECT 'fields' as entity, COUNT(*) as cnt FROM fields
-        UNION ALL SELECT 'calc_fields', COUNT(*) FROM calculated_fields
-        UNION ALL SELECT 'tables', COUNT(*) FROM tables
-        UNION ALL SELECT 'datasources', COUNT(*) FROM datasources
+    stats_rows = session.execute(text("""
+        SELECT 'fields' as entity, COUNT(*) as cnt FROM fields WHERE is_calculated = 0 OR is_calculated IS NULL
+        UNION ALL SELECT 'metrics', COUNT(*) FROM fields WHERE is_calculated = 1 AND (role = 'measure' OR role IS NULL)
+        UNION ALL SELECT 'tables', COUNT(*) FROM tables WHERE is_embedded = 0 OR is_embedded IS NULL
+        UNION ALL SELECT 'datasources', COUNT(*) FROM datasources WHERE is_embedded = 0 OR is_embedded IS NULL
         UNION ALL SELECT 'workbooks', COUNT(*) FROM workbooks
         UNION ALL SELECT 'views', COUNT(*) FROM views
     """)).fetchall()
     
-    stats_map = {row[0]: row[1] for row in basic_stats}
-    total_fields = stats_map.get('fields', 0)
-    total_calc_fields = stats_map.get('calc_fields', 0)
-    total_tables = stats_map.get('tables', 0)
-    total_datasources = stats_map.get('datasources', 0)
-    total_workbooks = stats_map.get('workbooks', 0)
-    total_views = stats_map.get('views', 0)
+    analysis_stats_map = {row[0]: row[1] for row in stats_rows}
+    total_fields = analysis_stats_map.get('fields', 0)
+    total_metrics = analysis_stats_map.get('metrics', 0)
+    total_tables = analysis_stats_map.get('tables', 0)
+    total_datasources = analysis_stats_map.get('datasources', 0)
+    total_workbooks = analysis_stats_map.get('workbooks', 0)
+    total_views = analysis_stats_map.get('views', 0)
+    
+    # 防御性定义，防止后续逻辑中使用旧变量名
+    total_calc_fields = total_metrics
     
     # ===== 2. 字段来源分布 - 使用 CASE 聚合 =====
     field_source_stats = session.execute(text("""
@@ -271,29 +272,28 @@ def get_dashboard_analysis():
                COUNT(*) as total,
                SUM(CASE WHEN description IS NOT NULL AND description != '' THEN 1 ELSE 0 END) as with_desc,
                0 as certified
-        FROM fields
+        FROM fields WHERE is_calculated = 0 OR is_calculated IS NULL
         UNION ALL
         SELECT 'tables', COUNT(*), 
                SUM(CASE WHEN description IS NOT NULL AND description != '' THEN 1 ELSE 0 END),
                SUM(CASE WHEN is_certified = 1 THEN 1 ELSE 0 END)
-        FROM tables
+        FROM tables WHERE is_embedded = 0 OR is_embedded IS NULL
         UNION ALL
         SELECT 'datasources', COUNT(*), 
                SUM(CASE WHEN description IS NOT NULL AND description != '' THEN 1 ELSE 0 END),
                SUM(CASE WHEN is_certified = 1 THEN 1 ELSE 0 END)
-        FROM datasources
+        FROM datasources WHERE is_embedded = 0 OR is_embedded IS NULL
         UNION ALL
         SELECT 'workbooks', COUNT(*), 
                SUM(CASE WHEN description IS NOT NULL AND description != '' THEN 1 ELSE 0 END),
                0
         FROM workbooks
         UNION ALL
-        SELECT 'calc_fields', 
-               (SELECT COUNT(*) FROM calculated_fields),
-               (SELECT COUNT(*) FROM calculated_fields cf 
-                JOIN fields f ON cf.field_id = f.id 
-                WHERE f.description IS NOT NULL AND f.description != ''),
+        SELECT 'metrics', 
+               COUNT(*),
+               SUM(CASE WHEN description IS NOT NULL AND description != '' THEN 1 ELSE 0 END),
                0
+        FROM fields WHERE is_calculated = 1 AND (role = 'measure' OR role IS NULL)
     """)).fetchall()
     
     cov_map = {row[0]: {'total': row[1], 'with_desc': row[2] or 0, 'certified': row[3] or 0} for row in coverage_stats}
@@ -313,7 +313,7 @@ def get_dashboard_analysis():
     
     field_cov = build_cov_result('fields')
     table_cov = build_cov_result('tables')
-    metric_cov = build_cov_result('calc_fields')
+    metric_cov = build_cov_result('metrics')
     ds_cov = build_cov_result('datasources')
     wb_cov = build_cov_result('workbooks')
 
@@ -324,17 +324,16 @@ def get_dashboard_analysis():
     issue_stats = session.execute(text("""
         SELECT
             (SELECT COUNT(*) FROM datasources 
-             WHERE has_extract = 1 AND extract_last_refresh_time < :thirty_days) as stale_ds,
+             WHERE has_extract = 1 AND extract_last_refresh_time < :thirty_days AND (is_embedded = 0 OR is_embedded IS NULL)) as stale_ds,
             (SELECT COUNT(*) FROM datasources 
-             WHERE has_extract = 1 AND extract_last_refresh_time < :ninety_days) as dead_ds,
+             WHERE has_extract = 1 AND extract_last_refresh_time < :ninety_days AND (is_embedded = 0 OR is_embedded IS NULL)) as dead_ds,
             (SELECT COUNT(*) FROM fields 
-             WHERE description IS NULL OR description = '') as missing_desc,
+             WHERE (description IS NULL OR description = '') AND (is_calculated = 0 OR is_calculated IS NULL)) as missing_desc,
             (SELECT COUNT(*) FROM tables t 
              LEFT JOIN table_to_datasource td ON t.id = td.table_id 
-             WHERE td.datasource_id IS NULL) as orphaned_tables,
-            (SELECT COUNT(*) FROM calculated_fields cf 
-             JOIN fields f ON cf.field_id = f.id 
-             WHERE f.description IS NULL OR f.description = '') as calc_no_desc
+             WHERE td.datasource_id IS NULL AND (t.is_embedded = 0 OR t.is_embedded IS NULL)) as orphaned_tables,
+            (SELECT COUNT(*) FROM fields 
+             WHERE (description IS NULL OR description = '') AND is_calculated = 1 AND (role = 'measure' OR role IS NULL)) as calc_no_desc
     """), {'thirty_days': thirty_days_ago, 'ninety_days': ninety_days_ago}).fetchone()
     
     stale_ds_count = issue_stats[0] or 0
@@ -448,7 +447,8 @@ def get_dashboard_analysis():
         'top_fields': top_fields_data,
         'total_assets': {
             'fields': total_fields,
-            'calculated_fields': total_calc_fields,
+            'metrics': total_metrics,
+            'calculated_fields': total_metrics, # 兼容
             'tables': total_tables,
             'datasources': total_datasources,
             'workbooks': total_workbooks,
@@ -844,23 +844,67 @@ def get_table_detail(table_id):
     data['full_fields'] = full_fields
 
     # 关联的数据源列表
+    # 关联的数据源列表 (Published Datasources)
     datasources_data = []
+    seen_ds_ids = set()
     for ds in table.datasources:
-        datasources_data.append({
-            'id': ds.id,
-            'name': ds.name,
-            'project_name': ds.project_name,
-            'owner': ds.owner,
-            'is_certified': ds.is_certified,
-            'has_extract': ds.has_extract
-        })
+        if ds.id not in seen_ds_ids:
+            datasources_data.append({
+                'id': ds.id,
+                'name': ds.name,
+                'project_name': ds.project_name,
+                'owner': ds.owner,
+                'is_certified': ds.is_certified,
+                'has_extract': ds.has_extract
+            })
+            seen_ds_ids.add(ds.id)
     data['datasources'] = datasources_data
+
+    # 关联的工作簿列表 (通过 Published Datasource + Direct Fields)
+    workbooks_data = []
+    seen_wb_ids = set()
+    
+    # 1. 通过 Published Datasource 关联
+    if table.datasources:
+        for ds in table.datasources:
+            for wb in ds.workbooks:
+                if wb.id not in seen_wb_ids:
+                    workbooks_data.append({
+                        'id': wb.id,
+                        'name': wb.name,
+                        'project_name': wb.project_name,
+                        'owner': wb.owner,
+                        'connection_type': 'published'
+                    })
+                    seen_wb_ids.add(wb.id)
+    
+    # 2. 通过 Direct Field 关联 (Embedded Connection)
+    # 查找该表中列的所有下游字段，如果这些字段直接属于某个工作簿 (workbook_id is not None)
+    # 则说明该工作簿通过嵌入式方式直连了该表
+    direct_fields = session.query(Field).join(DBColumn, Field.upstream_column_id == DBColumn.id)\
+        .filter(DBColumn.table_id == table.id)\
+        .filter(Field.workbook_id.isnot(None))\
+        .all()
+        
+    for f in direct_fields:
+        if f.workbook and f.workbook.id not in seen_wb_ids:
+            workbooks_data.append({
+                'id': f.workbook.id,
+                'name': f.workbook.name,
+                'project_name': f.workbook.project_name,
+                'owner': f.workbook.owner,
+                'connection_type': 'embedded'
+            })
+            seen_wb_ids.add(f.workbook.id)
+            
+    data['workbooks'] = workbooks_data
 
     # 统计信息
     data['stats'] = {
         'column_count': len(table.columns),
         'field_count': len(full_fields),
-        'datasource_count': len(table.datasources)
+        'datasource_count': len(datasources_data),
+        'workbook_count': len(workbooks_data)
     }
     
     # 构建 Tableau Catalog 在线链接
@@ -1054,7 +1098,7 @@ def get_datasource_detail(ds_id):
     }
     
     # 构建 Tableau Server 在线查看链接
-    data['tableau_url'] = build_tableau_url('datasource', uri=ds.uri, luid=ds.luid)
+    data['tableau_url'] = build_tableau_url('datasource', uri=ds.uri, luid=ds.luid, vizportal_url_id=ds.vizportal_url_id)
 
     return jsonify(data)
 
@@ -1216,15 +1260,53 @@ def get_workbook_detail(wb_id):
     
     # 上游数据源列表
     datasources_data = []
+    seen_ds_ids = set()
     for ds in wb.datasources:
-        datasources_data.append({
-            'id': ds.id,
-            'name': ds.name,
-            'project_name': ds.project_name,
-            'owner': ds.owner,
-            'is_certified': ds.is_certified,
-            'has_extract': ds.has_extract
-        })
+        if ds.id not in seen_ds_ids:
+            datasources_data.append({
+                'id': ds.id,
+                'name': ds.name,
+                'project_name': ds.project_name,
+                'owner': ds.owner,
+                'is_certified': ds.is_certified,
+                'has_extract': ds.has_extract
+            })
+            seen_ds_ids.add(ds.id)
+    data['datasources'] = datasources_data
+    
+    # 上游数据表列表 (通过 Published Datasource + Direct Fields)
+    tables_data = []
+    seen_table_ids = set()
+    
+    # 1. 通过 Published Datasource 关联
+    for ds in wb.datasources:
+        for tbl in ds.tables:
+            if tbl.id not in seen_table_ids:
+                tables_data.append({
+                    'id': tbl.id,
+                    'name': tbl.name,
+                    'schema': tbl.schema,
+                    'connection_type': 'published'
+                })
+                seen_table_ids.add(tbl.id)
+                
+    # 2. 通过 Direct Field 关联 (Embedded Connection)
+    # 查找属于该工作簿的所有字段，如果有上游列，则关联到表
+    direct_fields = session.query(Field).filter(Field.workbook_id == wb.id).filter(Field.upstream_column_id.isnot(None)).all()
+    
+    for f in direct_fields:
+        if f.upstream_column and f.upstream_column.table:
+            tbl = f.upstream_column.table
+            if tbl.id not in seen_table_ids:
+                tables_data.append({
+                    'id': tbl.id,
+                    'name': tbl.name,
+                    'schema': tbl.schema,
+                    'connection_type': 'embedded'
+                })
+                seen_table_ids.add(tbl.id)
+                
+    data['tables'] = tables_data
     data['datasources'] = datasources_data
     
     # 收集所有视图中使用的字段
@@ -2008,6 +2090,7 @@ def get_fields_catalog_orphan():
             MAX(f.description) as description,
             COUNT(*) as instance_count,
             COALESCE(SUM(f.usage_count), 0) as total_usage,
+            COALESCE(SUM(f.metric_usage_count), 0) as total_metric_usage,
             GROUP_CONCAT(DISTINCT f.datasource_id) as datasource_ids,
             GROUP_CONCAT(DISTINCT d.name) as datasource_names
         FROM fields f
@@ -2016,7 +2099,7 @@ def get_fields_catalog_orphan():
         LEFT JOIN datasources d ON f.datasource_id = d.id
         WHERE (f.is_calculated = 0 OR f.is_calculated IS NULL)
         GROUP BY COALESCE(f.upstream_column_name, f.name), f.table_id
-        HAVING COALESCE(SUM(f.usage_count), 0) = 0
+        HAVING COALESCE(SUM(f.usage_count), 0) = 0 AND COALESCE(SUM(f.metric_usage_count), 0) = 0
         ORDER BY instance_count DESC, canonical_name
     """
     rows = session.execute(text(sql)).fetchall()
@@ -2333,26 +2416,15 @@ def get_field_detail(field_id):
             'owner': field.datasource.owner,
             'is_certified': field.datasource.is_certified
         }
-        # 通过数据源追溯上游表
-        if not field.table and field.datasource.tables:
-            upstream_tables = []
-            for t in field.datasource.tables:
-                upstream_tables.append({
-                    'id': t.id,
-                    'name': t.name,
-                    'schema': t.schema,
-                    'database_name': t.database.name if t.database else None,
-                    'database_id': t.database_id
-                })
-            data['upstream_tables'] = upstream_tables
-
-    # 所属工作簿信息
-    if field.workbook:
-        data['workbook_info'] = {
-            'id': field.workbook.id,
-            'name': field.workbook.name,
+    elif field.workbook:
+        # 兜底显示：如果数据源缺失（通常是嵌入式），则显示其所属工作簿作为来源
+        data['datasource_info'] = {
+            'id': f"embedded-{field.workbook.id}",
+            'name': f"{field.workbook.name} (内部连接)",
             'project_name': field.workbook.project_name,
-            'owner': field.workbook.owner
+            'owner': field.workbook.owner,
+            'is_certified': False,
+            'is_embedded_fallback': True
         }
 
     # 使用该字段的指标 (按需查询)

@@ -317,6 +317,7 @@ class TableauMetadataClient:
                 hasActiveWarning
                 createdAt
                 updatedAt
+                vizportalUrlId
                 owner {
                     id
                     username
@@ -429,6 +430,7 @@ class TableauMetadataClient:
                 createdAt
                 updatedAt
                 containsUnsupportedCustomSql
+                vizportalUrlId
                 {owner_field}
                 upstreamDatasources {{
                     id
@@ -458,6 +460,10 @@ class TableauMetadataClient:
                 embeddedDatasources {{
                     id
                     name
+                    upstreamDatasources {{
+                        id
+                        name
+                    }}
                     fields {{
                         id
                         name
@@ -510,6 +516,10 @@ class TableauMetadataClient:
             embeddedDatasources {
                 id
                 name
+                upstreamDatasources {
+                    id
+                    name
+                }
             }
         }
         """
@@ -521,17 +531,27 @@ class TableauMetadataClient:
         published = ds_result.get("data", {}).get("publishedDatasources") or []
         embedded = ds_result.get("data", {}).get("embeddedDatasources") or []
         
+        # 建立嵌入式到发布映射
+        embedded_to_published = {}
+        for ds in embedded:
+            upstreams = ds.get("upstreamDatasources") or []
+            if upstreams:
+                embedded_to_published[ds["id"]] = upstreams[0]["id"]
+
         # 分别处理两种数据源
         self._batch_fetch_fields(published, "publishedDatasources", all_fields)
-        self._batch_fetch_fields(embedded, "embeddedDatasources", all_fields)
+        self._batch_fetch_fields(embedded, "embeddedDatasources", all_fields, embedded_to_published)
         
         print(f"  ✅ 共采集到 {len(all_fields)} 个字段")
         return all_fields
 
-    def _batch_fetch_fields(self, datasources: List[Dict], type_name: str, all_fields: List[Dict]):
+    def _batch_fetch_fields(self, datasources: List[Dict], type_name: str, all_fields: List[Dict], 
+                             embedded_to_published: Dict = None):
         """批量获取字段详情 (辅助方法)"""
         if not datasources:
             return
+        
+        embedded_to_published = embedded_to_published or {}
 
         print(f"  同步 {type_name}: {len(datasources)} 个...")
         chunk_size = 10
@@ -557,12 +577,27 @@ class TableauMetadataClient:
                             dataType
                             role
                             isHidden
+                            upstreamColumns {{
+                                id
+                                name
+                                table {{
+                                    id
+                                }}
+                            }}
                         }}
                         ... on CalculatedField {{
                             dataType
                             role
                             isHidden
                             formula
+                            upstreamFields {{
+                                id
+                                name
+                                datasource {{
+                                    id
+                                    name
+                                }}
+                            }}
                         }}
                         ... on GroupField {{
                             dataType
@@ -590,11 +625,15 @@ class TableauMetadataClient:
                     ds_id = ds_data.get("id")
                     ds_name = ds_data.get("name")
                     
-                    fields = ds_data.get("fields") or []
-                    for field in fields:
+                    # 血缘穿透：如果是嵌入式且有上游发布式，则使用发布式的 ID
+                    final_ds_id = embedded_to_published.get(ds_id, ds_id)
+                    
+                    fields_list = ds_data.get("fields") or []
+                    for field in fields_list:
                         if field and field.get("id"):
-                            field["datasource_id"] = ds_id
+                            field["datasource_id"] = final_ds_id
                             field["datasource_name"] = ds_name
+                            field["parent_datasource_id"] = ds_id  # 保留原始 ID 备用
                             all_fields.append(field)
                 
                 print(f"    - {type_name}: 已处理 {min(i+chunk_size, total)}/{total}")
@@ -633,11 +672,13 @@ class TableauMetadataClient:
         
         calc_fields = data.get("calculatedFields") or []
         
-        # 处理数据，添加 datasource_id
+        # 尝试穿透：对于没有 datasource 或者 datasource 为嵌入式的，
+        # 在返回前可以根据内部逻辑增强，但最核心的穿透已在 _batch_fetch_fields 完成。
+        # 这里我们确保 cf 也携带必要的 datasource_id。
         for cf in calc_fields:
             if cf and cf.get("datasource"):
                 cf["datasource_id"] = cf["datasource"].get("id")
-        
+            
         return calc_fields
     
     def fetch_views_with_fields(self) -> List[Dict]:
@@ -975,11 +1016,40 @@ class MetadataSync:
     def _complete_sync_log(self, records: int, error: str = None):
         """完成同步日志"""
         if self.sync_log:
-            self.sync_log.status = "error" if error else "completed"
-            self.sync_log.completed_at = datetime.now()
+            self.sync_log.status = "failed" if error else "completed"
+            self.sync_log.completed_at = datetime.utcnow()
             self.sync_log.records_synced = records
             self.sync_log.error_message = error
             self.session.commit()
+
+    def _cleanup_orphaned_records(self, model_class, current_ids: List[str], filter_condition=None):
+        """清理数据库中存在但本次同步未发现的记录（物理删除）"""
+        if not current_ids and filter_condition is None:
+            return 0
+        
+        query = self.session.query(model_class)
+        if filter_condition is not None:
+            query = query.filter(filter_condition)
+        
+        # 过滤掉本次同步发现的 IDs
+        orphaned = query.filter(~model_class.id.in_(current_ids)).all()
+        
+        count = 0
+        for record in orphaned:
+            # 对于 Field，还需要清理相关的 CalculatedField 和依赖
+            if model_class == Field:
+                self.session.query(CalculatedField).filter_by(field_id=record.id).delete()
+                self.session.query(FieldDependency).filter(
+                    (FieldDependency.source_field_id == record.id) | 
+                    (FieldDependency.dependency_field_id == record.id)
+                ).delete()
+            
+            self.session.delete(record)
+            count += 1
+            
+        if count > 0:
+            print(f"  🧹 清理了 {count} 个已不存在的 {model_class.__name__} 记录")
+        return count
     
     def sync_databases(self) -> int:
         """同步数据库（增强版）"""
@@ -989,8 +1059,13 @@ class MetadataSync:
         try:
             databases = self.client.fetch_databases()
             count = 0
+            current_ids = []
             
             for db_data in databases:
+                if not db_data or not db_data.get("id"):
+                    continue
+                
+                current_ids.append(db_data["id"])
                 db = self.session.query(Database).filter_by(id=db_data["id"]).first()
                 if not db:
                     db = Database(id=db_data["id"])
@@ -998,17 +1073,23 @@ class MetadataSync:
                 
                 db.name = db_data.get("name", "")
                 db.luid = db_data.get("luid")
-                db.connection_type = db_data.get("connectionType", "")
+                db.connection_type = db_data.get("connectionType")
                 db.host_name = db_data.get("hostName")
                 db.port = db_data.get("port")
                 db.service = db_data.get("service")
                 db.description = db_data.get("description")
                 db.is_certified = db_data.get("isCertified", False)
                 db.certification_note = db_data.get("certificationNote")
+                db.platform = db_data.get("platform")
                 db.updated_at = datetime.now()
+                
                 count += 1
             
             self.session.commit()
+            
+            # 清理数据库中已不存在的数据库记录
+            self._cleanup_orphaned_records(Database, current_ids)
+            
             self._complete_sync_log(count)
             print(f"  ✅ 同步 {count} 个数据库")
             return count
@@ -1028,34 +1109,53 @@ class MetadataSync:
             tables = self.client.fetch_tables()
             table_count = 0
             column_count = 0
+            current_ids = []
             
-            for t_data in tables:
-                table = self.session.query(DBTable).filter_by(id=t_data["id"]).first()
+            for table_data in tables:
+                if not table_data or not table_data.get("id"):
+                    continue
+                
+                # 过滤掉嵌入式表 (已经在存量清理中处理过，这里确保同步也不拉取/更新它们)
+                if table_data.get("isEmbedded"):
+                    continue
+                
+                current_ids.append(table_data["id"])
+                table = self.session.query(DBTable).filter_by(id=table_data["id"]).first()
                 if not table:
-                    table = DBTable(id=t_data["id"])
+                    table = DBTable(id=table_data["id"])
                     self.session.add(table)
                 
-                table.name = t_data.get("name", "")
-                table.luid = t_data.get("luid")
-                table.schema = t_data.get("schema", "")
-                table.full_name = t_data.get("fullName", "")
-                table.table_type = t_data.get("tableType")
-                table.description = t_data.get("description")
-                table.is_embedded = t_data.get("isEmbedded", False)
-                table.is_certified = t_data.get("isCertified", False)
-                table.certification_note = t_data.get("certificationNote")
-                table.project_name = t_data.get("projectName")
+                table.name = table_data.get("name", "")
+                table.luid = table_data.get("luid")
+                table.full_name = table_data.get("fullName")
+                table.schema = table_data.get("schema")
                 
                 # 关联数据库
-                db_info = t_data.get("database", {})
+                db_info = table_data.get("database", {})
                 if db_info:
                     table.database_id = db_info.get("id")
                     table.connection_type = db_info.get("connectionType", "")
                 
-                table_count += 1
+                table.table_type = table_data.get("tableType")
+                table.description = table_data.get("description")
+                table.is_embedded = False # 明确设置为False，因为我们过滤掉了嵌入式表
+                table.is_certified = table_data.get("isCertified", False)
+                table.certification_note = table_data.get("certificationNote")
+                table.project_name = table_data.get("projectName")
                 
-                # 同步列信息
-                columns = t_data.get("columns", [])
+                # 解析时间
+                for time_field, attr_name in [("createdAt", "created_at"), ("updatedAt", "updated_at")]:
+                    time_val = table_data.get(time_field)
+                    if time_val:
+                        try:
+                            # 兼容不同格式
+                            dt = datetime.fromisoformat(time_val.replace("Z", "+00:00"))
+                            setattr(table, attr_name, dt)
+                        except:
+                            pass
+                
+                # 同步列 (Columns)
+                columns = table_data.get("columns", [])
                 for col_data in columns:
                     if not col_data or not col_data.get("id"):
                         continue
@@ -1069,10 +1169,19 @@ class MetadataSync:
                     col.remote_type = col_data.get("remoteType")
                     col.description = col_data.get("description")
                     col.is_nullable = col_data.get("isNullable")
-                    col.table_id = t_data["id"]
+                    col.table_id = table.id
                     column_count += 1
+                
+                table_count += 1
+                if table_count % 100 == 0:
+                    self.session.commit()
+                    print(f"  - 数据表: 已处理 {table_count}/{len(tables)}")
             
             self.session.commit()
+            
+            # 清理数据库中已不存在的正式表记录（排除嵌入式，因为我们不再同步它们）
+            self._cleanup_orphaned_records(DBTable, current_ids, filter_condition=(DBTable.is_embedded == False))
+            
             self._complete_sync_log(table_count)
             print(f"  ✅ 同步 {table_count} 个数据表, {column_count} 个列")
             return table_count
@@ -1091,8 +1200,17 @@ class MetadataSync:
         try:
             datasources = self.client.fetch_datasources()
             count = 0
+            current_ids = []
             
             for ds_data in datasources:
+                if not ds_data or not ds_data.get("id"):
+                    continue
+                
+                # 仅同步发布式数据源
+                if ds_data.get("isEmbedded"):
+                    continue
+                
+                current_ids.append(ds_data["id"])
                 ds = self.session.query(Datasource).filter_by(id=ds_data["id"]).first()
                 if not ds:
                     ds = Datasource(id=ds_data["id"])
@@ -1109,6 +1227,8 @@ class MetadataSync:
                 ds.certifier_display_name = ds_data.get("certifierDisplayName")
                 ds.contains_unsupported_custom_sql = ds_data.get("containsUnsupportedCustomSql", False)
                 ds.has_active_warning = ds_data.get("hasActiveWarning", False)
+                ds.vizportal_url_id = ds_data.get("vizportalUrlId")
+                ds.is_embedded = False # 明确设置为False，因为我们过滤掉了嵌入式数据源
                 
                 owner = ds_data.get("owner", {})
                 if owner:
@@ -1136,6 +1256,12 @@ class MetadataSync:
                 
                 # 同步表到数据源的关系
                 upstream_tables = ds_data.get("upstreamTables", [])
+                if upstream_tables:
+                    print(f"  📊 数据源 {ds_data.get('name')} 的上游表: {len(upstream_tables)} 个")
+                    # 抽样打印 ID 格式
+                    if len(upstream_tables) > 0:
+                        print(f"     示例表 ID: {upstream_tables[0].get('id')}")
+
                 for tbl in upstream_tables:
                     if not tbl or not tbl.get("id"):
                         continue
@@ -1145,6 +1271,7 @@ class MetadataSync:
                             table_to_datasource.c.datasource_id == ds_data["id"]
                         )
                     ).first()
+                    
                     if not rel:
                         try:
                             self.session.execute(
@@ -1156,8 +1283,12 @@ class MetadataSync:
                             )
                         except:
                             pass
-            
+                
             self.session.commit()
+            
+            # 清理数据库中已不存在的数据源（排除嵌入式）
+            self._cleanup_orphaned_records(Datasource, current_ids, filter_condition=(Datasource.is_embedded == False))
+            
             self._complete_sync_log(count)
             print(f"  ✅ 同步 {count} 个数据源")
             return count
@@ -1177,8 +1308,11 @@ class MetadataSync:
             workbooks = self.client.fetch_workbooks()
             wb_count = 0
             view_count = 0
+            current_wb_ids = []
+            current_view_ids = []
             
             for wb_data in workbooks:
+                current_wb_ids.append(wb_data["id"])
                 wb = self.session.query(Workbook).filter_by(id=wb_data["id"]).first()
                 if not wb:
                     wb = Workbook(id=wb_data["id"])
@@ -1191,6 +1325,7 @@ class MetadataSync:
                 wb.project_name = wb_data.get("projectName", "")
                 wb.contains_unsupported_custom_sql = wb_data.get("containsUnsupportedCustomSql", False)
                 wb.has_active_warning = wb_data.get("hasActiveWarning", False)
+                wb.vizportal_url_id = wb_data.get("vizportalUrlId")
                 
                 owner = wb_data.get("owner", {})
                 if owner:
@@ -1217,39 +1352,23 @@ class MetadataSync:
                         continue
                     self._link_datasource_to_workbook(ds["id"], wb_data["id"])
 
-                # 同步嵌入式数据源 (Embedded)
+                # 同步嵌入式数据源 (Embedded) - 注意：不再为嵌入式数据源创建 Datasource 记录，只同步其字段
                 embedded_ds = wb_data.get("embeddedDatasources", [])
                 for eds in embedded_ds:
                     if not eds or not eds.get("id"):
                         continue
                     
-                    # 1. 创建/更新嵌入式数据源
-                    ds = self.session.query(Datasource).filter_by(id=eds["id"]).first()
-                    if not ds:
-                        ds = Datasource(id=eds["id"])
-                        self.session.add(ds)
-                    
-                    ds.name = eds.get("name") or "Embedded Datasource"
-                    ds.is_embedded = True
-                    ds.project_name = wb_data.get("projectName", "")
-                    # 嵌入式数据源 owner 跟随工作簿
-                    if wb_data.get("owner"):
-                        ds.owner = wb_data["owner"].get("username", "")
-                        ds.owner_id = wb_data["owner"].get("id")
-                    
-                    # 2. 建立关联
-                    self._link_datasource_to_workbook(eds["id"], wb_data["id"])
-                    
-                    # 3. 同步嵌入式字段
+                    # 仅同步字段，datasource_id 设为 None，workbook_id 设为当前工作簿
+                    # 这符合用户“嵌入式数据源及其字段作为内部属性”的要求
                     eds_fields = eds.get("fields", [])
                     for f_data in eds_fields:
-                       self._sync_field(f_data, eds["id"])
+                       self._sync_field(f_data, datasource_id=None, workbook_id=wb_data["id"])
                 
                 # 同步视图 (sheets + dashboards)
-                all_views = wb_data.get("sheets", []) + wb_data.get("dashboards", [])
                 for idx, sheet in enumerate(wb_data.get("sheets", [])):
                     if not sheet or not sheet.get("id"):
                         continue
+                    current_view_ids.append(sheet["id"])
                     view = self.session.query(View).filter_by(id=sheet["id"]).first()
                     if not view:
                         view = View(id=sheet["id"])
@@ -1279,6 +1398,7 @@ class MetadataSync:
                 for idx, dashboard in enumerate(wb_data.get("dashboards", [])):
                     if not dashboard or not dashboard.get("id"):
                         continue
+                    current_view_ids.append(dashboard["id"])
                     view = self.session.query(View).filter_by(id=dashboard["id"]).first()
                     if not view:
                         view = View(id=dashboard["id"])
@@ -1330,6 +1450,12 @@ class MetadataSync:
                     view_count += 1
             
             self.session.commit()
+            
+            # 清理数据库中已不存在的工作簿
+            self._cleanup_orphaned_records(Workbook, current_wb_ids)
+            # 清理已不存在的视图
+            self._cleanup_orphaned_records(View, current_view_ids)
+            
             self._complete_sync_log(wb_count)
             print(f"  ✅ 同步 {wb_count} 个工作簿, {view_count} 个视图")
             return wb_count
@@ -1349,14 +1475,31 @@ class MetadataSync:
         self._start_sync_log("fields")
         
         try:
+            from backend.models import table_to_datasource, Datasource
+            # 建立物理表到发布式数据源的映射，用于穿透补齐
+            # 仅包含非嵌入式数据源
+            table_real_ds_map = {}
+            ds_to_table_rels = self.session.execute(
+                select(table_to_datasource.c.table_id, table_to_datasource.c.datasource_id)
+                .join(Datasource, Datasource.id == table_to_datasource.c.datasource_id)
+                .where(Datasource.is_embedded == 0)
+            ).fetchall()
+            for tid, dsid in ds_to_table_rels:
+                if tid not in table_real_ds_map:
+                    table_real_ds_map[tid] = dsid
+
             fields = self.client.fetch_fields()
             count = 0
             calc_count = 0
+            current_ids = []
             
             for f_data in fields:
                 if not f_data or not f_data.get("id"):
                     continue
                     
+                current_ids.append(f_data["id"])
+                
+                # 获取/创建 Field 记录
                 field = self.session.query(Field).filter_by(id=f_data["id"]).first()
                 if not field:
                     field = Field(id=f_data["id"])
@@ -1364,7 +1507,34 @@ class MetadataSync:
                 
                 field.name = f_data.get("name") or ""
                 field.description = f_data.get("description") or ""
-                field.datasource_id = f_data.get("datasource_id")
+                
+                # 获取初始 datasource_id
+                ds_id = f_data.get("datasource_id")
+                
+                # 根据类型解析字段详情 (提前解析以便获取 table_id 和 schema 穿透)
+                typename = f_data.get("__typename")
+                target_table_id = None
+                
+                if typename == "ColumnField":
+                    # 关联上游表和列
+                    upstream_cols = f_data.get("upstreamColumns") or []
+                    if upstream_cols and len(upstream_cols) > 0:
+                        first_col = upstream_cols[0]
+                        if first_col:
+                            field.upstream_column_id = first_col.get("id")
+                            field.upstream_column_name = first_col.get("name")
+                            table_info = first_col.get("table")
+                            if table_info:
+                                target_table_id = table_info.get("id")
+                                field.table_id = target_table_id
+
+                # 血缘补齐：如果当前 datasource_id 指向的不是发布式（或不存在），尝试通过 table_id 找发布式
+                if ds_id:
+                    exists = self.session.query(Datasource).filter_by(id=ds_id, is_embedded=0).first()
+                    if not exists and target_table_id in table_real_ds_map:
+                        ds_id = table_real_ds_map[target_table_id]
+                
+                field.datasource_id = ds_id
                 
                 # 默认值
                 field.data_type = ""
@@ -1384,6 +1554,18 @@ class MetadataSync:
                     field.role = f_data.get("role") or ""
                     field.is_hidden = f_data.get("isHidden") or False
                     field.folder_name = f_data.get("folderName")
+                    
+                    # 指标血缘穿透：通过 upstreamFields 找物理数据源
+                    upstream_fields = f_data.get("upstreamFields") or []
+                    for uf in upstream_fields:
+                        if uf and uf.get("datasource"):
+                            ref_ds_id = uf["datasource"].get("id")
+                            # 如果引用的是发布式数据源，则以此为准
+                            if ref_ds_id:
+                                exists = self.session.query(Datasource).filter_by(id=ref_ds_id, is_embedded=0).first()
+                                if exists:
+                                    ds_id = ref_ds_id
+                                    break
                 elif typename == "ColumnField":
                     field.data_type = f_data.get("dataType") or ""
                     field.role = f_data.get("role") or ""
@@ -1410,6 +1592,9 @@ class MetadataSync:
                                 field.table_id = table_info.get("id")
                 
                 count += 1
+                if count % 1000 == 0:
+                    self.session.commit()
+                    print(f"  - 字段: 已处理 {count}/{len(fields)}")
                 
                 # 处理计算字段
                 if f_data.get("isCalculated"):
@@ -1718,7 +1903,7 @@ class MetadataSync:
             except:
                 pass
 
-    def _sync_field(self, f_data: Dict, datasource_id: str):
+    def _sync_field(self, f_data: Dict, datasource_id: str = None, workbook_id: str = None):
         """同步单个字段（嵌入式或发布）"""
         if not f_data or not f_data.get("id"):
             return
@@ -1731,6 +1916,7 @@ class MetadataSync:
         field.name = f_data.get("name") or ""
         field.description = f_data.get("description") or ""
         field.datasource_id = datasource_id
+        field.workbook_id = workbook_id
         
         # 默认值
         if not field.data_type: field.data_type = ""
@@ -1909,24 +2095,30 @@ class MetadataSync:
                 wb.view_count = len(wb.views) if wb.views else 0
                 wb.datasource_count = len(wb.datasources) if wb.datasources else 0
                 
-                # 统计字段和指标（优先通过视图中的字段，备选通过数据源）
+                # 统计字段和指标（排除嵌入式数据源中的重复）
                 field_ids = set()
                 metric_ids = set()
                 
-                # 方案1：通过视图中的字段（需要 field_to_view 关联表有数据）
-                for v in (wb.views or []):
-                    for f in (v.fields or []):
+                # 方案1：通过关联的数据源统计（更准确且包含未引用的资产）
+                for ds in (wb.datasources or []):
+                    # 仅统计非嵌入式数据源，除非工作簿本身没有发布式数据源
+                    if ds.is_embedded and len([d for d in wb.datasources if not d.is_embedded]) > 0:
+                        continue
+                        
+                    for f in (ds.fields or []):
                         if f.is_calculated:
-                            metric_ids.add(f.id)
+                            if f.role == 'measure' or f.role is None:
+                                metric_ids.add(f.id)
                         else:
                             field_ids.add(f.id)
                 
-                # 方案2：如果视图关联为空，改用数据源的字段
+                # 方案2：回退到视图引用（如果上述为空）
                 if len(field_ids) == 0 and len(metric_ids) == 0:
-                    for ds in (wb.datasources or []):
-                        for f in (ds.fields or []):
+                    for v in (wb.views or []):
+                        for f in (v.fields or []):
                             if f.is_calculated:
-                                metric_ids.add(f.id)
+                                if f.role == 'measure' or f.role is None:
+                                    metric_ids.add(f.id)
                             else:
                                 field_ids.add(f.id)
                 
@@ -1944,7 +2136,8 @@ class MetadataSync:
                 metric_count = 0
                 for f in (ds.fields or []):
                     if f.is_calculated:
-                        metric_count += 1
+                        if f.role == 'measure' or f.role is None:
+                            metric_count += 1
                     else:
                         field_count += 1
                 ds.field_count = field_count

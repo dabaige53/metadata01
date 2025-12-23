@@ -15,7 +15,11 @@ import SortButtons from '../data-table/SortButtons';
 import Pagination from '../data-table/Pagination';
 import { useDataTable } from '@/hooks/useDataTable';
 
-export default function DuplicateMetricsAnalysis() {
+interface DuplicateMetricsAnalysisProps {
+    onCountUpdate?: (count: number) => void;
+}
+
+export default function DuplicateMetricsAnalysis({ onCountUpdate }: DuplicateMetricsAnalysisProps) {
     const [allData, setAllData] = useState<MetricCatalogItem[]>([]);
     const [totalCount, setTotalCount] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -25,11 +29,13 @@ export default function DuplicateMetricsAnalysis() {
         fetch('/api/metrics/catalog/duplicate')
             .then(res => res.json())
             .then(result => {
-                setAllData(result.items || []);
+                const items = result.items || [];
+                setAllData(items);
+                onCountUpdate?.(items.length);
             })
             .catch(console.error)
             .finally(() => setLoading(false));
-    }, []);
+    }, [onCountUpdate]);
 
     const {
         displayData,

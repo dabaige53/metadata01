@@ -25,9 +25,17 @@ export default function FieldCatalog({
     return (
         <div className="space-y-4">
             {/* 卡片列表 */}
-            <div className="space-y-3 min-h-[400px] relative">
-                {loading && (
-                    <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex justify-center items-start pt-20 z-10 transition-all">
+            <div className="space-y-3 min-h-[400px] relative transition-opacity duration-200" style={{ opacity: loading && data.length > 0 ? 0.6 : 1 }}>
+                {/* 顶部加载进度条 (仅在已有数据重新加载时显示) */}
+                {loading && data.length > 0 && (
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-indigo-100 overflow-hidden rounded-t-lg z-20">
+                        <div className="h-full bg-indigo-500 animate-[loading_1.5s_ease-in-out_infinite]" style={{ width: '30%' }}></div>
+                    </div>
+                )}
+
+                {/* 首次加载的大 Spinner */}
+                {loading && data.length === 0 && (
+                    <div className="absolute inset-0 flex justify-center items-start pt-20 z-10">
                         <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
                     </div>
                 )}

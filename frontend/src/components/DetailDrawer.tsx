@@ -145,6 +145,7 @@ export default function DetailDrawer() {
             loadData(currentItem.id, currentItem.type);
             setActiveTab('overview');
             setLineageData(null);
+            setUsageStats(null); // 重置访问统计，防止缓存问题
         } else {
             setData(null);
             setReadyToShow(false);
@@ -221,9 +222,13 @@ export default function DetailDrawer() {
             if (data.full_fields && data.full_fields.length > 0) {
                 tabs.push({ id: 'fields', label: `包含字段 (${data.full_fields.length})`, icon: Columns });
             }
-            // 关联数据源 - 只有有下游数据源时才显示
+            // 关联数据源 - 只有有数据源时才显示
             if (data.datasources && data.datasources.length > 0) {
                 tabs.push({ id: 'datasources', label: `关联数据源 (${data.datasources.length})`, icon: Layers });
+            }
+            // 关联工作簿 - 针对表直接关联的工作簿（包含直连和通过数据源关联）
+            if (data.workbooks && data.workbooks.length > 0) {
+                tabs.push({ id: 'workbooks', label: `关联工作簿 (${data.workbooks.length})`, icon: BookOpen });
             }
         }
 
@@ -304,6 +309,10 @@ export default function DetailDrawer() {
             if (data.datasources && data.datasources.length > 0) {
                 tabs.push({ id: 'datasources', label: `使用数据源 (${data.datasources.length})`, icon: Layers });
             }
+            // 关联数据表 - 针对工作簿直接或间接使用的物理表
+            if (data.tables && data.tables.length > 0) {
+                tabs.push({ id: 'tables', label: `关联数据表 (${data.tables.length})`, icon: Table2 });
+            }
             // 使用字段 - 只有有字段使用时才显示
             if (data.used_fields && data.used_fields.length > 0) {
                 tabs.push({ id: 'fields', label: `使用字段 (${data.used_fields.length})`, icon: Columns });
@@ -374,47 +383,195 @@ export default function DetailDrawer() {
     };
 
     /**
-     * 通用的资产列表部分渲染函数
+     * 通用的资产列表部分渲染函数（紧凑版）
      */
     const renderAssetSection = (title: string, icon: React.ElementType, items: any[], type: string, colorClass: string) => {
         if (!items || items.length === 0) return null;
         const groupKey = `section-${title}`;
 
         return (
-            <div className={`bg-${colorClass}-50/50 rounded-lg border border-${colorClass}-100 p-4 animate-in slide-in-up`}>
-                <h3 className={`text-xs font-bold text-${colorClass}-900 mb-3 flex items-center gap-2`}>
+            <div className={`bg-${colorClass}-50/50 rounded-lg border border-${colorClass}-100 p-3 animate-in slide-in-up`}>
+                <h3 className={`text-xs font-bold text-${colorClass}-900 mb-2 flex items-center gap-2`}>
                     {icon && React.createElement(icon, { className: `w-3.5 h-3.5 text-${colorClass}-600` })} {title}
                 </h3>
                 <div className="space-y-1">
                     {(expandedGroups[groupKey] ? items : items.slice(0, 10)).map((asset: any, ai: number) => (
                         <div key={ai}
                             onClick={() => handleAssetClick(asset.id, type, asset.name)}
-                            onMouseEnter={() => asset.id && prefetch(asset.id, type)} // 添加预加载触发器
+                            onMouseEnter={() => asset.id && prefetch(asset.id, type)}
                             style={{ animationDelay: `${ai * 30}ms` }}
-                            className={`flex items-center justify-between bg-white p-2 rounded border border-${colorClass}-100 ${asset.id ? 'cursor-pointer hover:border-${colorClass}-300 hover:bg-${colorClass}-50 hover:scale-[1.01] active:scale-[0.99]' : ''} transition-all shadow-sm animate-in fade-in slide-in-up fill-mode-backwards`}>
-                            <div className="flex flex-col min-w-0 flex-1 pr-2">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[13px] text-gray-700 font-bold truncate">{asset.name}</span>
-                                    {(asset.remote_type || asset.dataType) && (
-                                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 font-mono tracking-tight flex-shrink-0">
-                                            {asset.remote_type || asset.dataType}
+                            className={`bg-white p-2.5 rounded border border-${colorClass}-100 ${asset.id ? 'cursor-pointer hover:border-${colorClass}-300 hover:bg-${colorClass}-50' : ''} transition-all shadow-sm animate-in fade-in slide-in-up fill-mode-backwards`}>
+                            {/* 第一行：标题 + 专属标签 */}
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <span className="text-[13px] text-gray-900 font-bold truncate">{asset.name}</span>
+                                    {/* 字段/指标：角色标签 */}
+                                    {(type === 'fields' || type === 'metrics') && asset.role && (
+                                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${asset.role === 'measure' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'} flex-shrink-0`}>
+                                            {asset.role === 'measure' ? '度量' : '维度'}
+                                        </span>
+                                    )}
+                                    {/* 字段：数据类型 */}
+                                    {type === 'fields' && (asset.dataType || asset.remote_type) && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-mono flex-shrink-0">
+                                            {asset.dataType || asset.remote_type}
+                                        </span>
+                                    )}
+                                    {/* 指标：复杂度 */}
+                                    {type === 'metrics' && asset.complexity !== undefined && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium flex-shrink-0">
+                                            复杂度:{asset.complexity}
+                                        </span>
+                                    )}
+                                    {/* 数据表：连接类型 */}
+                                    {type === 'tables' && asset.connectionType && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 font-medium flex-shrink-0">
+                                            {asset.connectionType}
+                                        </span>
+                                    )}
+                                    {/* 数据表：使用状态 */}
+                                    {type === 'tables' && asset.status && (
+                                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${asset.status === '使用中' ? 'bg-green-100 text-green-700' : asset.status === '仅关联' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>
+                                            {asset.status}
+                                        </span>
+                                    )}
+                                    {/* 视图：类型(仪表板/工作表) */}
+                                    {type === 'views' && asset.viewType && (
+                                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${asset.viewType === 'Dashboard' ? 'bg-indigo-100 text-indigo-700' : 'bg-cyan-100 text-cyan-700'}`}>
+                                            {asset.viewType === 'Dashboard' ? '仪表板' : '工作表'}
+                                        </span>
+                                    )}
+                                    {/* 认证状态 */}
+                                    {asset.is_certified && (
+                                        <span className="flex items-center gap-0.5 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+                                            <ShieldCheck className="w-3 h-3" /> 认证
                                         </span>
                                     )}
                                 </div>
-                                {asset.subtitle && <span className="text-[10px] text-gray-500 mt-0.5 truncate">{asset.subtitle}</span>}
-                                {asset.content && (
-                                    <div className="mt-1.5 text-[10px] font-mono text-gray-600 bg-gray-50 p-1.5 rounded border border-gray-100 line-clamp-2 break-all leading-relaxed" title={asset.content}>
-                                        {asset.content}
-                                    </div>
+                                {asset.id && <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />}
+                            </div>
+                            {/* 第二行：血缘路径/归属信息 */}
+                            <div className="flex items-center justify-between mt-1.5 text-[11px] text-gray-600">
+                                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                    {/* 数据表：数据库 + Schema */}
+                                    {type === 'tables' && asset.databaseName && (
+                                        <span className="flex items-center gap-1 bg-violet-50 px-1.5 py-0.5 rounded">
+                                            <Database className="w-3 h-3 text-violet-500" />
+                                            <span className="font-medium">{asset.databaseName}</span>
+                                        </span>
+                                    )}
+                                    {type === 'tables' && asset.schema && (
+                                        <span className="text-gray-500">Schema: {asset.schema}</span>
+                                    )}
+                                    {/* 数据源 */}
+                                    {type !== 'tables' && asset.datasourceName && (
+                                        <span className="flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                            <Layers className="w-3 h-3 text-indigo-500" />
+                                            <span className="truncate max-w-[140px] font-medium">{asset.datasourceName}</span>
+                                        </span>
+                                    )}
+                                    {asset.datasourceName && asset.workbookName && <span className="text-gray-400">→</span>}
+                                    {/* 工作簿 */}
+                                    {asset.workbookName && (
+                                        <span className="flex items-center gap-1 bg-rose-50 px-1.5 py-0.5 rounded">
+                                            <BookOpen className="w-3 h-3 text-rose-500" />
+                                            <span className="truncate max-w-[140px] font-medium">{asset.workbookName}</span>
+                                        </span>
+                                    )}
+                                    {/* 项目（无血缘时显示） */}
+                                    {!asset.datasourceName && !asset.workbookName && !asset.databaseName && (asset.projectName || asset.project_name) && (
+                                        <span className="text-gray-500">📁 {asset.projectName || asset.project_name}</span>
+                                    )}
+                                </div>
+                                {asset.owner && (
+                                    <span className="text-gray-500 flex-shrink-0 font-medium">👤 {asset.owner}</span>
                                 )}
                             </div>
-                            {asset.id && <ChevronRight className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />}
+                            {/* 第三行：专属统计指标 */}
+                            <div className="flex items-center justify-between mt-1.5 text-[11px]">
+                                <div className="flex items-center gap-3 flex-wrap">
+                                    {/* 通用：引用次数 */}
+                                    {asset.usage_count !== undefined && asset.usage_count > 0 && (
+                                        <span className="flex items-center gap-0.5 text-orange-600 font-medium">
+                                            <Flame className="w-3 h-3" /> {asset.usage_count}次引用
+                                        </span>
+                                    )}
+                                    {/* 字段/数据源：视图数 */}
+                                    {(type === 'fields' || type === 'datasources') && asset.view_count !== undefined && (
+                                        <span className="text-gray-500">📄 {asset.view_count}视图</span>
+                                    )}
+                                    {/* 指标：依赖字段数 */}
+                                    {type === 'metrics' && asset.dependency_count !== undefined && (
+                                        <span className="text-gray-500">📐 依赖{asset.dependency_count}字段</span>
+                                    )}
+                                    {/* 数据表：列数 + 数据源引用 */}
+                                    {type === 'tables' && asset.column_count !== undefined && (
+                                        <span className="text-gray-500">📊 {asset.column_count}列</span>
+                                    )}
+                                    {type === 'tables' && asset.datasource_count !== undefined && (
+                                        <span className="text-gray-500">🗄️ {asset.datasource_count}数据源</span>
+                                    )}
+                                    {/* 数据源：字段数 + 指标数 + 工作簿数 */}
+                                    {type === 'datasources' && asset.field_count !== undefined && (
+                                        <span className="text-gray-500">📦 {asset.field_count}字段</span>
+                                    )}
+                                    {type === 'datasources' && asset.metric_count !== undefined && (
+                                        <span className="text-gray-500">📈 {asset.metric_count}指标</span>
+                                    )}
+                                    {type === 'datasources' && asset.workbook_count !== undefined && (
+                                        <span className="text-gray-500">📕 {asset.workbook_count}工作簿</span>
+                                    )}
+                                    {/* 工作簿：视图数 + 数据源数 + 访问量 */}
+                                    {type === 'workbooks' && asset.view_count !== undefined && (
+                                        <span className="text-gray-500">📄 {asset.view_count}视图</span>
+                                    )}
+                                    {type === 'workbooks' && asset.datasource_count !== undefined && (
+                                        <span className="text-gray-500">🗄️ {asset.datasource_count}数据源</span>
+                                    )}
+                                    {type === 'workbooks' && asset.total_view_count !== undefined && (
+                                        <span className="text-gray-500">👁 {asset.total_view_count}访问</span>
+                                    )}
+                                    {/* 视图：字段数 + 指标数 + 访问量 */}
+                                    {type === 'views' && asset.field_count !== undefined && (
+                                        <span className="text-gray-500">📊 {asset.field_count}字段</span>
+                                    )}
+                                    {type === 'views' && asset.metric_count !== undefined && (
+                                        <span className="text-gray-500">📈 {asset.metric_count}指标</span>
+                                    )}
+                                    {type === 'views' && asset.total_view_count !== undefined && (
+                                        <span className="text-gray-500">👁 {asset.total_view_count}访问</span>
+                                    )}
+                                    {/* 更新时间 */}
+                                    {asset.updated_at && (
+                                        <span className="text-gray-400">🕐 {formatDateWithRelative(asset.updated_at)}</span>
+                                    )}
+                                    {/* 无描述告警 */}
+                                    {!asset.description && (
+                                        <span className="flex items-center gap-0.5 text-amber-600 font-medium">
+                                            <AlertTriangle className="w-3 h-3" /> 无描述
+                                        </span>
+                                    )}
+                                </div>
+                                {/* 指标：公式预览 */}
+                                {type === 'metrics' && asset.formula && (
+                                    <span className="text-gray-400 truncate max-w-[180px] flex-shrink-0 font-mono text-[10px]" title={asset.formula}>
+                                        {asset.formula.length > 25 ? asset.formula.slice(0, 25) + '...' : asset.formula}
+                                    </span>
+                                )}
+                                {/* 其他：描述预览 */}
+                                {type !== 'metrics' && asset.description && (
+                                    <span className="text-gray-500 truncate max-w-[180px] flex-shrink-0 italic" title={asset.description}>
+                                        "{asset.description.length > 25 ? asset.description.slice(0, 25) + '...' : asset.description}"
+                                    </span>
+                                )}
+                            </div>
                         </div>
+
                     ))}
                     {items.length > 10 && (
                         <button
                             onClick={() => toggleGroupExpand(groupKey)}
-                            className={`text-[10px] text-${colorClass}-600 pl-2 hover:underline cursor-pointer font-medium mt-2`}
+                            className={`text-[10px] text-${colorClass}-600 pl-2 hover:underline cursor-pointer font-medium mt-1`}
                         >
                             {expandedGroups[groupKey] ? '收起' : `显示更多 (+${items.length - 10})`}
                         </button>
@@ -424,33 +581,74 @@ export default function DetailDrawer() {
         );
     };
 
-    // ========== 相同定义指标渲染 ==========
+
+    // ========== 相同定义指标渲染（增强版） ==========
     const renderDuplicatesTab = () => {
         const dups = data?.similarMetrics || [];
         if (dups.length === 0) return <div className="text-center text-gray-400 py-8">未发现相同定义的指标</div>;
+
+        // 计算公式一致性 - 使用第一个作为基准
+        const baseFormula = dups[0]?.formula;
+
         return (
-            <div className="bg-blue-50 rounded-lg border border-blue-100 p-4">
-                <div className="flex items-start gap-3">
-                    <FunctionSquare className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                        <h3 className="text-[13px] font-bold text-blue-800 mb-1">同名指标定义</h3>
-                        <p className="text-[11px] text-blue-600 mb-3">以下 {dups.length} 个数据源中存在相同名称和公式的指标：</p>
-                        <div className="space-y-2">
-                            {dups.map((d: any, i: number) => (
-                                <div key={i} onClick={() => handleAssetClick(d.id, 'metrics', d.name)}
-                                    className="bg-white/80 p-2.5 rounded border border-blue-100 cursor-pointer hover:bg-white transition-colors">
-                                    <div className="flex justify-between items-center mb-1">
-                                        <span className="text-xs font-bold text-blue-900">{d.name}</span>
+            <div className="bg-blue-50/50 rounded-lg border border-blue-100 p-3">
+                <h3 className="text-[13px] font-bold text-blue-800 mb-3 flex items-center gap-2">
+                    <FunctionSquare className="w-4 h-4 text-blue-600" />
+                    同名指标定义 <span className="text-blue-500 font-normal text-[11px]">(发现 {dups.length} 个源)</span>
+                </h3>
+                <div className="space-y-2">
+                    {dups.map((d: any, i: number) => {
+                        const isConsistent = d.formula === baseFormula;
+                        return (
+                            <div key={i} onClick={() => handleAssetClick(d.id, 'metrics', d.name)}
+                                className="bg-white p-2.5 rounded border border-blue-100 cursor-pointer hover:bg-blue-50/50 transition-colors">
+                                {/* 第一行：名称 + 一致性状态 */}
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                                        <span className="text-[13px] font-bold text-blue-900">{d.name}</span>
+                                        <span className={`text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5 font-medium ${isConsistent ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                            {isConsistent ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                                            {isConsistent ? '公式一致' : '存在差异'}
+                                        </span>
                                     </div>
-                                    <div className="text-[10px] text-gray-500">数据源: {d.datasourceName || '-'}</div>
+                                    <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
                                 </div>
-                            ))}
-                        </div>
-                    </div>
+                                {/* 第二行：血缘路径 */}
+                                <div className="flex items-center gap-2 mt-1.5 text-[11px] text-gray-600 flex-wrap">
+                                    <span className="flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                        <Layers className="w-3 h-3 text-indigo-500" />
+                                        <span className="truncate max-w-[120px] font-medium">{d.datasourceName || '-'}</span>
+                                    </span>
+                                    {d.workbookName && (
+                                        <>
+                                            <span className="text-gray-400">→</span>
+                                            <span className="flex items-center gap-1 bg-rose-50 px-1.5 py-0.5 rounded">
+                                                <BookOpen className="w-3 h-3 text-rose-500" />
+                                                <span className="truncate max-w-[120px] font-medium">{d.workbookName}</span>
+                                            </span>
+                                        </>
+                                    )}
+                                    {d.usage_count !== undefined && (
+                                        <span className="flex items-center gap-0.5 text-orange-600 font-medium">
+                                            <Flame className="w-3 h-3" /> {d.usage_count}次引用
+                                        </span>
+                                    )}
+                                </div>
+                                {/* 第三行：公式预览 */}
+                                {d.formula && (
+                                    <div className="mt-1.5 text-[10px] font-mono text-gray-500 bg-gray-50 px-2 py-1 rounded border border-gray-100 truncate" title={d.formula}>
+                                        {d.formula.length > 50 ? d.formula.slice(0, 50) + '...' : d.formula}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         );
     };
+
+
 
     // ========== 血缘图渲染 (保留原有逻辑) ==========
     const renderLineageTab = () => {
@@ -481,7 +679,7 @@ export default function DetailDrawer() {
         );
     };
 
-    // ========== 关联数据源渲染 (新) ==========
+    // ========== 关联数据源渲染（增强版） ==========
     const renderDatasourcesTab = () => {
         // 优先使用 related_datasources，兜底使用 datasource_info
         let items = data?.related_datasources || [];
@@ -494,47 +692,78 @@ export default function DetailDrawer() {
         if (items.length === 0) return <div className="text-center text-gray-400 py-8">无关联数据源</div>;
 
         return (
-            <div className="space-y-4 animate-in slide-in-up">
-                <div className="bg-indigo-50/50 rounded-lg border border-indigo-100 p-4">
-                    <h3 className="text-xs font-bold text-indigo-900 mb-3 flex items-center gap-2">
-                        <Layers className="w-3.5 h-3.5 text-indigo-600" /> 包含此字段的数据源
-                    </h3>
-                    <div className="space-y-2">
-                        {items.map((ds: any, i: number) => (
-                            <div key={i}
-                                onClick={() => handleAssetClick(ds.id, 'datasources', ds.name)}
-                                className="flex items-center justify-between bg-white p-3 rounded border border-indigo-50 hover:border-indigo-200 hover:shadow-sm transition-all cursor-pointer">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-1.5 bg-indigo-50 rounded text-indigo-600">
-                                        <Database className="w-4 h-4" />
-                                    </div>
-                                    <div>
-                                        <div className="text-sm font-bold text-gray-800">{ds.name}</div>
-                                        <div className="text-[10px] text-gray-500 flex items-center gap-2">
-                                            <span>项目: {ds.project_name || '-'}</span>
-                                            {ds.field_name && ds.field_name !== data?.name && (
-                                                <span className="bg-gray-100 px-1.5 rounded text-gray-600">
-                                                    字段重命名为: {ds.field_name}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-2">
+            <div className="bg-indigo-50/50 rounded-lg border border-indigo-100 p-3 animate-in slide-in-up">
+                <h3 className="text-[13px] font-bold text-indigo-900 mb-3 flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-indigo-600" /> 包含此字段的数据源
+                </h3>
+                <div className="space-y-2">
+                    {items.map((ds: any, i: number) => (
+                        <div key={i}
+                            onClick={() => handleAssetClick(ds.id, 'datasources', ds.name)}
+                            className="bg-white p-2.5 rounded border border-indigo-100 cursor-pointer hover:bg-indigo-50/50 transition-all">
+                            {/* 第一行：数据源名称 + 认证状态 + 发布状态 */}
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <Layers className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                                    <span className="text-[13px] font-bold text-gray-900 truncate">{ds.name}</span>
                                     {ds.is_certified && (
-                                        <span className="text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded-full border border-green-100 flex items-center gap-1">
-                                            <ShieldCheck className="w-3 h-3" /> 已认证
+                                        <span className="flex items-center gap-0.5 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+                                            <ShieldCheck className="w-3 h-3" /> 认证
                                         </span>
                                     )}
-                                    <ChevronRight className="w-4 h-4 text-gray-300" />
+                                    {ds.is_published && (
+                                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+                                            已发布
+                                        </span>
+                                    )}
                                 </div>
+                                <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
                             </div>
-                        ))}
-                    </div>
+                            {/* 第二行：归属工作簿 + 项目 */}
+                            <div className="flex items-center gap-2 mt-1.5 text-[11px] text-gray-600 flex-wrap">
+                                {ds.workbook_name && (
+                                    <span className="flex items-center gap-1 bg-rose-50 px-1.5 py-0.5 rounded">
+                                        <BookOpen className="w-3 h-3 text-rose-500" />
+                                        <span className="truncate max-w-[140px] font-medium">{ds.workbook_name}</span>
+                                    </span>
+                                )}
+                                {(ds.project_name || ds.projectName) && (
+                                    <span className="text-gray-500">📁 {ds.project_name || ds.projectName}</span>
+                                )}
+                                {ds.owner && (
+                                    <span className="text-gray-500">👤 {ds.owner}</span>
+                                )}
+                                {ds.field_name && ds.field_name !== data?.name && (
+                                    <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">
+                                        重命名: {ds.field_name}
+                                    </span>
+                                )}
+                            </div>
+                            {/* 第三行：统计信息 */}
+                            <div className="flex items-center gap-3 mt-1.5 text-[11px] flex-wrap">
+                                {ds.field_count !== undefined && (
+                                    <span className="text-gray-500">📦 {ds.field_count}字段</span>
+                                )}
+                                {ds.metric_count !== undefined && (
+                                    <span className="text-gray-500">📈 {ds.metric_count}指标</span>
+                                )}
+                                {ds.workbook_count !== undefined && (
+                                    <span className="text-gray-500">📕 {ds.workbook_count}工作簿</span>
+                                )}
+                                {ds.usage_count !== undefined && ds.usage_count > 0 && (
+                                    <span className="flex items-center gap-0.5 text-orange-600 font-medium">
+                                        <Flame className="w-3 h-3" /> {ds.usage_count}次引用
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </div>
         );
     };
+
+
 
     // ========== 访问统计 Tab ==========
 

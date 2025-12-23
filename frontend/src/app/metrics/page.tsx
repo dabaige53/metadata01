@@ -8,7 +8,7 @@ import MetricCatalog from '@/components/metrics/MetricCatalog';
 import FacetFilterBar from '@/components/data-table/FacetFilterBar';
 import SortButtons from '@/components/data-table/SortButtons';
 import { useDataTable } from '@/hooks/useDataTable';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState, useCallback } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 
 function MetricsContent() {
@@ -18,6 +18,14 @@ function MetricsContent() {
     const [total, setTotal] = useState(0);
     const [facetsData, setFacetsData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+
+    // 各 Tab 统计数量
+    const [tabCounts, setTabCounts] = useState({
+        catalog: 0,
+        duplicate: 0,
+        complex: 0,
+        unused: 0
+    });
 
     const fetchData = async (params: Record<string, any>) => {
         setLoading(true);
@@ -33,6 +41,7 @@ function MetricsContent() {
             setData(result.items || []);
             setTotal(result.total || 0);
             setFacetsData(result.facets || null);
+            setTabCounts(prev => ({ ...prev, catalog: result.total || 0 }));
         } catch (error) {
             console.error('Failed to fetch metric catalog:', error);
         } finally {
@@ -72,60 +81,88 @@ function MetricsContent() {
         { key: 'name', label: '名称' },
     ];
 
+    // 处理子组件回传的统计数量
+    const handleTabCountUpdate = useCallback((tab: 'duplicate' | 'complex' | 'unused', count: number) => {
+        setTabCounts(prev => ({ ...prev, [tab]: count }));
+    }, []);
+
+    // 获取当前 Tab 的统计信息
+    const getCurrentTabStats = () => {
+        const tabLabels = {
+            catalog: '计算字段目录',
+            duplicate: '重复指标',
+            complex: '高复杂度',
+            unused: '未使用指标'
+        };
+        return {
+            label: tabLabels[activeTab],
+            count: tabCounts[activeTab],
+            total: tabCounts.catalog
+        };
+    };
+
+    const stats = getCurrentTabStats();
+
     return (
         <div className="space-y-4">
-            {/* 页面标题与标签页切换 */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                        <FunctionSquare className="w-5 h-5 text-indigo-600" />
-                        计算字段
-                        {activeTab === 'catalog' && (
-                            <span className="text-sm font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-                                {total.toLocaleString()} 项
-                            </span>
-                        )}
-                    </h1>
+            {/* 第一行：页面标题与标签页切换 */}
+            <div className="flex items-center gap-4">
+                <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <FunctionSquare className="w-5 h-5 text-indigo-600" />
+                    计算字段
+                </h1>
 
-                    {/* 标签页切换 */}
-                    <div className="flex p-1 bg-gray-100/80 rounded-lg">
-                        <button
-                            onClick={() => setActiveTab('catalog')}
-                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'catalog'
-                                ? 'bg-white text-indigo-600 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            计算字段目录
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('duplicate')}
-                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'duplicate'
-                                ? 'bg-white text-indigo-600 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            重复指标
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('complex')}
-                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'complex'
-                                ? 'bg-white text-indigo-600 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            高复杂度
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('unused')}
-                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'unused'
-                                ? 'bg-white text-indigo-600 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            未使用指标
-                        </button>
-                    </div>
+                {/* 标签页切换 */}
+                <div className="flex p-1 bg-gray-100/80 rounded-lg">
+                    <button
+                        onClick={() => setActiveTab('catalog')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'catalog'
+                            ? 'bg-white text-indigo-600 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        计算字段目录
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('duplicate')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'duplicate'
+                            ? 'bg-white text-indigo-600 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        重复指标
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('complex')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'complex'
+                            ? 'bg-white text-indigo-600 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        高复杂度
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('unused')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'unused'
+                            ? 'bg-white text-indigo-600 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        未使用指标
+                    </button>
+                </div>
+            </div>
+
+            {/* 第二行：统计信息 + 排序按钮 */}
+            <div className="flex items-center justify-between">
+                <div className="text-sm text-gray-600">
+                    <span className="inline-flex items-center gap-1">
+                        <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 text-xs font-bold flex items-center justify-center">①</span>
+                        <span>{stats.label}</span>
+                        <span className="font-semibold text-gray-800">{stats.total.toLocaleString()}</span>
+                        <span>项 中的</span>
+                        <span className="font-bold text-indigo-600">{stats.count.toLocaleString()}</span>
+                    </span>
                 </div>
 
                 {activeTab === 'catalog' && (
@@ -137,7 +174,7 @@ function MetricsContent() {
                 )}
             </div>
 
-            {/* 工具栏: 左下筛选 + 右下搜索 */}
+            {/* 第三行：筛选 + 搜索（仅 catalog Tab） */}
             {activeTab === 'catalog' && (
                 <div className="flex items-center justify-between gap-4">
                     <FacetFilterBar
@@ -174,11 +211,11 @@ function MetricsContent() {
                     onMetricClick={(metric) => openDrawer(metric.representative_id || '', 'metrics')}
                 />
             ) : activeTab === 'duplicate' ? (
-                <DuplicateMetricsAnalysis />
+                <DuplicateMetricsAnalysis onCountUpdate={(count: number) => handleTabCountUpdate('duplicate', count)} />
             ) : activeTab === 'complex' ? (
-                <ComplexMetricsAnalysis />
+                <ComplexMetricsAnalysis onCountUpdate={(count: number) => handleTabCountUpdate('complex', count)} />
             ) : (
-                <UnusedMetricsAnalysis />
+                <UnusedMetricsAnalysis onCountUpdate={(count: number) => handleTabCountUpdate('unused', count)} />
             )}
         </div>
     );

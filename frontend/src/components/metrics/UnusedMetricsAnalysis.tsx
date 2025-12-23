@@ -16,7 +16,11 @@ import SortButtons from '../data-table/SortButtons';
 import Pagination from '../data-table/Pagination';
 import { useDataTable } from '@/hooks/useDataTable';
 
-export default function UnusedMetricsAnalysis() {
+interface UnusedMetricsAnalysisProps {
+    onCountUpdate?: (count: number) => void;
+}
+
+export default function UnusedMetricsAnalysis({ onCountUpdate }: UnusedMetricsAnalysisProps) {
     const [allData, setAllData] = useState<MetricCatalogItem[]>([]);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
@@ -25,11 +29,13 @@ export default function UnusedMetricsAnalysis() {
         fetch('/api/metrics/catalog/unused')
             .then(res => res.json())
             .then(result => {
-                setAllData(result.items || []);
+                const items = result.items || [];
+                setAllData(items);
+                onCountUpdate?.(items.length);
             })
             .catch(console.error)
             .finally(() => setLoading(false));
-    }, []);
+    }, [onCountUpdate]);
 
     const {
         displayData,

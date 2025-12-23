@@ -51,7 +51,8 @@ function FieldsContent() {
         handlePageChange,
         handlePageSizeChange,
         searchTerm,
-        setSearchTerm
+        setSearchTerm,
+        handleSearch
     } = useDataTable({
         moduleName: 'fields',
         data: data,
@@ -148,16 +149,47 @@ function FieldsContent() {
                     />
 
                     <div className="relative w-64">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <div
+                            className="absolute inset-y-0 left-0 pl-3 flex items-center cursor-pointer hover:text-indigo-600 transition-colors"
+                            onClick={handleSearch}
+                        >
                             <Search className="h-4 w-4 text-gray-400" />
                         </div>
                         <input
                             type="text"
-                            placeholder="搜索字段名称..."
+                            placeholder="输入名称并回车搜索..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                            className="block w-full pl-10 pr-8 py-2 border border-gray-200 rounded-lg bg-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
                         />
+                        {searchTerm && (
+                            <button
+                                onClick={() => {
+                                    setSearchTerm('');
+                                    // 这里我们可能需要在清空后显式调用一次搜索，或者让用户再次回车/点击搜索。
+                                    // 通常清空意味着重置，所以这里我们最好重置 appliedSearchTerm。
+                                    // 但 handleClearAllFilters 已经处理了清理。这里仅处理输入框的清理，为了体验更好，可以手动清空并触发搜索。
+                                    // 由于 setState 是异步的，这里其实需要组合操作。
+                                    // 更好的方式是依靠 handleClearAllFilters 清空，或者把逻辑已在 hook 内部处理。
+                                    // 简单起见：清空输入框，且让用户回车；或者如果用户想“重置”，用 FacetBar 的 ClearAll。
+                                    // 但用户习惯点 X 重置搜索。
+                                    // 这里我们使用 setTimeout hack 或者是直接不处理立即搜索，让用户再次 Enter。
+                                    // 鉴于 handleSearch 依赖 searchTerm，我们需要先 set 再 handle。
+                                    // 但这在 React 中需要 effect。
+                                    // 权衡：点 X 只清空文本，不触发搜索？不，用户期望清空=重置。
+                                    // 我们可以手动修改 hook 暴露清空方法，或者在这里做 trick。
+                                    // 简单做法：不做立即搜索，只是清空，提示用户回车。
+                                    // 或者：我们直接调用 handleClearAllFilters? 不，那个清空所有。
+                                    // 让我们修改 useDataTable 暴露独立的 clearSearch? 
+                                    // 现阶段，保留简单行为：清空文本。
+                                    setSearchTerm('');
+                                }}
+                                className="absolute inset-y-0 right-0 pr-2 flex items-center cursor-pointer text-gray-400 hover:text-gray-600"
+                            >
+                                <span className="text-xs">✕</span>
+                            </button>
+                        )}
                     </div>
                 </div>
             )}

@@ -62,7 +62,20 @@ export function useDataTable<T extends Record<string, any>>({
   });
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [pageSize, setPageSize] = useState(defaultPageSize);
-  const [searchTerm, setSearchTerm] = useState(initialSearch);
+  const [searchTerm, setSearchTerm] = useState(initialSearch); // UI 输入状态
+  const [appliedSearchTerm, setAppliedSearchTerm] = useState(initialSearch); // 实际搜索生效状态
+
+  // 手动触发搜索
+  const handleSearch = () => {
+    setAppliedSearchTerm(searchTerm);
+    setCurrentPage(1); // 搜索时重置页码
+  };
+
+  // 监听初始 URL 参数变化同步到 appliedSearchTerm
+  useEffect(() => {
+    setAppliedSearchTerm(initialSearch);
+    setSearchTerm(initialSearch);
+  }, [initialSearch]);
 
   // 计算 Facets
   const facets = useMemo<FacetConfig>(() => {
@@ -86,15 +99,15 @@ export function useDataTable<T extends Record<string, any>>({
     });
 
     return result;
-  }, [data, moduleName, facetFields]);
+  }, [data, moduleName, facetFields, serverSide, facetsOverride]);
 
   // 应用筛选
   const filteredData = useMemo(() => {
     let result = [...data];
 
-    // 搜索过滤
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
+    // 搜索过滤 (使用回车确认后的值 appliedSearchTerm)
+    if (appliedSearchTerm) {
+      const term = appliedSearchTerm.toLowerCase();
       result = result.filter((item) =>
         searchFields.some((field) => {
           const value = item[field];
@@ -117,7 +130,7 @@ export function useDataTable<T extends Record<string, any>>({
     });
 
     return result;
-  }, [data, searchTerm, activeFilters, searchFields]);
+  }, [data, appliedSearchTerm, activeFilters, searchFields]);
 
   // 应用排序
   const sortedData = useMemo(() => {
@@ -171,7 +184,7 @@ export function useDataTable<T extends Record<string, any>>({
       params.order = sortState.sortOrder;
     }
     if (currentPage > 1) params.page = currentPage.toString();
-    if (searchTerm) params.search = searchTerm;
+    if (appliedSearchTerm) params.search = appliedSearchTerm; // 使用确认后的值
     if (pageSize !== 50) params.page_size = pageSize.toString();
 
     // 同时包含 activeFilters
@@ -190,7 +203,7 @@ export function useDataTable<T extends Record<string, any>>({
     if (serverSide && onParamsChange) {
       onParamsChange(params);
     }
-  }, [sortState, currentPage, searchTerm, activeFilters, pageSize, router, serverSide]);
+  }, [sortState, currentPage, appliedSearchTerm, activeFilters, pageSize, router, serverSide]);
 
   // 处理筛选变化（单项）
   const handleFilterChange = (key: string, value: string, checked: boolean) => {
@@ -220,6 +233,8 @@ export function useDataTable<T extends Record<string, any>>({
   // 清空所有筛选
   const handleClearAllFilters = () => {
     setActiveFilters({});
+    setSearchTerm('');
+    setAppliedSearchTerm('');
     setCurrentPage(1);
   };
 
@@ -278,6 +293,7 @@ export function useDataTable<T extends Record<string, any>>({
     // 搜索
     searchTerm,
     setSearchTerm,
+    handleSearch, // 暴露手动触发搜索的方法
     setPageSize,
   };
 }
