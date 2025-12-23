@@ -94,8 +94,12 @@ WHERE d.view_type = 'dashboard'
 -- ================================================================
 SELECT '★★★ 4. 字段与指标逻辑验证 (Atomic) ★★★' as 验证类别;
 
--- 4.1 幽灵字段 (Ghost Fields)
-SELECT '幽灵字段(悬空)' as 验证内容, COUNT(*) as 异常数, '字段必须属于 DS 或 WB' as 规则 
+-- 4.1 未使用字段 (Unused Fields) - 与 API /api/stats.orphanedFields 口径一致
+SELECT '未使用字段(无视图引用)' as 验证内容, COUNT(*) as 异常数, '字段未被任何视图引用' as 规则 
+FROM fields f WHERE NOT EXISTS (SELECT 1 FROM field_to_view fv WHERE fv.field_id = f.id);
+
+-- 4.1b 无归属字段 (No Container) - 补充检查
+SELECT '无归属字段(无容器)' as 验证内容, COUNT(*) as 异常数, '字段必须属于 DS 或 WB' as 规则 
 FROM fields WHERE datasource_id IS NULL AND workbook_id IS NULL;
 
 -- 4.2 计算公式缺失
@@ -363,6 +367,66 @@ SELECT
 FROM fields f
 JOIN calculated_fields cf ON f.id = cf.field_id
 GROUP BY f.name, cf.formula_hash
+ORDER BY COUNT(*) DESC
+LIMIT 5;
+
+-- ================================================================
+-- 9. 血缘完整性验证 (Lineage Integrity)
+-- 目的: 验证字段到数据源/物理表的血缘关联完整性
+-- ================================================================
+SELECT '★★★ 9. 血缘完整性验证 ★★★' as 验证类别;
+
+-- 9.1 计算字段孤儿数据源引用
+-- 问题: 字段的 datasource_id 指向不存在的数据源（通常是嵌入式数据源未被同步）
+SELECT 
+    '计算字段孤儿数据源引用' as 验证内容,
+    COUNT(*) as 异常数,
+    '引用了不存在数据源的计算字段' as 规则
+FROM fields f
+LEFT JOIN datasources d ON f.datasource_id = d.id
+WHERE f.is_calculated = 1 
+  AND f.datasource_id IS NOT NULL 
+  AND d.id IS NULL;
+
+-- 9.2 孤儿数据源ID统计
+SELECT 
+    '孤儿数据源ID数量' as 验证内容,
+    COUNT(DISTINCT f.datasource_id) as 异常数,
+    '被引用但不存在的数据源ID数量' as 规则
+FROM fields f
+LEFT JOIN datasources d ON f.datasource_id = d.id
+WHERE f.is_calculated = 1 
+  AND f.datasource_id IS NOT NULL 
+  AND d.id IS NULL;
+
+-- 9.3 计算字段物理表血缘缺失
+-- 问题: 计算字段没有关联物理表，导致无法追溯数据来源
+SELECT 
+    '计算字段物理表血缘缺失' as 验证内容,
+    COUNT(*) as 异常数,
+    '缺少 table_id 的计算字段' as 规则
+FROM fields f
+WHERE f.is_calculated = 1 
+  AND (f.table_id IS NULL OR f.table_id = '');
+
+-- 9.4 计算字段物理表关联率
+SELECT 
+    '计算字段物理表关联率' as 验证内容,
+    ROUND(100.0 * SUM(CASE WHEN table_id IS NOT NULL AND table_id != '' THEN 1 ELSE 0 END) / COUNT(*), 2) || '%' as 关联率,
+    '有 table_id 的计算字段占比' as 规则
+FROM fields WHERE is_calculated = 1;
+
+-- 9.5 孤儿数据源样本 (Top 5)
+SELECT 
+    '孤儿数据源引用样本' as 验证内容,
+    f.datasource_id as 孤儿数据源ID,
+    COUNT(*) as 引用字段数
+FROM fields f
+LEFT JOIN datasources d ON f.datasource_id = d.id
+WHERE f.is_calculated = 1 
+  AND f.datasource_id IS NOT NULL 
+  AND d.id IS NULL
+GROUP BY f.datasource_id
 ORDER BY COUNT(*) DESC
 LIMIT 5;
 

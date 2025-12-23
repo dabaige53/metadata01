@@ -51,8 +51,8 @@ check_item "孤立视图记录" "视图缺少 workbook_id" \
 "curl -s $BASE_URL/api/views | jq '.items[] | select(.workbook_id==null)'"
 curl -s "$BASE_URL/api/views" | jq '.items[] | select(.workbook_id==null)'
 
-# 7. 幽灵字段(悬空)
-check_item "幽灵字段(悬空)" "字段既不属于数据源也不属于工作簿" \
+# 7. 未使用字段(无视图引用)
+check_item "未使用字段(无视图引用)" "字段未被任何视图引用 (API: orphanedFields)" \
 "curl -s $BASE_URL/api/stats | jq '.orphanedFields'"
 curl -s "$BASE_URL/api/stats" | jq '.orphanedFields'
 

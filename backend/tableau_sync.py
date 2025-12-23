@@ -597,6 +597,16 @@ class TableauMetadataClient:
                                     id
                                     name
                                 }}
+                                ... on ColumnField {{
+                                    upstreamColumns {{
+                                        id
+                                        name
+                                        table {{
+                                            id
+                                            name
+                                        }}
+                                    }}
+                                }}
                             }}
                         }}
                         ... on GroupField {{
@@ -1555,17 +1565,26 @@ class MetadataSync:
                     field.is_hidden = f_data.get("isHidden") or False
                     field.folder_name = f_data.get("folderName")
                     
-                    # 指标血缘穿透：通过 upstreamFields 找物理数据源
+                    # 指标血缘穿透：通过 upstreamFields 找物理数据源和物理表
                     upstream_fields = f_data.get("upstreamFields") or []
                     for uf in upstream_fields:
-                        if uf and uf.get("datasource"):
-                            ref_ds_id = uf["datasource"].get("id")
-                            # 如果引用的是发布式数据源，则以此为准
-                            if ref_ds_id:
-                                exists = self.session.query(Datasource).filter_by(id=ref_ds_id, is_embedded=0).first()
-                                if exists:
-                                    ds_id = ref_ds_id
-                                    break
+                        if uf:
+                            # 1. 尝试获取物理表 (从上游字段的 upstreamColumns)
+                            upstream_cols = uf.get("upstreamColumns") or []
+                            if upstream_cols and not field.table_id:
+                                for col in upstream_cols:
+                                    if col and col.get("table"):
+                                        field.table_id = col["table"].get("id")
+                                        break
+                            
+                            # 2. 尝试获取发布式数据源
+                            if uf.get("datasource"):
+                                ref_ds_id = uf["datasource"].get("id")
+                                if ref_ds_id:
+                                    exists = self.session.query(Datasource).filter_by(id=ref_ds_id, is_embedded=0).first()
+                                    if exists:
+                                        ds_id = ref_ds_id
+                                        # 继续遍历以找更多的table_id，但数据源已确定
                 elif typename == "ColumnField":
                     field.data_type = f_data.get("dataType") or ""
                     field.role = (f_data.get("role") or "").lower()

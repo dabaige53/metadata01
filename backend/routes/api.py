@@ -1950,6 +1950,7 @@ def get_fields_catalog():
     # 聚合查询
     # 使用 COALESCE(upstream_column_name, name) 作为规范名称
     # 按 (规范名称 + table_id) 分组
+    # 修复：instance_count 使用 COUNT(DISTINCT datasource_id) 确保与 datasource_count 一致
     base_sql = f"""
         SELECT 
             MIN(f.id) as representative_id,
@@ -1962,10 +1963,9 @@ def get_fields_catalog():
             MAX(f.data_type) as data_type,
             MAX(f.remote_type) as remote_type,
             MAX(f.description) as description,
-            COUNT(*) as instance_count,
+            COUNT(DISTINCT f.datasource_id) as instance_count,
             COALESCE(SUM(f.usage_count), 0) as total_usage,
-            GROUP_CONCAT(DISTINCT f.datasource_id) as datasource_ids,
-            GROUP_CONCAT(DISTINCT d.name) as datasource_names
+            GROUP_CONCAT(DISTINCT CASE WHEN f.datasource_id IS NOT NULL THEN f.datasource_id || '|' || COALESCE(d.name, 'Unknown') END) as datasource_info
         FROM fields f
         LEFT JOIN tables t ON f.table_id = t.id
         LEFT JOIN databases db ON t.database_id = db.id
@@ -1973,6 +1973,7 @@ def get_fields_catalog():
         {where_clause}
         GROUP BY COALESCE(f.upstream_column_name, f.name), f.table_id
     """
+
     
     # 统计总数
     count_sql = f"SELECT COUNT(*) FROM ({base_sql}) sub"
@@ -2001,11 +2002,14 @@ def get_fields_catalog():
     # 构建结果
     items = []
     for row in rows:
-        # 解析数据源列表
-        ds_ids = row.datasource_ids.split(',') if row.datasource_ids else []
-        ds_names = row.datasource_names.split(',') if row.datasource_names else []
-        datasources = [{'id': ds_ids[i] if i < len(ds_ids) else None, 'name': ds_names[i]} 
-                       for i in range(len(ds_names))]
+        # 解析数据源列表（新格式：id|name,id|name,...）
+        datasources = []
+        if row.datasource_info:
+            for ds_pair in row.datasource_info.split(','):
+                if '|' in ds_pair:
+                    ds_id, ds_name = ds_pair.split('|', 1)
+                    datasources.append({'id': ds_id, 'name': ds_name})
+
         
         items.append({
             'representative_id': row.representative_id, # Add this field
@@ -2858,6 +2862,7 @@ def get_metrics_catalog():
     
     # 聚合查询
     # 按 (name + formula_hash) 分组
+    # 修复：instance_count 使用唯一位置（数据源 OR 工作簿）计数
     base_sql = f"""
         SELECT 
             MIN(f.id) as representative_id,
@@ -2867,13 +2872,11 @@ def get_metrics_catalog():
             MAX(f.role) as role,
             MAX(f.data_type) as data_type,
             MAX(f.description) as description,
-            COUNT(*) as instance_count,
+            COUNT(DISTINCT COALESCE(f.datasource_id, f.workbook_id)) as instance_count,
             MAX(cf.complexity_score) as complexity,
             COALESCE(SUM(cf.reference_count), 0) as total_references,
-            GROUP_CONCAT(DISTINCT f.datasource_id) as datasource_ids,
-            GROUP_CONCAT(DISTINCT d.name) as datasource_names,
-            GROUP_CONCAT(DISTINCT f.workbook_id) as workbook_ids,
-            GROUP_CONCAT(DISTINCT w.name) as workbook_names
+            GROUP_CONCAT(DISTINCT CASE WHEN f.datasource_id IS NOT NULL THEN f.datasource_id || '|' || COALESCE(d.name, 'Unknown') END) as datasource_info,
+            GROUP_CONCAT(DISTINCT CASE WHEN f.workbook_id IS NOT NULL THEN f.workbook_id || '|' || COALESCE(w.name, 'Unknown') END) as workbook_info
         FROM fields f
         INNER JOIN calculated_fields cf ON f.id = cf.field_id
         LEFT JOIN datasources d ON f.datasource_id = d.id
@@ -2881,6 +2884,7 @@ def get_metrics_catalog():
         {where_clause}
         GROUP BY f.name, cf.formula_hash
     """
+
     
     # 统计总数
     count_sql = f"SELECT COUNT(*) FROM ({base_sql}) sub"
@@ -2911,17 +2915,26 @@ def get_metrics_catalog():
     # 构建结果
     items = []
     for row in rows:
-        # 解析数据源列表
-        ds_ids = row.datasource_ids.split(',') if row.datasource_ids else []
-        ds_names = row.datasource_names.split(',') if row.datasource_names else []
-        datasources = [{'id': ds_ids[i] if i < len(ds_ids) else None, 'name': ds_names[i]} 
-                       for i in range(len(ds_names))]
+        # 解析数据源列表（新格式：id|name,id|name,...）
+        datasources = []
+        if row.datasource_info:
+            for ds_pair in row.datasource_info.split(','):
+                if '|' in ds_pair:
+                    ds_id, ds_name = ds_pair.split('|', 1)
+                    # 过滤掉空的 datasource_id（None|Unknown 格式）
+                    if ds_id and ds_id != 'None':
+                        datasources.append({'id': ds_id, 'name': ds_name})
         
-        # 解析工作簿列表
-        wb_ids = row.workbook_ids.split(',') if row.workbook_ids else []
-        wb_names = row.workbook_names.split(',') if row.workbook_names else []
-        workbooks = [{'id': wb_ids[i] if i < len(wb_ids) else None, 'name': wb_names[i]} 
-                     for i in range(len(wb_names))]
+        # 解析工作簿列表（新格式：id|name,id|name,...）
+        workbooks = []
+        if row.workbook_info:
+            for wb_pair in row.workbook_info.split(','):
+                if '|' in wb_pair:
+                    wb_id, wb_name = wb_pair.split('|', 1)
+                    # 过滤掉空的 workbook_id（None|Unknown 格式）
+                    if wb_id and wb_id != 'None':
+                        workbooks.append({'id': wb_id, 'name': wb_name})
+
         
         # 计算复杂度等级
         formula_len = len(row.formula) if row.formula else 0

@@ -14,7 +14,7 @@
 3. 消费层,孤立视图记录,视图缺少 workbook_id，未归属于任何工作簿，属于系统中的游离垃圾数据。,workbook_id IS NULL,curl -s http://localhost:8101/api/views | jq '.items[] | select(.workbook_id==null)',发现未关联工作簿的孤立视图
 3. 消费层,无效的工作簿引用,视图关联的 workbook_id 指向了不存在的工作簿，导致父子关系破裂。,workbook_id NOT IN workbooks,无 (仅DB内部约束),发现引用了不存在工作簿的无效视图
 3. 消费层,仪表板内容缺失,类型为 Dashboard 的视图未包含任何 Worksheet，说明元数据解析不完整或文件损坏。,view_type='dashboard' AND NOT EXISTS sheets,无 (需复杂API逻辑),发现不含工作表的异常仪表板
-4. 字段与指标逻辑,幽灵字段(悬空),字段既不属于数据源也不属于工作簿，完全脱离了上层容器，属于同步错误的垃圾数据。【注意：统计采用去重口径 (name+formula_hash)】,COUNT(DISTINCT name || formula_hash) WHERE ds_id IS NULL AND wb_id IS NULL,curl -s http://localhost:8101/api/stats | jq '.orphanedFields',发现无任何归属的悬空字段(去重后逻辑实体)
+4. 字段与指标逻辑,未使用字段(无视图引用),字段未被任何视图引用，不在 field_to_view 表中，属于冗余数据。【API返回: orphanedFields】,NOT EXISTS (SELECT 1 FROM field_to_view ...),curl -s http://localhost:8101/api/stats | jq '.orphanedFields',发现未被任何视图引用的冗余字段
 4. 字段与指标逻辑,计算公式丢失,标记为计算字段 (is_calculated=1) 但 formula 内容为空，导致计算逻辑缺失。,formula IS NULL OR formula = '',无 (需复杂API逻辑),发现丢失公式的计算字段
 4. 字段与指标逻辑,度量数据类型缺失,标记为度量 (Role='MEASURE') 的字段缺少 data_type，导致前端无法判断聚合方式 (Sum/Avg等)。,role='MEASURE' AND (data_type IS NULL OR ''),curl -s http://localhost:8101/api/fields?role=measure | jq '.items[] | select(.data_type==null)',发现缺少数据类型的度量字段
 4. 字段与指标逻辑,计算字段角色未定义,计算字段未指定 Role (Dimension/Measure)，导致分析时无法正确分类。,is_calculated=1 AND role IS NULL,无 (需复杂API逻辑),发现未定义角色的计算字段
@@ -37,3 +37,5 @@
 8. 统计准确性,字段来源归类错误,API 统计的"字段来源"分类总和不等于字段总数，表明分类逻辑存在漏洞或数据丢失。,GROUP BY source_type,curl -s http://localhost:8101/api/dashboard/analysis | jq '.field_source_distribution',发现字段来源统计逻辑错误
 8. 统计准确性,质量分计算偏差,健康度/完整性评分与底层数据实时状态不符，表明评分算法存在误差。,CASE WHEN ... THEN 1,curl -s http://localhost:8101/api/dashboard/analysis | jq '.quality_metrics',发现质量评分计算不准确
 8. 统计准确性,治理看板计数偏差,治理页面展示的问题数 (如过期DS) 与 SQL 核查结果不一致，误导治理决策。,WHERE condition_matches_api_logic,curl -s http://localhost:8101/api/dashboard/analysis | jq '.issues',发现治理问题计数不准确
+9. 血缘完整性,计算字段孤儿数据源引用,计算字段的 datasource_id 引用了不存在的数据源（嵌入式数据源未同步导致），API显示Unknown。,datasource_id NOT IN (SELECT id FROM datasources),curl -s http://localhost:8101/api/metrics | jq '.items[] | select(.datasource_name=="Unknown" or .datasource_name==null)' | head,发现引用不存在数据源的孤儿字段
+9. 血缘完整性,计算字段物理表血缘缺失,计算字段缺少 table_id 关联，导致无法追溯到物理数据表，前端"所属数据表"Tab无数据。,is_calculated=1 AND (table_id IS NULL OR table_id=''),curl -s http://localhost:8101/api/metrics | jq '[.items[] | select(.table_id==null)] | length',发现缺少物理表关联的计算字段
