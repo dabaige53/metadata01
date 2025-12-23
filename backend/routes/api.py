@@ -950,6 +950,19 @@ def get_column_detail(column_id):
                 'name': column.table.database.name
             }
 
+    # 下游：引用此列的 Tableau 字段（通过 upstream_column_id）
+    downstream_fields = session.query(Field).filter(Field.upstream_column_id == column_id).all()
+    data['downstream_fields'] = [{
+        'id': f.id,
+        'name': f.name,
+        'datasource_id': f.datasource_id,
+        'datasource_name': f.datasource.name if f.datasource else None,
+        'workbook_id': f.workbook_id,
+        'workbook_name': f.workbook.name if f.workbook else None,
+        'is_calculated': f.is_calculated
+    } for f in downstream_fields]
+    data['downstream_field_count'] = len(downstream_fields)
+
     return jsonify(data)
 
 # ==================== 数据源接口 ====================
@@ -1657,6 +1670,42 @@ def get_view_detail(view_id):
         # 聚合访问量：仪表盘自身访问量 + 所有包含视图的访问量
         dashboard_own_views = view.total_view_count or 0
         data['aggregatedViewCount'] = dashboard_own_views + sheets_total_views
+    
+    # 上游血缘：通过视图使用的字段反查数据源和物理表
+    from sqlalchemy import text
+    upstream_result = session.execute(text("""
+        SELECT DISTINCT 
+            fl.datasource_id, d.name as ds_name, d.project_name, d.is_certified,
+            fl.table_id, t.name as table_name, t.schema, db.name as db_name
+        FROM field_to_view ftv
+        JOIN field_full_lineage fl ON ftv.field_id = fl.field_id
+        LEFT JOIN datasources d ON fl.datasource_id = d.id
+        LEFT JOIN tables t ON fl.table_id = t.id
+        LEFT JOIN databases db ON t.database_id = db.id
+        WHERE ftv.view_id = :view_id
+    """), {'view_id': view_id}).fetchall()
+    
+    # 聚合上游数据源
+    upstream_datasources = {}
+    upstream_tables = {}
+    for row in upstream_result:
+        if row[0] and row[0] not in upstream_datasources:
+            upstream_datasources[row[0]] = {
+                'id': row[0],
+                'name': row[1],
+                'project_name': row[2],
+                'is_certified': row[3]
+            }
+        if row[4] and row[4] not in upstream_tables:
+            upstream_tables[row[4]] = {
+                'id': row[4],
+                'name': row[5],
+                'schema': row[6],
+                'database_name': row[7]
+            }
+    
+    data['upstream_datasources'] = list(upstream_datasources.values())
+    data['upstream_tables'] = list(upstream_tables.values())
     
     # 构建 Tableau Server 在线查看链接
     data['tableau_url'] = build_tableau_url('view', path=view.path)
@@ -2456,70 +2505,75 @@ def get_field_detail(field_id):
             'table_name': field.upstream_column.table.name if field.upstream_column.table else None
         }
 
-    # 所属表信息
-    if field.table:
+    # ============ 聚合所有同名字段的血缘 (跨数据源/工作簿) ============
+    from sqlalchemy import text
+    field_name = field.name
+    
+    # 1. 聚合所有同名字段的物理表血缘
+    table_lineage_result = session.execute(text("""
+        SELECT DISTINCT fl.table_id, t.name, t.schema, db.name as db_name, t.database_id
+        FROM fields f
+        JOIN field_full_lineage fl ON f.id = fl.field_id
+        LEFT JOIN tables t ON fl.table_id = t.id
+        LEFT JOIN databases db ON t.database_id = db.id
+        WHERE f.name = :field_name AND fl.table_id IS NOT NULL
+    """), {'field_name': field_name}).fetchall()
+    
+    # 设置 table_info (取第一个作为主表) 和完整表列表
+    if table_lineage_result:
+        first_table = table_lineage_result[0]
         data['table_info'] = {
-            'id': field.table.id,
-            'name': field.table.name,
-            'schema': field.table.schema,
-            'database_name': field.table.database.name if field.table.database else None,
-            'database_id': field.table.database_id
+            'id': first_table[0],
+            'name': first_table[1],
+            'schema': first_table[2],
+            'database_name': first_table[3],
+            'database_id': first_table[4]
         }
-    elif not field.table and field.datasource_id:
-        # 补齐逻辑：如果当前字段是工作簿中的引用（无 table_id），尝试从发布数据源的主字段继承
-        # 主字段特征：同 datasource_id，同名，workbook_id 为空，且有 table_id
-        master_field = session.query(Field).filter(
-            Field.datasource_id == field.datasource_id,
-            Field.name == field.name,
-            Field.workbook_id == None,
-            Field.table_id != None
-        ).first()
-
-        if master_field and master_field.table:
-            data['table_info'] = {
-                'id': master_field.table.id,
-                'name': master_field.table.name,
-                'schema': master_field.table.schema,
-                'database_name': master_field.table.database.name if master_field.table.database else None,
-                'database_id': master_field.table.database_id,
-                '_inherited_from_master': True  # 标记：继承自发布数据源主字段
-            }
-        elif field.datasource and field.datasource.tables:
-            # 兜底：如果是系统字段（如 :Measure Names），关联到数据源的第一个表
-            primary_table = field.datasource.tables[0]
-            data['table_info'] = {
-                'id': primary_table.id,
-                'name': primary_table.name,
-                'schema': primary_table.schema,
-                'database_name': primary_table.database.name if primary_table.database else None,
-                'database_id': primary_table.database_id,
-                '_inherited_from_ds_primary': True  # 标记：继承自数据源主表
-            }
-
-    # 如果是计算字段且没有直接 table_info，通过预计算血缘表获取关联的物理表
-    if field.is_calculated and not data.get('table_info'):
-        from sqlalchemy import text
-        lineage_result = session.execute(text("""
-            SELECT DISTINCT fl.table_id, t.name, t.schema, db.name as db_name, t.database_id
-            FROM field_full_lineage fl
-            LEFT JOIN tables t ON fl.table_id = t.id
-            LEFT JOIN databases db ON t.database_id = db.id
-            WHERE fl.field_id = :field_id AND fl.table_id IS NOT NULL
-        """), {'field_id': field_id}).fetchall()
-        
-        derived_tables = []
-        for row in lineage_result:
-            if row[0]:  # table_id is not None
-                derived_tables.append({
-                    'id': row[0],
-                    'name': row[1],
-                    'schema': row[2],
-                    'database_name': row[3],
-                    'database_id': row[4],
-                    '_derived_from_lineage': True
-                })
-        data['derived_tables'] = derived_tables
-        data['derivedTables'] = derived_tables  # 驼峰兼容
+        data['derived_tables'] = [{
+            'id': row[0],
+            'name': row[1],
+            'schema': row[2],
+            'database_name': row[3],
+            'database_id': row[4]
+        } for row in table_lineage_result]
+        data['derivedTables'] = data['derived_tables']
+    else:
+        data['table_info'] = None
+        data['derived_tables'] = []
+        data['derivedTables'] = []
+    
+    # 2. 聚合所有同名字段的数据源血缘
+    ds_lineage_result = session.execute(text("""
+        SELECT DISTINCT fl.datasource_id, d.name, d.project_name, d.owner, d.is_certified
+        FROM fields f
+        JOIN field_full_lineage fl ON f.id = fl.field_id
+        LEFT JOIN datasources d ON fl.datasource_id = d.id
+        WHERE f.name = :field_name AND fl.datasource_id IS NOT NULL AND d.id IS NOT NULL
+    """), {'field_name': field_name}).fetchall()
+    
+    data['all_datasources'] = [{
+        'id': row[0],
+        'name': row[1],
+        'project_name': row[2],
+        'owner': row[3],
+        'is_certified': row[4]
+    } for row in ds_lineage_result]
+    
+    # 3. 聚合所有同名字段的工作簿血缘
+    wb_lineage_result = session.execute(text("""
+        SELECT DISTINCT fl.workbook_id, w.name, w.project_name, w.owner
+        FROM fields f
+        JOIN field_full_lineage fl ON f.id = fl.field_id
+        LEFT JOIN workbooks w ON fl.workbook_id = w.id
+        WHERE f.name = :field_name AND fl.workbook_id IS NOT NULL AND w.id IS NOT NULL
+    """), {'field_name': field_name}).fetchall()
+    
+    data['all_workbooks'] = [{
+        'id': row[0],
+        'name': row[1],
+        'project_name': row[2],
+        'owner': row[3]
+    } for row in wb_lineage_result]
 
     # 所属数据源信息
     if field.datasource:
@@ -2567,27 +2621,32 @@ def get_field_detail(field_id):
     
     data['used_by_metrics'] = used_by_metrics
 
-    # 使用该字段的视图（已预加载，无 N+1）
+    # 使用该字段的视图（使用预计算血缘表 field_to_view）
+    views_result = session.execute(text("""
+        SELECT fv.view_id, v.name, v.view_type, v.workbook_id, w.name as wb_name, w.project_name, w.owner
+        FROM field_to_view fv
+        JOIN views v ON fv.view_id = v.id
+        LEFT JOIN workbooks w ON v.workbook_id = w.id
+        WHERE fv.field_id = :field_id
+    """), {'field_id': field_id}).fetchall()
+    
     views_data = []
     workbooks_set = {}
-    for v in field.views:
-        # 这里 v.workbook 已经预加载了，不会触发新查询
-        wb_name = v.workbook.name if v.workbook else None
-        
+    for row in views_result:
         views_data.append({
-            'id': v.id,
-            'name': v.name,
-            'view_type': v.view_type,
-            'workbook_id': v.workbook_id,
-            'workbook_name': wb_name
+            'id': row[0],
+            'name': row[1],
+            'view_type': row[2],
+            'workbook_id': row[3],
+            'workbook_name': row[4]
         })
         # 收集工作簿
-        if v.workbook and v.workbook_id not in workbooks_set:
-            workbooks_set[v.workbook_id] = {
-                'id': v.workbook.id,
-                'name': v.workbook.name,
-                'project_name': v.workbook.project_name,
-                'owner': v.workbook.owner
+        if row[3] and row[3] not in workbooks_set:
+            workbooks_set[row[3]] = {
+                'id': row[3],
+                'name': row[4],
+                'project_name': row[5],
+                'owner': row[6]
             }
     data['used_in_views'] = views_data
     
@@ -3477,22 +3536,32 @@ def get_metric_detail(metric_id):
         ).all()
         
         for s_field, s_calc in similar_results:
+            # 使用预计算血缘表获取相似指标的视图和工作簿
+            from sqlalchemy import text as sql_text
+            sim_views_result = session.execute(sql_text("""
+                SELECT fv.view_id, v.name, v.view_type, v.workbook_id, w.name as wb_name, w.project_name, w.owner
+                FROM field_to_view fv
+                JOIN views v ON fv.view_id = v.id
+                LEFT JOIN workbooks w ON v.workbook_id = w.id
+                WHERE fv.field_id = :field_id
+            """), {'field_id': s_field.id}).fetchall()
+            
             dup_views = []
             dup_workbooks = {}
-            for v in (s_field.views or []):
+            for row in sim_views_result:
                 dup_views.append({
-                    'id': v.id,
-                    'name': v.name,
-                    'view_type': v.view_type,
-                    'workbook_id': v.workbook_id,
-                    'workbook_name': v.workbook.name if v.workbook else 'Unknown'
+                    'id': row[0],
+                    'name': row[1],
+                    'view_type': row[2],
+                    'workbook_id': row[3],
+                    'workbook_name': row[4] or 'Unknown'
                 })
-                if v.workbook and v.workbook_id not in dup_workbooks:
-                    dup_workbooks[v.workbook_id] = {
-                        'id': v.workbook.id,
-                        'name': v.workbook.name,
-                        'project_name': v.workbook.project_name,
-                        'owner': v.workbook.owner
+                if row[3] and row[3] not in dup_workbooks:
+                    dup_workbooks[row[3]] = {
+                        'id': row[3],
+                        'name': row[4],
+                        'project_name': row[5],
+                        'owner': row[6]
                     }
             similar.append({
                 'id': s_field.id,
@@ -3519,44 +3588,73 @@ def get_metric_detail(metric_id):
         # Add a dummy dependency to see if it works
         dependencies.append({'name': 'Error: ' + str(e), 'id': None})
 
-    # 3. 数据源及上游表信息
+    # 3. 数据源及上游表信息 (使用预计算血缘表)
+    from sqlalchemy import text
     datasource_info = None
     upstream_tables = []
-    if field.datasource:
-        datasource_info = {
-            'id': field.datasource.id,
-            'name': field.datasource.name,
-            'project_name': field.datasource.project_name,
-            'owner': field.datasource.owner,
-            'is_certified': field.datasource.is_certified
-        }
-        for t in field.datasource.tables:
+    
+    # 从预计算血缘表获取数据源和上游表
+    lineage_result = session.execute(text("""
+        SELECT DISTINCT 
+            fl.datasource_id, d.name as ds_name, d.project_name, d.owner, d.is_certified,
+            fl.table_id, t.name as table_name, t.schema, db.name as db_name
+        FROM field_full_lineage fl
+        LEFT JOIN datasources d ON fl.datasource_id = d.id
+        LEFT JOIN tables t ON fl.table_id = t.id
+        LEFT JOIN databases db ON t.database_id = db.id
+        WHERE fl.field_id = :field_id
+    """), {'field_id': metric_id}).fetchall()
+    
+    # 解析结果
+    ds_set = {}
+    for row in lineage_result:
+        # 数据源信息（取第一个非空的）
+        if row[0] and not datasource_info:
+            datasource_info = {
+                'id': row[0],
+                'name': row[1],
+                'project_name': row[2],
+                'owner': row[3],
+                'is_certified': row[4]
+            }
+        # 上游表信息
+        if row[5] and row[5] not in ds_set:
+            ds_set[row[5]] = True
             upstream_tables.append({
-                'id': t.id,
-                'name': t.name,
-                'schema': t.schema,
-                'database_name': t.database.name if t.database else None
+                'id': row[5],
+                'name': row[6],
+                'schema': row[7],
+                'database_name': row[8]
             })
 
-    # 4. 获取被引用情况（视图和工作簿）
+
+
+    # 4. 获取被引用情况（视图和工作簿）- 使用预计算血缘表
+    views_result = session.execute(text("""
+        SELECT fv.view_id, v.name, v.view_type, v.workbook_id, w.name as wb_name, w.project_name, w.owner
+        FROM field_to_view fv
+        JOIN views v ON fv.view_id = v.id
+        LEFT JOIN workbooks w ON v.workbook_id = w.id
+        WHERE fv.field_id = :field_id
+    """), {'field_id': metric_id}).fetchall()
+    
     views_data = []
     workbooks_set = {}
-    if field.views:
-        for v in field.views:
-            views_data.append({
-                'id': v.id,
-                'name': v.name,
-                'view_type': v.view_type,
-                'workbook_id': v.workbook_id,
-                'workbook_name': v.workbook.name if v.workbook else 'Unknown'
-            })
-            if v.workbook and v.workbook_id not in workbooks_set:
-                workbooks_set[v.workbook_id] = {
-                    'id': v.workbook.id,
-                    'name': v.workbook.name,
-                    'project_name': v.workbook.project_name,
-                    'owner': v.workbook.owner
-                }
+    for row in views_result:
+        views_data.append({
+            'id': row[0],
+            'name': row[1],
+            'view_type': row[2],
+            'workbook_id': row[3],
+            'workbook_name': row[4] or 'Unknown'
+        })
+        if row[3] and row[3] not in workbooks_set:
+            workbooks_set[row[3]] = {
+                'id': row[3],
+                'name': row[4],
+                'project_name': row[5],
+                'owner': row[6]
+            }
 
     # 5. 聚合相关数据源 (当前指标 + 相似指标)
     related_datasources = []

@@ -252,9 +252,9 @@ export default function DetailDrawer() {
                 tabs.push({ id: 'deps', label: `依赖字段 (${deps.length})`, icon: Columns });
             }
 
-            // 所属数据源 - 始终显示
-            const relatedDs = data.related_datasources || [];
-            const dsCount = relatedDs.length > 0 ? relatedDs.length : (data.datasource_info ? 1 : 0);
+            // 所属数据源 - 使用聚合的所有同名字段数据源
+            const allDs = data.all_datasources || data.related_datasources || [];
+            const dsCount = allDs.length > 0 ? allDs.length : (data.datasource_info ? 1 : 0);
             tabs.push({ id: 'datasources', label: `所属数据源 (${dsCount})`, icon: Layers });
 
             // 影响指标 - 始终显示（仅对普通字段有意义，计算字段一般不被其他指标引用）
@@ -265,9 +265,9 @@ export default function DetailDrawer() {
             const v_down = data.used_in_views || data.usedInViews || [];
             tabs.push({ id: 'views', label: `关联视图 (${v_down.length})`, icon: Layout });
 
-            // 引用工作簿 - 始终显示
-            const wb_down = data.usedInWorkbooks || data.used_in_workbooks || [];
-            tabs.push({ id: 'workbooks', label: `引用工作簿 (${wb_down.length})`, icon: BookOpen });
+            // 引用工作簿 - 使用聚合的所有同名字段工作簿
+            const allWb = data.all_workbooks || data.usedInWorkbooks || data.used_in_workbooks || [];
+            tabs.push({ id: 'workbooks', label: `引用工作簿 (${allWb.length})`, icon: BookOpen });
         }
 
         if (type === 'datasources') {
@@ -682,10 +682,10 @@ export default function DetailDrawer() {
 
     // ========== 关联数据源渲染（增强版） ==========
     const renderDatasourcesTab = () => {
-        // 优先使用 datasources (Tables)，其次 related_datasources (Fields)，兜底 datasource_info
-        let items = data?.datasources || data?.related_datasources || [];
+        // 优先使用 all_datasources (聚合的同名字段数据源), 其次 datasources (Tables)，兜底 datasource_info
+        let items = data?.all_datasources || data?.datasources || data?.related_datasources || [];
 
-        // 如果没有 related_datasources，从 datasource_info 构造单条记录
+        // 如果没有聚合数据，从 datasource_info 构造单条记录
         if (items.length === 0 && data?.datasource_info) {
             items = [data.datasource_info];
         }
