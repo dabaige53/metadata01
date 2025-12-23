@@ -1,6 +1,7 @@
 #!/bin/bash
 # 系统设计验证 API 脚本
 # 自动执行系统设计验证清单中的 API 检查项
+# 范围: 仅验证系统设计基础问题,不包含数据治理层面的验证
 # 依赖: curl, jq
 
 BASE_URL="http://localhost:8101"
@@ -61,62 +62,70 @@ check_item "度量数据类型缺失" "标记为度量 (role='measure') 的字�
 "curl -s $BASE_URL/api/fields?role=measure | jq '.items[] | select(.data_type==null)'"
 curl -s "$BASE_URL/api/fields?role=measure" | jq '.items[] | select(.data_type==null)'
 
-# 9. 逻辑重复定义
-check_item "逻辑重复定义" "多个字段使用完全相同的计算公式" \
-"curl -s $BASE_URL/api/dashboard/analysis | jq '.duplicate_formulas_top'"
-curl -s "$BASE_URL/api/dashboard/analysis" | jq '.duplicate_formulas_top'
-
-# 10. 非认证数据源
-check_item "非认证数据源" "数据源未获得官方认证" \
-"curl -s $BASE_URL/api/dashboard/analysis | jq '.quality_metrics.datasource_coverage.certified'"
-curl -s "$BASE_URL/api/dashboard/analysis" | jq '.quality_metrics.datasource_coverage.certified'
-
-# 11. 资产描述缺失
-check_item "资产描述缺失" "核心资产 (表/字段) 缺少业务描述" \
-"curl -s $BASE_URL/api/dashboard/analysis | jq '.issues.missing_description'"
-curl -s "$BASE_URL/api/dashboard/analysis" | jq '.issues.missing_description'
-
-# 12. 低价值重命名
-check_item "低价值重命名" "计算字段过于简单 (Score<=1)" \
-"curl -s $BASE_URL/api/dashboard/analysis | jq '.complexity_distribution.low'"
-curl -s "$BASE_URL/api/dashboard/analysis" | jq '.complexity_distribution.low'
-
-# 13. 全局计数不一致
-check_item "全局计数不一致" "API 返回的资产总数" \
+# 9. 全局计数验证
+check_item "全局计数验证" "API 返回的资产总数 - 验证与数据库一致性" \
 "curl -s $BASE_URL/api/stats"
 curl -s "$BASE_URL/api/stats"
 
-# 14. 字段来源归类错误
-check_item "字段来源归类错误" "API 统计的'字段来源'分类" \
-"curl -s $BASE_URL/api/dashboard/analysis | jq '.field_source_distribution'"
-curl -s "$BASE_URL/api/dashboard/analysis" | jq '.field_source_distribution'
+# 10. 计算字段孤儿数据源引用
+check_item "计算字段孤儿数据源引用" "引用了不存在数据源的计算字段 (显示Unknown)" \
+"curl -s $BASE_URL/api/metrics | jq '.items[] | select(.datasource_name==\"Unknown\" or .datasource_name==null)' | head -20"
+curl -s "$BASE_URL/api/metrics" | jq '.items[] | select(.datasource_name=="Unknown" or .datasource_name==null)' | head -20
 
-# 15. 质量分计算偏差
-check_item "质量分计算偏差" "健康度/完整性评分" \
-"curl -s $BASE_URL/api/dashboard/analysis | jq '.quality_metrics'"
-curl -s "$BASE_URL/api/dashboard/analysis" | jq '.quality_metrics'
+# 11. 计算字段物理表血缘缺失
+check_item "计算字段物理表血缘缺失" "缺少物理表关联的计算字段数量" \
+"curl -s $BASE_URL/api/metrics | jq '[.items[] | select(.table_id==null)] | length'"
+curl -s "$BASE_URL/api/metrics" | jq '[.items[] | select(.table_id==null)] | length'
 
-# 16. 治理看板计数偏差
-check_item "治理看板计数偏差" "治理页面展示的问题数" \
-"curl -s $BASE_URL/api/dashboard/analysis | jq '.issues'"
-curl -s "$BASE_URL/api/dashboard/analysis" | jq '.issues'
+echo ""
 
-# 17. 未使用指标统计口径
-check_item "未使用指标统计口径" "聚合后的未使用指标列表 (期望 INDEX() 不在其中)" \
-"curl -s $BASE_URL/api/metrics/catalog/unused | jq '.total_count'"
-curl -s "$BASE_URL/api/metrics/catalog/unused" | jq '.total_count'
+# 12. 原始字段归属缺失
+check_item "原始字段归属缺失" "原始字段无DataSource ID" \
+"curl -s $BASE_URL/api/fields?page_size=10000 | jq '[.items[] | select(.isCalculated==false and .datasourceId==null)] | length'"
+curl -s "$BASE_URL/api/fields?page_size=10000" | jq '[.items[] | select(.isCalculated==false and .datasourceId==null)] | length'
 
-# 18. 字段血缘物理表映射补齐 (P0)
-check_item "字段血缘物理表映射补齐" "副本字段通过继承获取物理表信息 (期望 table_info 不为 null)" \
-"curl -s $BASE_URL/api/fields/01332753-6b5f-b122-b4c9-9d627d11e420 | jq '.table_info.name'"
-curl -s "$BASE_URL/api/fields/01332753-6b5f-b122-b4c9-9d627d11e420" | jq '.table_info.name'
+# 13. 计算字段归属缺失 (修正: 允许归属 DS 或 WB)
+check_item "计算字段归属缺失" "计算字段无 Workbook 也无 Datasource" \
+"curl -s $BASE_URL/api/fields?page_size=10000 | jq '[.items[] | select(.isCalculated==true and .workbookId==null and .datasourceId==null)] | length'"
+curl -s "$BASE_URL/api/fields?page_size=10000" | jq '[.items[] | select(.isCalculated==true and .workbookId==null and .datasourceId==null)] | length'
 
-# 19. 字段血缘命名一致性 (P0)
-check_item "字段血缘命名一致性" "后端返回 usedInWorkbooks 兼容字段 (期望长度 >= 1)" \
-"curl -s $BASE_URL/api/fields/01332753-6b5f-b122-b4c9-9d627d11e420 | jq '.usedInWorkbooks | length'"
-curl -s "$BASE_URL/api/fields/01332753-6b5f-b122-b4c9-9d627d11e420" | jq '.usedInWorkbooks | length'
+# 14. 详情页数据完整性 (验证后端无硬编码限制)
+echo ""
+echo "----------------------------------------------------------------"
+echo "验证项: 14. 详情页数据完整性"
+echo "说明: 验证最大数据源的详情页是否包含所有字段 (应 > 100)"
+echo "----------------------------------------------------------------"
+
+# 1. 获取字段数最多的一个数据源 (从数据库查，比API排序靠谱)
+DS_ID=$(sqlite3 metadata.db "SELECT datasource_id FROM fields WHERE datasource_id IS NOT NULL GROUP BY datasource_id ORDER BY count(*) DESC LIMIT 1;")
+DETAIL_JSON=$(curl -s "$BASE_URL/api/datasources/$DS_ID")
+DS_NAME=$(echo $DETAIL_JSON | jq -r '.name')
+EXPECTED_COUNT=$(echo $DETAIL_JSON | jq -r '.total_field_count')
+
+echo "测试对象: [数据源] $DS_NAME (ID: $DS_ID)"
+echo "预期字段数: $EXPECTED_COUNT"
+
+# 2. 获取详情页数据
+# DETAIL_JSON is already fetched
+ACTUAL_COUNT=$(echo $DETAIL_JSON | jq '.total_field_count') # 详情页统计值
+LIST_LEN=$(echo $DETAIL_JSON | jq '.full_fields | length')   # 实际列表长度
+
+echo "详情页统计: $ACTUAL_COUNT"
+echo "实际列表长: $LIST_LEN"
+
+if [ "$LIST_LEN" -eq "$ACTUAL_COUNT" ]; then
+    if [ "$LIST_LEN" -gt 100 ]; then
+        echo "✅ PASS: 列表完整且超过 100 条 (Limit 已移除) - 当前: $LIST_LEN"
+    elif [ "$EXPECTED_COUNT" -le 100 ]; then
+        echo "⚠️ SKIP: 该数据源字段不足 100 条 ($LIST_LEN)，无法验证高水位限制，但计数一致。"
+    else
+         echo "❌ FAIL: 计数一致但小于 100，预期应更多。"
+    fi
+else
+    echo "❌ FAIL: 列表长度 ($LIST_LEN) 与统计值 ($ACTUAL_COUNT) 不一致！可能存在截断。"
+fi
 
 echo ""
 echo "================================================================"
-echo "验证结束"
+echo "系统设计验证结束"
 echo "================================================================"

@@ -1088,7 +1088,7 @@ def get_datasource_detail(ds_id):
 
     # 字段列表（性能优化：限制返回数量，精简数据格式）
     # 注意：对于大数据源，完整字段列表通过分页 API 获取
-    FIELD_LIMIT = 100  # 详情页只展示前 100 条，完整列表通过专属分页接口获取
+    FIELD_LIMIT = 10000  # 提升详情页展示上限，解决前端列表被截断的问题 (原为100)
     
     full_fields = []
     metrics_list = []
@@ -2496,6 +2496,31 @@ def get_field_detail(field_id):
                 '_inherited_from_ds_primary': True  # 标记：继承自数据源主表
             }
 
+    # 如果是计算字段且没有直接 table_info，通过预计算血缘表获取关联的物理表
+    if field.is_calculated and not data.get('table_info'):
+        from sqlalchemy import text
+        lineage_result = session.execute(text("""
+            SELECT DISTINCT fl.table_id, t.name, t.schema, db.name as db_name, t.database_id
+            FROM field_full_lineage fl
+            LEFT JOIN tables t ON fl.table_id = t.id
+            LEFT JOIN databases db ON t.database_id = db.id
+            WHERE fl.field_id = :field_id AND fl.table_id IS NOT NULL
+        """), {'field_id': field_id}).fetchall()
+        
+        derived_tables = []
+        for row in lineage_result:
+            if row[0]:  # table_id is not None
+                derived_tables.append({
+                    'id': row[0],
+                    'name': row[1],
+                    'schema': row[2],
+                    'database_name': row[3],
+                    'database_id': row[4],
+                    '_derived_from_lineage': True
+                })
+        data['derived_tables'] = derived_tables
+        data['derivedTables'] = derived_tables  # 驼峰兼容
+
     # 所属数据源信息
     if field.datasource:
         data['datasource_info'] = {
@@ -2565,6 +2590,20 @@ def get_field_detail(field_id):
                 'owner': v.workbook.owner
             }
     data['used_in_views'] = views_data
+    
+    # 如果字段直接定义于某个工作簿（workbook_id 非空），也要加入 workbooks_set
+    # 这样即使字段未被任何视图使用，也能展示它的"定义工作簿"
+    if field.workbook_id and field.workbook_id not in workbooks_set:
+        wb = session.query(Workbook).filter(Workbook.id == field.workbook_id).first()
+        if wb:
+            workbooks_set[field.workbook_id] = {
+                'id': wb.id,
+                'name': wb.name,
+                'project_name': wb.project_name,
+                'owner': wb.owner,
+                'is_defining_workbook': True  # 标记为定义工作簿
+            }
+    
     data['used_in_workbooks'] = list(workbooks_set.values())
     
     # 兼容性字段：提供驼峰式命名给前端

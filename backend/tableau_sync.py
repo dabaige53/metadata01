@@ -464,6 +464,10 @@ class TableauMetadataClient:
                         id
                         name
                     }}
+                    upstreamTables {{
+                        id
+                        name
+                    }}
                     fields {{
                         id
                         name
@@ -1308,6 +1312,48 @@ class MetadataSync:
             self._complete_sync_log(0, str(e))
             print(f"  ❌ 同步失败: {e}")
             return 0
+            
+    def _save_embedded_datasource(self, ds_data: Dict, workbook_id: str):
+        """保存独立的嵌入式数据源 (用于直连场景)"""
+        try:
+            ds_id = ds_data["id"]
+            ds = self.session.query(Datasource).filter_by(id=ds_id).first()
+            if not ds:
+                ds = Datasource(id=ds_id)
+                self.session.add(ds)
+            
+            ds.name = ds_data.get("name") or "Embedded Datasource"
+            ds.is_embedded = True
+            ds.project_name = "(Embedded)" # 嵌入式源通常没有独立的项目归属，因为它属于工作簿
+            
+            # 建立上游表关联 (直连源的关键血缘)
+            upstream_tables = ds_data.get("upstreamTables", [])
+            for tbl in upstream_tables:
+                if not tbl or not tbl.get("id"):
+                     continue
+                
+                # 使用 select 查询避免重复插入错误
+                rel = self.session.execute(
+                    select(table_to_datasource).where(
+                        table_to_datasource.c.table_id == tbl["id"],
+                        table_to_datasource.c.datasource_id == ds_id
+                    )
+                ).first()
+                
+                if not rel:
+                    try:
+                        self.session.execute(
+                            table_to_datasource.insert().values(
+                                table_id=tbl["id"],
+                                datasource_id=ds_id,
+                                relationship_type="upstream"
+                            )
+                        )
+                    except:
+                        pass # 忽略主键冲突
+
+        except Exception as e:
+            print(f"  ⚠️ 保存嵌入式数据源失败: {e}")
     
     def sync_workbooks(self) -> int:
         """同步工作簿和视图（增强版）"""
@@ -1362,17 +1408,38 @@ class MetadataSync:
                         continue
                     self._link_datasource_to_workbook(ds["id"], wb_data["id"])
 
-                # 同步嵌入式数据源 (Embedded) - 注意：不再为嵌入式数据源创建 Datasource 记录，只同步其字段
+                # 同步嵌入式数据源 (Embedded)
                 embedded_ds = wb_data.get("embeddedDatasources", [])
                 for eds in embedded_ds:
                     if not eds or not eds.get("id"):
                         continue
                     
-                    # 仅同步字段，datasource_id 设为 None，workbook_id 设为当前工作簿
-                    # 这符合用户“嵌入式数据源及其字段作为内部属性”的要求
+                    upstream_published = eds.get("upstreamDatasources", [])
+                    upstream_ds_id = None
+                    
+                    if upstream_published:
+                        # 场景1：嵌入式源引用了已发布数据源 (穿透模式)
+                        # 将上游发布式数据源关联到工作簿
+                        for up_ds in upstream_published:
+                            if up_ds and up_ds.get("id"):
+                                self._link_datasource_to_workbook(up_ds["id"], wb_data["id"])
+                        upstream_ds_id = upstream_published[0]["id"]
+                    else:
+                        # 场景2：完全独立的嵌入式直连源 (保留模式)
+                        # 保存该嵌入式数据源，标记 is_embedded=True
+                        # 这样工作簿就有了一个关联的 Datasource，字段也有了归属
+                        self._save_embedded_datasource(eds, wb_data["id"])
+                        # 同时也建立 Datasource -> Workbook 关联 (虽然上面已经在 DB 层面建立了，但这里显式链接)
+                        self._link_datasource_to_workbook(eds["id"], wb_data["id"])
+                        upstream_ds_id = eds["id"]
+                    
+                    # 同步嵌入式字段
                     eds_fields = eds.get("fields", [])
                     for f_data in eds_fields:
-                       self._sync_field(f_data, datasource_id=None, workbook_id=wb_data["id"])
+                        self._sync_field(f_data, datasource_id=upstream_ds_id, workbook_id=wb_data["id"])
+
+
+
                 
                 # 同步视图 (sheets + dashboards)
                 for idx, sheet in enumerate(wb_data.get("sheets", [])):
@@ -1480,7 +1547,7 @@ class MetadataSync:
             return 0
     
     def sync_fields(self) -> int:
-        """同步字段"""
+        """同步字段（含去重逻辑）"""
         print("\n🔤 同步字段...")
         self._start_sync_log("fields")
         
@@ -1499,138 +1566,78 @@ class MetadataSync:
                     table_real_ds_map[tid] = dsid
 
             fields = self.client.fetch_fields()
+            
+            # --- 去重准备开始 ---
+            # 1. 分离已发布字段和嵌入式字段
+            published_fields = []
+            embedded_fields = []
+            
+            # 缓存已发布的字段：(datasource_id, name) -> field_id
+            published_field_cache = {}
+            
+            # 预处理：分类
+            for f in fields:
+                if not f or not f.get("id"): continue
+                
+                # 判断是否为嵌入式 (通过原始 datasource_id 和 parent_datasource_id 对比)
+                # fetch_fields 中有一步: field["parent_datasource_id"] = ds_id (原始ID)
+                # field["datasource_id"] = final_ds_id (穿透后的ID)
+                
+                orig_ds_id = f.get("parent_datasource_id")
+                final_ds_id = f.get("datasource_id")
+                
+                # 如果 orig_ds_id != final_ds_id，说明发生了穿透，它是嵌入式字段
+                if orig_ds_id and final_ds_id and orig_ds_id != final_ds_id:
+                    embedded_fields.append(f)
+                else:
+                    published_fields.append(f)
+            
+            print(f"  - 字段预处理: 已发布 {len(published_fields)} 个, 嵌入式 {len(embedded_fields)} 个")
+            
             count = 0
             calc_count = 0
+            skipped_count = 0
             current_ids = []
             
-            for f_data in fields:
-                if not f_data or not f_data.get("id"):
-                    continue
-                    
+            # --- 第一阶段：处理已发布字段 (构建基准) ---
+            for f_data in published_fields:
+                self._process_single_field(f_data, table_real_ds_map)
                 current_ids.append(f_data["id"])
                 
-                # 获取/创建 Field 记录
-                field = self.session.query(Field).filter_by(id=f_data["id"]).first()
-                if not field:
-                    field = Field(id=f_data["id"])
-                    self.session.add(field)
-                
-                field.name = f_data.get("name") or ""
-                field.description = f_data.get("description") or ""
-                
-                # 获取初始 datasource_id
+                # 加入缓存
                 ds_id = f_data.get("datasource_id")
-                
-                # 根据类型解析字段详情 (提前解析以便获取 table_id 和 schema 穿透)
-                typename = f_data.get("__typename")
-                target_table_id = None
-                
-                if typename == "ColumnField":
-                    # 关联上游表和列
-                    upstream_cols = f_data.get("upstreamColumns") or []
-                    if upstream_cols and len(upstream_cols) > 0:
-                        first_col = upstream_cols[0]
-                        if first_col:
-                            field.upstream_column_id = first_col.get("id")
-                            field.upstream_column_name = first_col.get("name")
-                            table_info = first_col.get("table")
-                            if table_info:
-                                target_table_id = table_info.get("id")
-                                field.table_id = target_table_id
+                name = f_data.get("name")
+                if ds_id and name:
+                     published_field_cache[(ds_id, name)] = f_data["id"]
 
-                # 血缘补齐：如果当前 datasource_id 指向的不是发布式（或不存在），尝试通过 table_id 找发布式
-                if ds_id:
-                    exists = self.session.query(Datasource).filter_by(id=ds_id, is_embedded=0).first()
-                    if not exists and target_table_id in table_real_ds_map:
-                        ds_id = table_real_ds_map[target_table_id]
-                
-                field.datasource_id = ds_id
-                
-                # 默认值
-                field.data_type = ""
-                field.role = ""
-                field.is_calculated = False
-                field.formula = ""
-                field.is_hidden = False
-                field.folder_name = f_data.get("folderName")
-                field.fully_qualified_name = ""
-                
-                # 根据类型解析字段
-                typename = f_data.get("__typename")
-                if typename == "CalculatedField":
-                    field.is_calculated = True
-                    field.formula = f_data.get("formula") or ""
-                    field.data_type = f_data.get("dataType") or ""
-                    field.role = (f_data.get("role") or "").lower()
-                    field.is_hidden = f_data.get("isHidden") or False
-                    field.folder_name = f_data.get("folderName")
-                    
-                    # 指标血缘穿透：通过 upstreamFields 找物理数据源和物理表
-                    upstream_fields = f_data.get("upstreamFields") or []
-                    for uf in upstream_fields:
-                        if uf:
-                            # 1. 尝试获取物理表 (从上游字段的 upstreamColumns)
-                            upstream_cols = uf.get("upstreamColumns") or []
-                            if upstream_cols and not field.table_id:
-                                for col in upstream_cols:
-                                    if col and col.get("table"):
-                                        field.table_id = col["table"].get("id")
-                                        break
-                            
-                            # 2. 尝试获取发布式数据源
-                            if uf.get("datasource"):
-                                ref_ds_id = uf["datasource"].get("id")
-                                if ref_ds_id:
-                                    exists = self.session.query(Datasource).filter_by(id=ref_ds_id, is_embedded=0).first()
-                                    if exists:
-                                        ds_id = ref_ds_id
-                                        # 继续遍历以找更多的table_id，但数据源已确定
-                elif typename == "ColumnField":
-                    field.data_type = f_data.get("dataType") or ""
-                    field.role = (f_data.get("role") or "").lower()
-                    field.is_hidden = f_data.get("isHidden") or False
-                    field.folder_name = f_data.get("folderName")
-                    
-                    # 关联上游表和列
-                    upstream_cols = f_data.get("upstreamColumns") or []
-                    if upstream_cols and len(upstream_cols) > 0:
-                        first_col = upstream_cols[0]
-                        if first_col:
-                            field.upstream_column_id = first_col.get("id")
-                            field.upstream_column_name = first_col.get("name")
-                            
-                            # 从本地 DBColumn 获取 Remote Type (避免 API schema 错误)
-                            if field.upstream_column_id:
-                                from backend.models import DBColumn
-                                db_col = self.session.query(DBColumn).filter_by(id=field.upstream_column_id).first()
-                                if db_col and db_col.remote_type:
-                                    field.remote_type = db_col.remote_type
-                            
-                            table_info = first_col.get("table")
-                            if table_info:
-                                field.table_id = table_info.get("id")
-                
                 count += 1
                 if count % 1000 == 0:
                     self.session.commit()
-                    print(f"  - 字段: 已处理 {count}/{len(fields)}")
-                
-                # 处理计算字段
-                if f_data.get("isCalculated"):
-                    calc_field = self.session.query(CalculatedField).filter_by(
-                        field_id=f_data["id"]
-                    ).first()
-                    if not calc_field:
-                        calc_field = CalculatedField(field_id=f_data["id"])
-                        self.session.add(calc_field)
-                    
-                    calc_field.name = f_data.get("name") or ""
-                    calc_field.formula = f_data.get("formula") or ""
-                    calc_count += 1
             
+            # --- 第二阶段：处理嵌入式字段 (查重) ---
+            for f_data in embedded_fields:
+                ds_id = f_data.get("datasource_id") # 这是穿透后的 ID (即已发布源ID)
+                name = f_data.get("name")
+                
+                # 检查是否重复
+                if ds_id and name and (ds_id, name) in published_field_cache:
+                    # 发现重复！跳过保存，但可能需要记录（为了后续 view 关联）
+                    # 下一步 fetch_views_with_fields 会处理重连
+                    skipped_count += 1
+                    continue
+                
+                # 如果不重复（例如工作簿特有的计算字段），则保存
+                self._process_single_field(f_data, table_real_ds_map)
+                current_ids.append(f_data["id"])
+                count += 1
+                
             self.session.commit()
+            
+            # 清理数据库中已不存在的记录
+            self._cleanup_orphaned_records(Field, current_ids)
+            
             self._complete_sync_log(count)
-            print(f"  ✅ 同步 {count} 个字段 (其中 {calc_count} 个计算字段)")
+            print(f"  ✅ 同步 {count} 个字段 (其中 {calc_count} 个计算字段, 去重跳过 {skipped_count} 个)")
             return count
             
         except Exception as e:
@@ -1640,6 +1647,129 @@ class MetadataSync:
             import traceback
             traceback.print_exc()
             return 0
+
+    def _process_single_field(self, f_data, table_real_ds_map):
+        """辅助：处理单个字段的保存逻辑"""
+        # 获取/创建 Field 记录
+        field = self.session.query(Field).filter_by(id=f_data["id"]).first()
+        if not field:
+            field = Field(id=f_data["id"])
+            self.session.add(field)
+        
+        field.name = f_data.get("name") or ""
+        field.description = f_data.get("description") or ""
+        
+        # 获取初始 datasource_id
+        ds_id = f_data.get("datasource_id")
+        
+        # 根据类型解析字段详情 (提前解析以便获取 table_id 和 schema 穿透)
+        typename = f_data.get("__typename")
+        target_table_id = None
+        
+        if typename == "ColumnField":
+            # 关联上游表和列
+            upstream_cols = f_data.get("upstreamColumns") or []
+            if upstream_cols and len(upstream_cols) > 0:
+                first_col = upstream_cols[0]
+                if first_col:
+                    field.upstream_column_id = first_col.get("id")
+                    field.upstream_column_name = first_col.get("name")
+                    table_info = first_col.get("table")
+                    if table_info:
+                        target_table_id = table_info.get("id")
+                        field.table_id = target_table_id
+
+        # 血缘补齐：如果当前 datasource_id 指向的不是发布式（或不存在），尝试通过 table_id 找发布式
+        if ds_id:
+            # 🔧 关键修改：允许引用嵌入式数据源 (is_embedded=1)，只要它存在于数据库中
+            exists = self.session.query(Datasource).filter_by(id=ds_id).first()
+            if not exists:
+                # 尝试通过 table_id 找发布式数据源
+                if target_table_id in table_real_ds_map:
+                    ds_id = table_real_ds_map[target_table_id]
+                else:
+                    # 无法穿透到有效数据源，则设为 NULL
+                    ds_id = None
+        
+        field.datasource_id = ds_id
+
+        
+        # 默认值
+        field.data_type = ""
+        field.role = ""
+        field.is_calculated = False
+        field.formula = ""
+        field.is_hidden = False
+        field.folder_name = f_data.get("folderName")
+        field.fully_qualified_name = ""
+        
+        # 根据类型解析字段
+        typename = f_data.get("__typename")
+        if typename == "CalculatedField":
+            field.is_calculated = True
+            field.formula = f_data.get("formula") or ""
+            field.data_type = f_data.get("dataType") or ""
+            field.role = (f_data.get("role") or "").lower()
+            field.is_hidden = f_data.get("isHidden") or False
+            field.folder_name = f_data.get("folderName")
+            
+            # 指标血缘穿透：通过 upstreamFields 找物理数据源和物理表
+            upstream_fields = f_data.get("upstreamFields") or []
+            for uf in upstream_fields:
+                if uf:
+                    # 1. 尝试获取物理表 (从上游字段的 upstreamColumns)
+                    upstream_cols = uf.get("upstreamColumns") or []
+                    if upstream_cols and not field.table_id:
+                        for col in upstream_cols:
+                            if col and col.get("table"):
+                                field.table_id = col["table"].get("id")
+                                break
+                    
+                    # 2. 尝试获取发布式数据源
+                    if uf.get("datasource"):
+                        ref_ds_id = uf["datasource"].get("id")
+                        if ref_ds_id:
+                            exists = self.session.query(Datasource).filter_by(id=ref_ds_id, is_embedded=0).first()
+                            if exists:
+                                ds_id = ref_ds_id
+                                # 继续遍历以找更多的table_id，但数据源已确定
+        elif typename == "ColumnField":
+            field.data_type = f_data.get("dataType") or ""
+            field.role = (f_data.get("role") or "").lower()
+            field.is_hidden = f_data.get("isHidden") or False
+            field.folder_name = f_data.get("folderName")
+            
+            # 关联上游表和列
+            upstream_cols = f_data.get("upstreamColumns") or []
+            if upstream_cols and len(upstream_cols) > 0:
+                first_col = upstream_cols[0]
+                if first_col:
+                    field.upstream_column_id = first_col.get("id")
+                    field.upstream_column_name = first_col.get("name")
+                    
+                    # 从本地 DBColumn 获取 Remote Type (避免 API schema 错误)
+                    if field.upstream_column_id:
+                        from backend.models import DBColumn
+                        db_col = self.session.query(DBColumn).filter_by(id=field.upstream_column_id).first()
+                        if db_col and db_col.remote_type:
+                            field.remote_type = db_col.remote_type
+                    
+                    table_info = first_col.get("table")
+                    if table_info:
+                        field.table_id = table_info.get("id")
+        
+        # 处理计算字段详情
+        if f_data.get("isCalculated"):
+            calc_field = self.session.query(CalculatedField).filter_by(
+                field_id=f_data["id"]
+            ).first()
+            if not calc_field:
+                calc_field = CalculatedField(field_id=f_data["id"])
+                self.session.add(calc_field)
+            
+            calc_field.name = f_data.get("name") or ""
+            calc_field.formula = f_data.get("formula") or ""
+
     
     def sync_calculated_fields(self) -> int:
         """同步计算字段"""
@@ -1695,49 +1825,121 @@ class MetadataSync:
             return 0
     
     def sync_field_to_view(self) -> int:
-        """同步字段到视图的关联关系"""
+        """同步字段到视图的关联关系（含智能重连）"""
         print("\n🔗 同步字段→视图关联...")
         self._start_sync_log("field_to_view")
         
         try:
+            # 1. 清理旧数据 (全量同步策略)
+            # 由于我们做了去重，必须清除旧的可能指向无效ID的链接
+            self.session.execute(text("DELETE FROM field_to_view"))
+            self.session.commit()
+            print("  🧹 已清空旧的字段关联关系")
+
             view_fields = self.client.fetch_views_with_fields()
+            
+            # 2. 准备查找缓存 (Name + Datasource -> FieldID)
+            # 用于当原始 field_id 是嵌入式副本（已被去重）时，找回已发布的真身
+            from backend.models import Datasource
+            print("  - 构建字段查找缓存...")
+            
+            # 获取所有已发布的字段信息: (datasource_id, name) -> field_id
+            # 仅加载已发布数据源的字段
+            published_fields_map = {} 
+            result = self.session.execute(
+                select(Field.id, Field.name, Field.datasource_id)
+                .join(Datasource, Datasource.id == Field.datasource_id)
+                .where(Datasource.is_embedded == 0)
+            ).fetchall()
+            
+            for fid, fname, fdsid in result:
+                if fdsid and fname:
+                    published_fields_map[(fdsid, fname)] = fid
+            
+            # 还需要嵌入式数据源ID -> 发布式数据源ID 的映射
+            # 这在 fetch_fields 期间用到了，这里重新构建或通过 table_to_datasource 推断
+            # 简单起见，我们假设 embedded_ds_id 在 backend/models.py 里没有直接存储映射，
+            # 但我们可以通过 "Tableau Metadata API" 的特性：embedded field 的 datasource_id 往往是临时的。
+            # 我们在 sync_fields 既然已经统一了 datasource_id，那数据库里的 Field.datasource_id 都是发布式的。
+            
             count = 0
+            relinked_count = 0
             skipped = 0
             
+            # 缓存有效字段ID集合，减少查询
+            valid_field_ids = set([r[0] for r in result])
+            
+            # 为了处理嵌入式数据源ID -> 发布式ID，我们需要一个辅助映射
+            # 因为 view_fields 返回的数据中，field 往往带着嵌入式 DS ID
+            # 我们需要构建: embedded_ds_id -> published_ds_id
+            # 这可以通过 "fetch_fields" 的逻辑复现，或者更简单地：
+            # 在 sync_fields 阶段没有持久化这个映射有点可惜。
+            # 补救策略：
+            # 如果直接找不到 ID，尝试用 (任何发布式DS, name) 匹配？不，太宽泛。
+            # 我们可以尝试匹配 (view.workbook -> upstreamDatasource, name)
+            
+            # 构建 Workbook -> Published Datasources 映射
+            wb_ds_map = {}
+            wb_ds_rels = self.session.execute(
+                select(datasource_to_workbook.c.workbook_id, datasource_to_workbook.c.datasource_id)
+            ).fetchall()
+            for wbid, dsid in wb_ds_rels:
+                if wbid not in wb_ds_map:
+                    wb_ds_map[wbid] = []
+                wb_ds_map[wbid].append(dsid)
+
             for vf in view_fields:
                 field_id = vf.get("field_id")
+                field_name = vf.get("field_name")
                 view_id = vf.get("view_id")
+                workbook_id = vf.get("workbook_id") # 需要 fetch_views_with_fields 返回 workbook_id
                 
                 if not field_id or not view_id:
                     skipped += 1
                     continue
                 
-                # 检查是否已存在
-                existing = self.session.execute(
-                    select(field_to_view).where(
-                        field_to_view.c.field_id == field_id,
-                        field_to_view.c.view_id == view_id
-                    )
-                ).first()
+                final_field_id = field_id
                 
-                if not existing:
-                    try:
-                        self.session.execute(
-                            field_to_view.insert().values(
-                                field_id=field_id,
-                                view_id=view_id,
-                                used_in_formula=False
-                            )
-                        )
-                        count += 1
-                    except Exception as e:
-                        # 忽略外键约束错误（字段或视图不存在）
+                # 检查ID是否有效
+                if field_id not in valid_field_ids:
+                    # ID 无效（可能是被去重的嵌入式字段）
+                    # 尝试重连：在工作簿关联的发布式数据源中查找同名字段
+                    found_new_id = None
+                    
+                    if workbook_id and field_name and workbook_id in wb_ds_map:
+                        potential_ds_ids = wb_ds_map[workbook_id]
+                        for p_ds_id in potential_ds_ids:
+                            key = (p_ds_id, field_name)
+                            if key in published_fields_map:
+                                found_new_id = published_fields_map[key]
+                                break
+                    
+                    if found_new_id:
+                        final_field_id = found_new_id
+                        relinked_count += 1
+                    else:
+                        # 确实找不到，放弃
                         skipped += 1
                         continue
+                
+                # 插入关联 (批量插入优化可留待后续，目前单条插入并忽略错误)
+                try:
+                    self.session.execute(
+                        field_to_view.insert().values(
+                            field_id=final_field_id,
+                            view_id=view_id,
+                            used_in_formula=False
+                        )
+                    )
+                    count += 1
+                except Exception as e:
+                    # 可能是主键冲突（如果逻辑有误导致重复插入）
+                    skipped += 1
+                    continue
             
             self.session.commit()
             self._complete_sync_log(count)
-            print(f"  ✅ 同步 {count} 个字段→视图关联 (跳过 {skipped} 个)")
+            print(f"  ✅ 同步 {count} 个字段→视图关联 (重连 {relinked_count} 个, 跳过 {skipped} 个)")
             return count
             
         except Exception as e:
@@ -2223,9 +2425,112 @@ class MetadataSync:
             self.session.commit()
             print(f"  ✅ 已更新 {len(workbooks)} 个工作簿, {len(datasources)} 个数据源, {len(calc_fields)} 个计算字段的统计字段")
             
+            # ========== 预计算完整血缘链 (field_full_lineage) ==========
+            print("  - 预计算完整血缘链...")
+            self._compute_full_lineage()
+            
         except Exception as e:
             self.session.rollback()
             print(f"  ❌ 统计计算失败: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _compute_full_lineage(self):
+        """预计算所有字段的完整血缘链并存入 field_full_lineage 表"""
+        from backend.models import FieldFullLineage, Field, Datasource
+        
+        try:
+            # 清空旧数据
+            self.session.execute(text("DELETE FROM field_full_lineage"))
+            
+            # 构建数据源 -> 物理表的映射
+            ds_table_map = {}  # datasource_id -> [table_ids]
+            result = self.session.execute(text(
+                "SELECT datasource_id, table_id FROM table_to_datasource"
+            )).fetchall()
+            for ds_id, tbl_id in result:
+                if ds_id not in ds_table_map:
+                    ds_table_map[ds_id] = []
+                ds_table_map[ds_id].append(tbl_id)
+            
+            # 遍历所有字段
+            fields = self.session.query(Field).all()
+            lineage_records = []
+            
+            for f in fields:
+                if not f.is_calculated:
+                    # 原始字段: 直接血缘
+                    # 物理表来源: 优先用 field.table_id，否则用 datasource 反查
+                    table_ids = []
+                    if f.table_id:
+                        table_ids = [f.table_id]
+                    elif f.datasource_id and f.datasource_id in ds_table_map:
+                        table_ids = ds_table_map[f.datasource_id]
+                    
+                    if table_ids:
+                        for tbl_id in table_ids:
+                            lineage_records.append({
+                                'field_id': f.id,
+                                'table_id': tbl_id,
+                                'datasource_id': f.datasource_id,
+                                'workbook_id': f.workbook_id,
+                                'lineage_type': 'direct',
+                                'lineage_path': f'Field -> DS -> Table'
+                            })
+                    else:
+                        # 无物理表关联，但仍需记录字段存在
+                        lineage_records.append({
+                            'field_id': f.id,
+                            'table_id': None,
+                            'datasource_id': f.datasource_id,
+                            'workbook_id': f.workbook_id,
+                            'lineage_type': 'direct',
+                            'lineage_path': f'Field -> DS (no table)'
+                        })
+                else:
+                    # 计算字段: 间接血缘 (通过数据源反查物理表)
+                    table_ids = []
+                    if f.datasource_id and f.datasource_id in ds_table_map:
+                        table_ids = ds_table_map[f.datasource_id]
+                    
+                    if table_ids:
+                        for tbl_id in table_ids:
+                            lineage_records.append({
+                                'field_id': f.id,
+                                'table_id': tbl_id,
+                                'datasource_id': f.datasource_id,
+                                'workbook_id': f.workbook_id,
+                                'lineage_type': 'indirect',
+                                'lineage_path': f'CalcField -> DS -> Table'
+                            })
+                    else:
+                        # 无物理表关联
+                        lineage_records.append({
+                            'field_id': f.id,
+                            'table_id': None,
+                            'datasource_id': f.datasource_id,
+                            'workbook_id': f.workbook_id,
+                            'lineage_type': 'indirect',
+                            'lineage_path': f'CalcField -> DS (no table)'
+                        })
+            
+            # 批量插入
+            if lineage_records:
+                self.session.execute(
+                    text("""
+                        INSERT INTO field_full_lineage 
+                        (field_id, table_id, datasource_id, workbook_id, lineage_type, lineage_path)
+                        VALUES (:field_id, :table_id, :datasource_id, :workbook_id, :lineage_type, :lineage_path)
+                    """),
+                    lineage_records
+                )
+                self.session.commit()
+            
+            print(f"  ✅ 预计算 {len(lineage_records)} 条完整血缘记录")
+            
+        except Exception as e:
+            self.session.rollback()
+            print(f"  ❌ 预计算血缘失败: {e}")
             import traceback
             traceback.print_exc()
     

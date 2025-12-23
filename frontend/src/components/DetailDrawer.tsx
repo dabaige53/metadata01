@@ -1313,7 +1313,12 @@ export default function DetailDrawer() {
 
             // 字段/指标相关
             case 'table':
-                return renderAssetSection('所属数据表', Table2, data.table_info ? [data.table_info] : [], 'tables', 'blue');
+                // 优先显示直接物理表，其次显示通过血缘穿透获得的关联表
+                const directTable = data.table_info ? [data.table_info] : [];
+                const derivedTables = data.derived_tables || data.derivedTables || [];
+                const tablesToShow = directTable.length > 0 ? directTable : derivedTables;
+                const tableLabel = directTable.length > 0 ? '所属数据表' : '关联数据表 (血缘穿透)';
+                return renderAssetSection(tableLabel, Table2, tablesToShow, 'tables', 'blue');
             case 'deps':
                 return renderAssetSection('依赖的基础字段', Columns, data.dependencyFields || [], 'fields', 'indigo');
             case 'impact_metrics':
@@ -1347,7 +1352,9 @@ export default function DetailDrawer() {
             case 'workbooks':
                 const wbItems = (data.usedInWorkbooks || data.used_in_workbooks || data.workbooks || []).map((wb: any) => ({
                     ...wb,
-                    subtitle: wb.owner ? `Owner: ${wb.owner}` : (wb.projectName || undefined)
+                    subtitle: wb.is_defining_workbook
+                        ? `✏️ 定义于此工作簿${wb.owner ? ` · ${wb.owner}` : ''}`
+                        : (wb.owner ? `使用于 · ${wb.owner}` : (wb.projectName || undefined))
                 }));
                 return renderAssetSection('引用此资产的工作簿', BookOpen, wbItems, 'workbooks', 'red');
             case 'workbook':

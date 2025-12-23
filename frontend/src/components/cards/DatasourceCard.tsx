@@ -33,6 +33,7 @@ export interface DatasourceCardData {
   createdAt?: string;
   updated_at?: string;
   updatedAt?: string;
+  isEmbedded?: boolean;
 }
 
 export interface DatasourceCardProps {
@@ -83,20 +84,28 @@ export default function DatasourceCard({ datasource, onClick }: DatasourceCardPr
   const hasWarning = datasource.has_active_warning ?? datasource.hasActiveWarning ?? false;
   const createdAt = datasource.created_at ?? datasource.createdAt;
   const updatedAt = datasource.updated_at ?? datasource.updatedAt;
+  const isEmbedded = datasource.isEmbedded ?? false;
 
   const refreshStatus = getRefreshStatus(lastRefresh);
 
   // 构建徽章
-  const badges: Array<{ text: string; color: 'green' | 'orange' | 'red' | 'blue' | 'purple' }> = [
-    {
+  const badges: Array<{ text: string; color: 'green' | 'orange' | 'red' | 'blue' | 'purple' }> = [];
+
+  if (isEmbedded) {
+    badges.push({
+      text: '直连嵌入',
+      color: 'purple',
+    });
+  } else {
+    badges.push({
       text: hasExtract ? 'Extract' : 'Live',
       color: hasExtract ? 'orange' : 'blue',
-    },
-    {
+    });
+    badges.push({
       text: refreshStatus.text,
       color: refreshStatus.color,
-    },
-  ];
+    });
+  }
 
   if (isCertified) {
     badges.push({

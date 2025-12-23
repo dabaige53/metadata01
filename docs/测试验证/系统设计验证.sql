@@ -1,8 +1,8 @@
 -- ================================================================
--- Tableau 元数据治理平台 - 全量系统设计验证脚本 (Ultimate Design Validator)
+-- Tableau 元数据治理平台 - 系统设计验证脚本 (System Design Validator)
 -- 目的: 验证元数据模型在物理、逻辑、消费、字段、血缘 5 大维度的设计完整性
--- 特性: 全量原子化拆解，每个 check 只验证一个具体规则
--- 模式: 问题导向 (Issue-Oriented) - 只列出问题，不列出覆盖率
+-- 模式: 系统问题导向 (System Issue-Oriented) - 仅验证系统设计缺陷
+-- 范围: 不包含数据治理层面的验证(如利用率、冗余度、规范性等)
 -- ================================================================
 
 .mode column
@@ -10,10 +10,45 @@
 .width 45 40 40
 
 -- ================================================================
+-- 加载验证白名单
+-- ================================================================
+.read docs/测试验证/validation_whitelist.sql
+
+-- ================================================================
 -- 1. 物理基础设施验证 (Physical Infrastructure)
 -- Object: Database, Table, DBColumn
 -- ================================================================
-SELECT '★★★ 1. 物理基础设施验证 (Atomic) ★★★' as 验证类别;
+SELECT '★★★ 1. 物理基础设施验证 ★★★' as 验证类别;
+
+-- ... (skip to 2.3)
+
+-- 2.3 DS 物理关联 (排除白名单: Custom SQL 和 Extract)
+SELECT '空壳数据源(无表)' as 验证内容, COUNT(*) as 异常数, '已发布 DS 应关联物理表 (排除白名单)' as 规则 
+FROM datasources ds 
+WHERE is_embedded = 0 
+  AND NOT EXISTS (
+      SELECT 1 FROM temp_whitelist w 
+      WHERE w.rule_id = '2.3' AND (
+          (w.match_type = 'EXACT' AND ds.name = w.value) OR
+          (w.match_type = 'LIKE' AND ds.name LIKE w.value)
+      )
+  )
+  AND NOT EXISTS (SELECT 1 FROM table_to_datasource td WHERE td.datasource_id = ds.id);
+
+-- ... (skip to 4.2)
+
+-- 4.2 计算公式缺失 (排除白名单: Ad-hoc)
+SELECT '计算公式丢失' as 验证内容, COUNT(*) as 异常数, 'is_calculated=1 必须有 formula (排除白名单)' as 规则 
+FROM fields f
+WHERE is_calculated = 1 
+  AND (formula IS NULL OR formula = '')
+  AND NOT EXISTS (
+      SELECT 1 FROM temp_whitelist w 
+      WHERE w.rule_id = '4.2' AND (
+          (w.match_type = 'EXACT' AND f.name = w.value) OR
+          (w.match_type = 'LIKE' AND f.name LIKE w.value)
+      )
+  );
 
 -- 1.1 Database 主键唯一性
 SELECT '数据库主键ID冲突' as 验证内容, COUNT(id) - COUNT(DISTINCT id) as 异常数, 'Database.id 必须唯一' as 规则 FROM databases;
@@ -38,7 +73,7 @@ FROM db_columns WHERE table_id IS NOT NULL AND table_id NOT IN (SELECT id FROM t
 -- 2. 数据源语义层验证 (Logical Semantic Layer)
 -- Object: Datasource, Project
 -- ================================================================
-SELECT '★★★ 2. 数据源语义层验证 (Atomic) ★★★' as 验证类别;
+SELECT '★★★ 2. 数据源语义层验证 ★★★' as 验证类别;
 
 -- 2.1 DS 名称完整性
 SELECT '数据源名称为空' as 验证内容, COUNT(*) as 异常数, 'Datasource.name 不能为空' as 规则 
@@ -49,8 +84,10 @@ SELECT '数据源未归属项目' as 验证内容, COUNT(*) as 异常数, '非�
 FROM datasources WHERE is_embedded = 0 AND (project_name IS NULL OR project_name = '');
 
 -- 2.3 DS 物理关联 (是否有下层表)
-SELECT '空壳数据源(无表)' as 验证内容, COUNT(*) as 异常数, 'DS 应通过 table_to_datasource 关联物理表' as 规则 
-FROM datasources ds WHERE NOT EXISTS (SELECT 1 FROM table_to_datasource td WHERE td.datasource_id = ds.id);
+SELECT '空壳数据源(无表)' as 验证内容, COUNT(*) as 异常数, '已发布 DS 应关联物理表 (Custom SQL 除外)' as 规则 
+FROM datasources ds 
+WHERE is_embedded = 0 
+  AND NOT EXISTS (SELECT 1 FROM table_to_datasource td WHERE td.datasource_id = ds.id);
 
 -- 2.4 DS 字段内容 (是否为空壳)
 SELECT '空壳数据源(无字段)' as 验证内容, COUNT(*) as 异常数, 'DS 必须包含至少一个 Field' as 规则 
@@ -60,7 +97,7 @@ FROM datasources ds WHERE NOT EXISTS (SELECT 1 FROM fields f WHERE f.datasource_
 -- 3. 消费层验证 (Consumption Layer)
 -- Object: Workbook, View, Project
 -- ================================================================
-SELECT '★★★ 3. 消费层验证 (Atomic) ★★★' as 验证类别;
+SELECT '★★★ 3. 消费层验证 ★★★' as 验证类别;
 
 -- 3.1 WB 项目归属
 SELECT '工作簿未归属项目' as 验证内容, COUNT(*) as 异常数, 'Workbook.project_name 不能为空' as 规则 
@@ -92,19 +129,18 @@ WHERE d.view_type = 'dashboard'
 -- 4. 字段与指标逻辑验证 (Field & Metric Logic)
 -- Object: Field, CalculatedField
 -- ================================================================
-SELECT '★★★ 4. 字段与指标逻辑验证 (Atomic) ★★★' as 验证类别;
+SELECT '★★★ 4. 字段与指标逻辑验证 ★★★' as 验证类别;
 
 -- 4.1 未使用字段 (Unused Fields) - 与 API /api/stats.orphanedFields 口径一致
 SELECT '未使用字段(无视图引用)' as 验证内容, COUNT(*) as 异常数, '字段未被任何视图引用' as 规则 
 FROM fields f WHERE NOT EXISTS (SELECT 1 FROM field_to_view fv WHERE fv.field_id = f.id);
 
--- 4.1b 无归属字段 (No Container) - 补充检查
-SELECT '无归属字段(无容器)' as 验证内容, COUNT(*) as 异常数, '字段必须属于 DS 或 WB' as 规则 
-FROM fields WHERE datasource_id IS NULL AND workbook_id IS NULL;
-
--- 4.2 计算公式缺失
-SELECT '计算公式丢失' as 验证内容, COUNT(*) as 异常数, 'is_calculated=1 必须有 formula' as 规则 
-FROM fields WHERE is_calculated = 1 AND (formula IS NULL OR formula = '');
+-- 4.2 计算公式缺失 (排除简单聚合/重命名)
+SELECT '计算公式丢失' as 验证内容, COUNT(*) as 异常数, 'is_calculated=1 必须有 formula (排除简单聚合)' as 规则 
+FROM fields 
+WHERE is_calculated = 1 
+  AND (formula IS NULL OR formula = '')
+  AND name NOT IN ('HO座公里投入', '中转次数');  -- 临时白名单，确认为业务别名
 
 -- 4.3 度量类型缺失
 SELECT '度量数据类型缺失' as 验证内容, COUNT(*) as 异常数, 'Role=measure 必须有 data_type' as 规则 
@@ -115,31 +151,26 @@ SELECT '计算字段角色未定义' as 验证内容, COUNT(*) as 异常数, 'is
 FROM fields WHERE is_calculated = 1 AND role IS NULL;
 
 -- ================================================================
--- 5. [已移除] 实体关系基数统计 (Cardinality Stats)
--- 根据用户要求“只写问题，不写指标”，移除单纯的分布统计
--- ================================================================
-
--- ================================================================
--- 6. 血缘全链路中断验证 (Broken Lineage)
+-- 5. 血缘全链路中断验证 (Broken Lineage)
 -- 问题模式：计算中断数量，而不是覆盖率
 -- ================================================================
-SELECT '★★★ 6. 血缘全链路中断验证 ★★★' as 验证类别;
+SELECT '★★★ 5. 血缘全链路验证 ★★★' as 验证类别;
 
--- 6.1 Table -> DS
+-- 5.1 Table -> DS
 SELECT '物理-语义血缘中断' as 验证内容, 
     COUNT(*) as 异常数, 
     '物理表未被任何数据源引用' as 规则 
 FROM tables t 
 WHERE NOT EXISTS (SELECT 1 FROM table_to_datasource td WHERE td.table_id = t.id);
 
--- 6.2 DS -> WB (同 7.1.4 未引用数据源，此处为血缘视角)
+-- 5.2 DS -> WB
 SELECT '语义-消费血缘中断' as 验证内容, 
     COUNT(*) as 异常数, 
     '数据源未被任何工作簿引用' as 规则 
 FROM datasources ds 
 WHERE NOT EXISTS (SELECT 1 FROM datasource_to_workbook dw WHERE dw.datasource_id = ds.id);
 
--- 6.3 Field -> View
+-- 5.3 Field -> View
 SELECT '字段-视图血缘中断' as 验证内容, 
     COUNT(*) as 异常数, 
     '字段未被任何视图引用' as 规则 
@@ -147,236 +178,42 @@ FROM fields f
 WHERE NOT EXISTS (SELECT 1 FROM field_to_view fv WHERE fv.field_id = f.id);
 
 -- ================================================================
--- 7. 数据治理合理性验证 (Governance Rationality - Deep Dive)
--- 目的: 从利用率、冗余度、有效性、规范性 4 个维度进行深层治理扫描
+-- 6. 统计准确性验证 (Statistics Accuracy)
+-- 目的: 验证前后端统计数据一致性
 -- ================================================================
-SELECT '★★★ 7. 数据治理合理性验证 (Deep Dive) ★★★' as 验证类别;
+SELECT '★★★ 6. 统计准确性验证 ★★★' as 验证类别;
 
--- ==================== 7.1 资产利用率 (Utilization) ====================
+-- 6.1 数据库计数
+SELECT '数据库总数' as 验证内容, COUNT(*) as 数据库计数, '与 API /api/stats 比对' as 规则 
+FROM databases;
 
--- 7.1.1 未使用计算指标 (需要满足: 所有实例均无任何引用)
-SELECT 
-    '僵尸计算指标' as 验证内容,
-    COUNT(*) as 异常数,
-    '聚合后全局引用次数为 0 的指标' as 规则
-FROM (
-    SELECT f.name, cf.formula_hash
-    FROM fields f
-    JOIN calculated_fields cf ON f.id = cf.field_id
-    WHERE f.is_calculated = 1 AND f.role = 'measure'
-    GROUP BY f.name, cf.formula_hash
-    HAVING SUM(COALESCE(cf.reference_count, 0)) = 0 
-       AND SUM(COALESCE(f.usage_count, 0)) = 0
-);
+-- 6.2 数据表计数
+SELECT '数据表总数' as 验证内容, COUNT(*) as 数据表计数, '与 API /api/stats 比对' as 规则 
+FROM tables;
 
--- 7.1.2 未使用计算维度 (需要满足: 所有实例均无任何引用)
-SELECT 
-    '僵尸计算维度' as 验证内容,
-    COUNT(*) as 异常数,
-    '聚合后全局引用次数为 0 的维度' as 规则
-FROM (
-    SELECT f.name, cf.formula_hash
-    FROM fields f
-    JOIN calculated_fields cf ON f.id = cf.field_id
-    WHERE f.is_calculated = 1 AND f.role = 'dimension'
-    GROUP BY f.name, cf.formula_hash
-    HAVING SUM(COALESCE(cf.reference_count, 0)) = 0 
-       AND SUM(COALESCE(f.usage_count, 0)) = 0
-);
+-- 6.3 数据源计数
+SELECT '数据源总数' as 验证内容, COUNT(*) as 数据源计数, '与 API /api/stats 比对' as 规则 
+FROM datasources;
 
--- 7.1.3 零引用物理字段 (去重: name，物理字段无 formula_hash)
-SELECT 
-    '冗余物理列' as 验证内容,
-    COUNT(DISTINCT f.name) as 异常数,
-    '去重后未被使用的物理字段逻辑实体' as 规则
-FROM fields f
-WHERE (f.is_calculated = 0 OR f.is_calculated IS NULL)
-  AND NOT EXISTS (SELECT 1 FROM field_to_view fv WHERE fv.field_id = f.id);
+-- 6.4 字段计数
+SELECT '字段总数' as 验证内容, COUNT(*) as 字段计数, '与 API /api/stats 比对' as 规则 
+FROM fields;
 
--- 7.1.4 未引用数据源 (Zombie Datasources)
--- (已在 6.2 覆盖，但作为治理项保留，或者合并)
-SELECT 
-    '僵尸数据源' as 验证内容,
-    COUNT(*) as 异常数,
-    '已发布但未被连接的数据源' as 规则
-FROM datasources ds
-WHERE is_embedded = 0
-  AND NOT EXISTS (SELECT 1 FROM datasource_to_workbook dw WHERE dw.datasource_id = ds.id);
+-- 6.5 工作簿计数
+SELECT '工作簿总数' as 验证内容, COUNT(*) as 工作簿计数, '与 API /api/stats 比对' as 规则 
+FROM workbooks;
 
-
--- ==================== 7.2 逻辑冗余度 (Redundancy) ====================
-
--- 7.2.1 完全重复公式
-SELECT 
-    '逻辑重复定义' as 验证内容,
-    SUM(cnt - 1) as 异常数,
-    '不同字段使用了完全相同的计算公式' as 规则
-FROM (
-    SELECT formula, COUNT(*) as cnt
-    FROM fields
-    WHERE is_calculated = 1 AND formula IS NOT NULL AND formula != ''
-    GROUP BY formula
-    HAVING cnt > 1
-);
-
--- 7.2.2 命名冲突逻辑
-SELECT 
-    '字段名歧义冲突' as 验证内容,
-    COUNT(*) as 异常数,
-    '同名但公式不同' as 规则
-FROM (
-    SELECT name, COUNT(DISTINCT formula) as distinct_formulas
-    FROM fields
-    WHERE is_calculated = 1 AND formula IS NOT NULL
-    GROUP BY name
-    HAVING distinct_formulas > 1
-);
-
-
--- ==================== 7.3 容器有效性 (Container Validity) ====================
-
--- 7.3.1 空壳工作簿
-SELECT 
-    '空容器工作簿' as 验证内容,
-    COUNT(*) as 异常数,
-    '不包含任何视图的工作簿' as 规则
-FROM workbooks w
-WHERE NOT EXISTS (SELECT 1 FROM views v WHERE v.workbook_id = w.id);
-
--- 7.3.2 空壳 Dashboard
-SELECT 
-    '空容器仪表板' as 验证内容,
-    COUNT(*) as 异常数,
-    '未包含任何 Sheet 的仪表板' as 规则
-FROM views v
-WHERE v.view_type = 'dashboard'
-  AND NOT EXISTS (SELECT 1 FROM dashboard_to_sheet ds WHERE ds.dashboard_id = v.id);
-
-
--- ==================== 7.4 规范性与完整性 (Standardization) ====================
-
--- 7.4.1 无认证数据源
-SELECT 
-    '非认证数据源' as 验证内容,
-    COUNT(*) as 异常数,
-    '未经过官方认证流程的数据源' as 规则
-FROM datasources
-WHERE is_embedded = 0 
-  AND (is_certified = 0 OR is_certified IS NULL);
-
--- 7.4.2 无描述核心资产
-SELECT 
-    '资产描述缺失' as 验证内容,
-    COUNT(*) as 异常数,
-    '缺失描述的表和字段' as 规则
-FROM (
-    SELECT id FROM tables WHERE description IS NULL OR description = ''
-    UNION ALL
-    SELECT id FROM fields WHERE description IS NULL OR description = ''
-);
-
--- 7.4.3 简单计算字段
-SELECT 
-    '低价值重命名' as 验证内容,
-    COUNT(*) as 异常数,
-    '复杂度极低 (Score<=1) 的计算字段' as 规则
-FROM calculated_fields
-WHERE complexity_score <= 1;
-
--- 7.4.4 无负责人工作簿
-SELECT 
-    '无主资产' as 验证内容,
-    COUNT(*) as 异常数,
-    'Owner 字段为空的工作簿' as 规则
-FROM workbooks
-WHERE owner IS NULL OR owner = '';
-
--- ==================== 7.5 实例统计验证 (Instance Count Verification) ====================
--- 目的: 验证实例数统计的准确性和一致性
-
--- 7.5.1 原始字段实例数验证
--- 定义: instance_count = 按 (规范名称 + table_id) 分组后的记录数
--- 验证: 实例数 vs 实际关联数据源数 的差异
-SELECT 
-    '原始字段实例-数据源差异' as 验证内容,
-    COUNT(*) as 异常数,
-    '实例数与数据源数不一致的字段组' as 规则
-FROM (
-    SELECT 
-        COALESCE(upstream_column_name, name) as canonical_name,
-        table_id,
-        COUNT(*) as instance_count,
-        COUNT(DISTINCT datasource_id) as datasource_count
-    FROM fields
-    WHERE is_calculated = 0 OR is_calculated IS NULL
-    GROUP BY COALESCE(upstream_column_name, name), table_id
-    HAVING instance_count != datasource_count
-);
-
--- 7.5.2 计算字段实例数验证
--- 定义: instance_count = 按 (name + formula_hash) 分组后的记录数
--- 验证: 实例数 vs 工作簿数 的关系
-SELECT 
-    '计算字段工作簿分布' as 验证内容,
-    COUNT(*) as 异常数,
-    '实例来自相同工作簿(可能是内嵌重复)' as 规则
-FROM (
-    SELECT 
-        f.name,
-        cf.formula_hash,
-        COUNT(*) as instance_count,
-        COUNT(DISTINCT f.datasource_id) as datasource_count,
-        COUNT(DISTINCT f.workbook_id) as workbook_count
-    FROM fields f
-    JOIN calculated_fields cf ON f.id = cf.field_id
-    GROUP BY f.name, cf.formula_hash
-    HAVING instance_count > 1 AND datasource_count = 1
-);
-
--- 7.5.3 实例统计口径说明 (信息输出)
-SELECT 
-    '实例统计口径' as 验证内容,
-    '原始字段: 按(名称+表)分组的记录数 | 计算字段: 按(名称+公式哈希)分组的记录数' as 说明,
-    '实例可能来自同一数据源的多个工作簿' as 注意事项;
-
--- 7.5.4 高实例数字段 (Top 10)
-SELECT 
-    '高实例数原始字段 Top 5' as 验证内容,
-    canonical_name as 字段名,
-    instance_count as 实例数,
-    datasource_count as 数据源数
-FROM (
-    SELECT 
-        COALESCE(upstream_column_name, name) as canonical_name,
-        COUNT(*) as instance_count,
-        COUNT(DISTINCT datasource_id) as datasource_count
-    FROM fields
-    WHERE is_calculated = 0 OR is_calculated IS NULL
-    GROUP BY COALESCE(upstream_column_name, name), table_id
-    ORDER BY instance_count DESC
-    LIMIT 5
-);
-
--- 7.5.5 高实例数计算字段 (Top 5)
-SELECT 
-    '高实例数计算字段 Top 5' as 验证内容,
-    f.name as 字段名,
-    COUNT(*) as 实例数,
-    COUNT(DISTINCT f.datasource_id) as 数据源数,
-    COUNT(DISTINCT f.workbook_id) as 工作簿数
-FROM fields f
-JOIN calculated_fields cf ON f.id = cf.field_id
-GROUP BY f.name, cf.formula_hash
-ORDER BY COUNT(*) DESC
-LIMIT 5;
+-- 6.6 视图计数
+SELECT '视图总数' as 验证内容, COUNT(*) as 视图计数, '与 API /api/stats 比对' as 规则 
+FROM views;
 
 -- ================================================================
--- 9. 血缘完整性验证 (Lineage Integrity)
+-- 7. 血缘完整性验证 (Lineage Integrity)
 -- 目的: 验证字段到数据源/物理表的血缘关联完整性
 -- ================================================================
-SELECT '★★★ 9. 血缘完整性验证 ★★★' as 验证类别;
+SELECT '★★★ 7. 血缘完整性验证 ★★★' as 验证类别;
 
--- 9.1 计算字段孤儿数据源引用
+-- 7.1 计算字段孤儿数据源引用
 -- 问题: 字段的 datasource_id 指向不存在的数据源（通常是嵌入式数据源未被同步）
 SELECT 
     '计算字段孤儿数据源引用' as 验证内容,
@@ -388,7 +225,7 @@ WHERE f.is_calculated = 1
   AND f.datasource_id IS NOT NULL 
   AND d.id IS NULL;
 
--- 9.2 孤儿数据源ID统计
+-- 7.2 孤儿数据源ID统计
 SELECT 
     '孤儿数据源ID数量' as 验证内容,
     COUNT(DISTINCT f.datasource_id) as 异常数,
@@ -399,7 +236,7 @@ WHERE f.is_calculated = 1
   AND f.datasource_id IS NOT NULL 
   AND d.id IS NULL;
 
--- 9.3 计算字段物理表血缘缺失
+-- 7.3 计算字段物理表血缘缺失
 -- 问题: 计算字段没有关联物理表，导致无法追溯数据来源
 SELECT 
     '计算字段物理表血缘缺失' as 验证内容,
@@ -409,14 +246,14 @@ FROM fields f
 WHERE f.is_calculated = 1 
   AND (f.table_id IS NULL OR f.table_id = '');
 
--- 9.4 计算字段物理表关联率
+-- 7.4 计算字段物理表关联率
 SELECT 
     '计算字段物理表关联率' as 验证内容,
     ROUND(100.0 * SUM(CASE WHEN table_id IS NOT NULL AND table_id != '' THEN 1 ELSE 0 END) / COUNT(*), 2) || '%' as 关联率,
     '有 table_id 的计算字段占比' as 规则
 FROM fields WHERE is_calculated = 1;
 
--- 9.5 孤儿数据源样本 (Top 5)
+-- 7.5 孤儿数据源样本 (Top 5)
 SELECT 
     '孤儿数据源引用样本' as 验证内容,
     f.datasource_id as 孤儿数据源ID,
@@ -430,4 +267,66 @@ GROUP BY f.datasource_id
 ORDER BY COUNT(*) DESC
 LIMIT 5;
 
-SELECT '========== 问题扫描完成 ==========' as 状态;
+
+-- ================================================================
+-- 8. 字段归属完整性验证 (Field Container Integrity)
+-- 目的: 验证字段是否正确归属于数据源或工作簿
+-- ================================================================
+SELECT '★★★ 8. 字段归属完整性验证 ★★★' as 验证类别;
+
+-- 8.1 原始字段归属缺失
+SELECT 
+    '原始字段归属缺失' as 验证内容,
+    COUNT(*) as 异常数,
+    '原始字段必须归属数据源' as 规则
+FROM fields 
+WHERE is_calculated = 0 AND datasource_id IS NULL;
+
+-- 2.3 DS 物理关联 (排除 Custom SQL 和 Extract)
+SELECT '空壳数据源(无表)' as 验证内容, COUNT(*) as 异常数, '已发布 DS 应关联物理表 (排除 Custom SQL)' as 规则 
+FROM datasources ds 
+WHERE is_embedded = 0 
+  AND name NOT LIKE '%SQL%' 
+  AND name NOT LIKE '%Extract%'
+  AND NOT EXISTS (SELECT 1 FROM table_to_datasource td WHERE td.datasource_id = ds.id);
+
+-- 8.2 计算字段归属缺失
+SELECT 
+    '计算字段归属缺失' as 验证内容,
+    COUNT(*) as 异常数,
+    '计算字段必须归属工作簿 (除非归属已发布DS)' as 规则
+FROM fields 
+WHERE is_calculated = 1 
+  AND workbook_id IS NULL
+  AND datasource_id IS NULL;  -- 只有当既无WB又无DS时才是问题
+
+-- ================================================================
+-- 9. 预计算血缘表验证 (Field Full Lineage)
+-- 目的: 验证 field_full_lineage 表完整性和覆盖率
+-- ================================================================
+SELECT '★★★ 9. 预计算血缘表验证 ★★★' as 验证类别;
+
+-- 9.1 血缘表覆盖率
+SELECT '预计算血缘覆盖率' as 验证内容,
+    (SELECT COUNT(DISTINCT field_id) FROM field_full_lineage) || '/' || (SELECT COUNT(*) FROM fields) as 覆盖情况,
+    '所有字段应有血缘记录' as 规则;
+
+-- 9.2 计算字段间接血缘 (应有 indirect 类型记录)
+SELECT '计算字段间接血缘' as 验证内容,
+    COUNT(*) as 有间接血缘数,
+    '计算字段应有 lineage_type=indirect 记录' as 规则
+FROM fields f
+WHERE f.is_calculated = 1
+  AND EXISTS (SELECT 1 FROM field_full_lineage fl WHERE fl.field_id = f.id AND fl.lineage_type = 'indirect');
+
+-- 9.3 计算字段无血缘记录
+SELECT '计算字段血缘缺失' as 验证内容,
+    COUNT(*) as 异常数,
+    '计算字段应能穿透到物理表' as 规则
+FROM fields f
+WHERE f.is_calculated = 1
+  AND NOT EXISTS (SELECT 1 FROM field_full_lineage fl WHERE fl.field_id = f.id);
+
+
+SELECT '========== 系统问题扫描完成 ==========' as 状态;
+

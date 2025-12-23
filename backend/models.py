@@ -46,6 +46,32 @@ dashboard_to_sheet = Table(
 )
 
 
+class FieldFullLineage(Base):
+    """
+    预计算的字段完整血缘链
+    用于快速查询字段的物理表、数据源、工作簿归属
+    """
+    __tablename__ = 'field_full_lineage'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    field_id = Column(String(255), ForeignKey('fields.id'), nullable=False, index=True)
+    table_id = Column(String(255), ForeignKey('tables.id'), nullable=True)
+    datasource_id = Column(String(255), ForeignKey('datasources.id'), nullable=True)
+    workbook_id = Column(String(255), ForeignKey('workbooks.id'), nullable=True)
+    lineage_type = Column(String(20), nullable=False)  # 'direct' 或 'indirect'
+    lineage_path = Column(Text)  # 完整血缘路径描述 (可选)
+    
+    def to_dict(self):
+        return {
+            'fieldId': self.field_id,
+            'tableId': self.table_id,
+            'datasourceId': self.datasource_id,
+            'workbookId': self.workbook_id,
+            'lineageType': self.lineage_type,
+            'lineagePath': self.lineage_path
+        }
+
+
 # ==================== 辅助实体表 ====================
 
 class TableauUser(Base):
@@ -277,6 +303,8 @@ class Field(Base):
             'table': self.table.name if self.table else None,
             'datasourceId': self.datasource_id,
             'datasource': self.datasource.name if self.datasource else None,
+            'workbookId': self.workbook_id,
+            'workbookName': self.workbook.name if self.workbook else None,
             'isCalculated': self.is_calculated,
             'formula': self.formula,
             'role': self.role,
@@ -371,6 +399,7 @@ class Datasource(Base):
             'certifierDisplayName': self.certifier_display_name,
             'containsUnsupportedCustomSql': self.contains_unsupported_custom_sql,
             'hasActiveWarning': self.has_active_warning,
+            'isEmbedded': self.is_embedded,
             'tableCount': self.table_count or 0,
             'workbookCount': self.workbook_count or 0,
             'fieldCount': self.field_count or 0,

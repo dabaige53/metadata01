@@ -4,32 +4,26 @@
 
 ---
 
-## 0. 统计口径说明 (Critical: Aggregation Rule)
+## 0. 验证范围说明 (Critical: Validation Scope)
 
 > [!IMPORTANT]
-> **字段和指标的统计必须采用去重后的"逻辑实体"数量，而非数据库原始记录数。**
+> **本测试验证仅关注系统设计基础问题,不包含数据治理层面的验证。**
 
-### 去重规则
-系统采用 **`(name + formula_hash)`** 作为去重键：
-- 同名 + 同公式哈希 = **同一个逻辑实体**（即使存在于多个数据源中）
-- 仅计算一次，避免因复制/继承导致的膨胀
+### 验证范围
+**包含的系统问题**：
+- 物理基础设施完整性（主键冲突、外键死链、孤立记录）
+- 数据源语义层完整性（空值、空壳数据源、归属缺失）
+- 消费层完整性（工作簿/视图的完整性和关联性）
+- 字段逻辑基础验证（公式缺失、类型缺失、角色未定义）
+- 血缘关系完整性（物理→语义→消费的链路中断）
+- 统计准确性验证（前后端数据计数一致性）
+- 血缘完整性（孤儿数据源引用、物理表血缘缺失）
 
-### SQL 去重模板
-```sql
--- 错误示例 (原始记录数，会严重膨胀)
-SELECT COUNT(*) FROM fields;  -- 结果: 20234
-
--- 正确示例 (去重后的逻辑实体数)
-SELECT COUNT(DISTINCT f.name || COALESCE(cf.formula_hash, ''))
-FROM fields f 
-LEFT JOIN calculated_fields cf ON f.id = cf.field_id;  -- 结果: 4724
-```
-
-### 对比示例
-| 统计项       | 原始记录数 | 去重后逻辑实体数 | 差异 |
-| :----------- | :--------- | :--------------- | :--- |
-| 全量字段     | 20,234     | 4,724            | -76% |
-| 僵尸计算指标 | 2,060      | 774              | -62% |
+**不包含的治理问题**（已移除）：
+- 资产利用率分析（僵尸指标、未使用字段、僵尸数据源等）
+- 逻辑冗余度分析（重复公式、字段名歧义等）
+- 容器有效性分析（空容器工作簿、空容器仪表板等）
+- 规范性验证（非认证数据源、资产描述缺失、低价值重命名等）
 
 ---
 
@@ -107,15 +101,17 @@ LEFT JOIN calculated_fields cf ON f.id = cf.field_id;  -- 结果: 4724
 
 ### 2.4 前端布局位置对照表
 
-| 验证模块/问题类型 | 对应前端页面                 | 对应组件/元素                                             |
-| :---------------- | :--------------------------- | :-------------------------------------------------------- |
-| 全局统计对账      | 侧边栏 (AppLayout)           | `databases`, `tables`, `fields`, `metrics` 等计数         |
-| 治理问题计数      | Overview 仪表板              | `issues.missing_description`, `issues.duplicate_formulas` |
-| 重复公式分析      | 指标库页面 (MetricsPage)     | 重复指标 Tab 列表                                         |
-| 幽灵字段          | 侧边栏 / 字段列表            | `stats.orphanedFields`                                    |
-| 空容器仪表板      | 视图列表 (ViewsPage)         | 类型为 Dashboard 但无 Sheet 的视图                        |
-| 非认证数据源      | 数据源列表 (DatasourcesPage) | `is_certified` 标签                                       |
-| 资产描述缺失      | 详情抽屉 (DetailDrawer)      | `description` 字段                                        |
+| 验证模块/问题类型 | 对应前端页面                 | 对应组件/元素                                     |
+| :---------------- | :--------------------------- | :------------------------------------------------ |
+| 全局统计对账      | 侧边栏 (AppLayout)           | `databases`, `tables`, `fields`, `metrics` 等计数 |
+| 数据源名称为空    | 数据源列表 (DatasourcesPage) | name 字段显示                                     |
+| 工作簿归属缺失    | 工作簿列表 (WorkbooksPage)   | project_name 字段显示                             |
+| 孤立视图记录      | 视图列表 (ViewsPage)         | workbook_id 关联                                  |
+| 仪表板内容缺失    | 视图详情抽屉 (DetailDrawer)  | Dashboard Sheet 列表                              |
+| 计算公式丢失      | 指标库页面 (MetricsPage)     | formula 字段显示                                  |
+| 孤儿数据源引用    | 指标详情抽屉 (DetailDrawer)  | datasource_name 显示为 "Unknown"                  |
+| 物理表血缘缺失    | 字段详情抽屉 (DetailDrawer)  | "所属数据表" Tab 无数据                           |
+
 
 ---
 
@@ -140,5 +136,32 @@ sqlite3 metadata.db < docs/测试验证/系统设计验证.sql
 
 ---
 
-**版本**: v1.0
+**版本**: v1.1
 **最后更新**: 2025-12-23
+
+---
+
+## 5. 验证白名单机制 (Validation Whitelist)
+
+为了避免已知误报 (False Positives) 反复干扰验证结果，系统引入了独立的白名单机制。
+
+### 5.1 配置文件
+*   **路径**: `docs/测试验证/validation_whitelist.sql`
+*   **格式**: SQL Insert 语句，向临时表 `temp_whitelist` 插入记录。
+
+### 5.2 数据结构
+| 字段         | 类型 | 说明                                        |
+| :----------- | :--- | :------------------------------------------ |
+| `rule_id`    | TEXT | 对应验证项 ID (如 `'2.3'`, `'4.2'`)         |
+| `value`      | TEXT | 需要排除的值 (支持 `%` 通配符)              |
+| `match_type` | TEXT | `'EXACT'` (精确匹配) 或 `'LIKE'` (模糊匹配) |
+| `reason`     | TEXT | 排除原因说明                                |
+
+### 5.3 使用示例
+若要排除名为 `[My Field]` 的误报字段 (适用于规则 4.2)：
+
+```sql
+INSERT INTO temp_whitelist VALUES 
+('4.2', 'My Field', 'EXACT', '业务确认无需公式');
+```
+
