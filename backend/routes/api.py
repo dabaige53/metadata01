@@ -236,7 +236,8 @@ def get_dashboard_analysis():
     ).group_by(Field.role).all()
     role_distribution = {(r or 'unknown'): c for r, c in role_results}
     
-    # ===== 5. 重复公式 Top 10 =====
+    # ===== 5. 重复公式统计 =====
+    # 5.1 获取 Top 10 用于展示
     dupe_formulas = session.query(
         CalculatedField.formula, func.count(CalculatedField.field_id).label('cnt')
     ).filter(
@@ -251,12 +252,24 @@ def get_dashboard_analysis():
         {'formula': f[:80] + '...' if len(f) > 80 else f, 'count': c}
         for f, c in dupe_formulas
     ]
-    total_duplicate_formulas = sum([c - 1 for f, c in dupe_formulas])
+    
+    # 5.2 获取全量重复公式统计（修复：不再只统计 Top 10）
+    total_duplicate_result = session.execute(text("""
+        SELECT SUM(cnt - 1) FROM (
+            SELECT formula, COUNT(*) as cnt 
+            FROM calculated_fields 
+            WHERE formula IS NOT NULL AND formula != ''
+            GROUP BY formula 
+            HAVING cnt > 1
+        )
+    """)).scalar()
+    total_duplicate_formulas = total_duplicate_result or 0
     
     # ===== 6. 复杂度分布 =====
+    # 阈值定义: low <= 1 (低价值重命名), medium 2-7, high > 7
     complexity_results = session.query(
         case(
-            (CalculatedField.complexity_score <= 3, 'low'),
+            (CalculatedField.complexity_score <= 1, 'low'),
             (CalculatedField.complexity_score <= 7, 'medium'),
             else_='high'
         ).label('level'),
@@ -2531,7 +2544,23 @@ def get_field_detail(field_id):
             'is_certified': field.datasource.is_certified,
             'field_id': field.id,
             'field_name': field.name,
-            'is_current': True
+            'field_name': field.name,
+            'is_current': True,
+            'description': field.datasource.description,
+            'certification_note': field.datasource.certification_note
+        })
+    elif field.workbook and f"wb-{field.workbook.id}" not in ds_ids:
+        # 兜底：数据源不存在时，显示工作簿作为归属
+        ds_ids.add(f"wb-{field.workbook.id}")
+        related_datasources.append({
+            'id': f"embedded-{field.workbook.id}",
+            'name': f"{field.workbook.name} (内部连接)",
+            'project_name': field.workbook.project_name,
+            'is_certified': False,
+            'field_id': field.id,
+            'field_name': field.name,
+            'is_current': True,
+            'is_embedded_fallback': True
         })
 
     for sib in siblings:
@@ -2551,8 +2580,25 @@ def get_field_detail(field_id):
                 'is_certified': sib.datasource.is_certified,
                 'field_id': sib.id, 
                 'field_name': sib.name,
-                'is_current': False
+                'field_name': sib.name,
+                'is_current': False,
+                'description': sib.datasource.description,
+                'certification_note': sib.datasource.certification_note
             })
+        elif sib.workbook and f"wb-{sib.workbook.id}" not in ds_ids:
+            # 兜底：sibling 的数据源不存在时，显示其工作簿作为归属
+            ds_ids.add(f"wb-{sib.workbook.id}")
+            related_datasources.append({
+                'id': f"embedded-{sib.workbook.id}",
+                'name': f"{sib.workbook.name} (内部连接)",
+                'project_name': sib.workbook.project_name,
+                'is_certified': False,
+                'field_id': sib.id, 
+                'field_name': sib.name,
+                'is_current': False,
+                'is_embedded_fallback': True
+            })
+
     
     data['related_datasources'] = related_datasources
     data['stats']['related_datasource_count'] = len(related_datasources)
@@ -2585,7 +2631,8 @@ def get_metrics_unused():
         FROM fields f
         JOIN calculated_fields cf ON f.id = cf.field_id
         LEFT JOIN datasources d ON f.datasource_id = d.id
-        WHERE cf.reference_count IS NULL OR cf.reference_count = 0
+        WHERE (cf.reference_count IS NULL OR cf.reference_count = 0)
+          AND (f.usage_count IS NULL OR f.usage_count = 0)
         ORDER BY d.name, f.name
     """
     rows = session.execute(text(sql)).fetchall()
@@ -3026,6 +3073,7 @@ def get_metrics_catalog_unused():
         WHERE f.is_calculated = 1
         GROUP BY f.name, cf.formula_hash
         HAVING COALESCE(SUM(cf.reference_count), 0) = 0
+           AND COALESCE(SUM(f.usage_count), 0) = 0
         ORDER BY instance_count DESC, f.name
     """
     rows = session.execute(text(sql)).fetchall()

@@ -14,13 +14,25 @@ import { MetricCatalogItem } from '../cards/MetricCatalogCard';
 import FacetFilterBar from '../data-table/FacetFilterBar';
 import SortButtons from '../data-table/SortButtons';
 import Pagination from '../data-table/Pagination';
-import { useDataTable } from '@/hooks/useDataTable';
+import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
+
+// 排序选项定义在组件外部，保证引用稳定
+const SORT_OPTIONS: SortConfig[] = [
+    { key: 'formula_length', label: '复杂度' },
+    { key: 'total_references', label: '引用数' },
+    { key: 'name', label: '名称' }
+];
 
 interface ComplexMetricsAnalysisProps {
     onCountUpdate?: (count: number) => void;
+    onSortUpdate?: (config: {
+        options: SortConfig[];
+        state: SortState;
+        onChange: (key: string) => void;
+    }) => void;
 }
 
-export default function ComplexMetricsAnalysis({ onCountUpdate }: ComplexMetricsAnalysisProps) {
+export default function ComplexMetricsAnalysis({ onCountUpdate, onSortUpdate }: ComplexMetricsAnalysisProps) {
     const [allData, setAllData] = useState<MetricCatalogItem[]>([]);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
@@ -57,6 +69,16 @@ export default function ComplexMetricsAnalysis({ onCountUpdate }: ComplexMetrics
         searchFields: ['name', 'formula'],
         defaultPageSize: 20
     });
+
+    // 同步排序状态给父组件 - 使用稳定的 SORT_OPTIONS 常量
+    useEffect(() => {
+        onSortUpdate?.({
+            options: SORT_OPTIONS,
+            state: sortState,
+            onChange: handleSortChange
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sortState]);
 
     // 统计
     const superComplex = allData.filter(m => (m.formula_length || 0) >= 500).length;
@@ -113,21 +135,8 @@ export default function ComplexMetricsAnalysis({ onCountUpdate }: ComplexMetrics
                 </div>
             </div>
 
-            {/* 工具栏: 右上排序 */}
-            <div className="flex justify-end">
-                <SortButtons
-                    sortOptions={[
-                        { key: 'formula_length', label: '复杂度' },
-                        { key: 'total_references', label: '引用数' },
-                        { key: 'name', label: '名称' }
-                    ]}
-                    currentSort={sortState}
-                    onSortChange={handleSortChange}
-                />
-            </div>
-
-            {/* 工具栏: 左下筛选 + 右下搜索 */}
-            <div className="flex items-center justify-between gap-4">
+            {/* 统一工具栏: 筛选 (左) + 排序 & 搜索 (右) */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <FacetFilterBar
                     facets={facets}
                     activeFilters={activeFilters}
@@ -135,17 +144,19 @@ export default function ComplexMetricsAnalysis({ onCountUpdate }: ComplexMetrics
                     onClearAll={handleClearAllFilters}
                 />
 
-                <div className="relative w-64">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Search className="h-4 w-4 text-gray-400" />
+                <div className="flex items-center gap-2">
+                    <div className="relative w-64">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <Search className="h-4 w-4 text-gray-400" />
+                        </div>
+                        <input
+                            type="text"
+                            placeholder="搜索参数名称或公式..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                        />
                     </div>
-                    <input
-                        type="text"
-                        placeholder="搜索参数名称或公式..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-                    />
                 </div>
             </div>
 

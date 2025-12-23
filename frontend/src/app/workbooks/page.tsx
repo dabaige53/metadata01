@@ -7,8 +7,9 @@ import FacetFilterBar from '@/components/data-table/FacetFilterBar';
 import SortButtons from '@/components/data-table/SortButtons';
 import Pagination from '@/components/data-table/Pagination';
 import WorkbookCard from '@/components/cards/WorkbookCard';
-import { useDataTable } from '@/hooks/useDataTable';
+import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 import EmptyWorkbooksAnalysis from '@/components/workbooks/EmptyWorkbooksAnalysis';
+import { useCallback } from 'react';
 
 interface WorkbookItem {
     id: string;
@@ -51,6 +52,21 @@ function WorkbooksContent() {
             setLoading(false);
         }
     };
+
+    // 治理 Tab 的排序配置与状态
+    const [govSortConfig, setGovSortConfig] = useState<{
+        options: SortConfig[];
+        state: SortState;
+        onChange: (key: string) => void;
+    } | null>(null);
+
+    const handleGovSortUpdate = useCallback((config: {
+        options: SortConfig[];
+        state: SortState;
+        onChange: (key: string) => void;
+    }) => {
+        setGovSortConfig(config);
+    }, []);
 
     // 使用自定义 Hook 管理表格状态 (服务器端模式)
     const {
@@ -96,45 +112,58 @@ function WorkbooksContent() {
 
     return (
         <div className="space-y-4">
-            {/* 页面标题与标签页切换 */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                        <BookOpen className="w-5 h-5 text-indigo-600" />
-                        工作簿
-                        <span className="text-sm font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-                            {total.toLocaleString()} 项
-                        </span>
-                    </h1>
+            {/* 第一行：页面标题与标签页切换 */}
+            <div className="flex items-center gap-4">
+                <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <BookOpen className="w-5 h-5 text-indigo-600" />
+                    工作簿
+                </h1>
 
-                    {/* 标签页切换 */}
-                    <div className="flex p-1 bg-gray-100/80 rounded-lg">
-                        <button
-                            onClick={() => setActiveTab('list')}
-                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'list'
-                                ? 'bg-white text-indigo-600 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            工作簿列表
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('analysis')}
-                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'analysis'
-                                ? 'bg-white text-indigo-600 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            治理分析
-                        </button>
-                    </div>
+                {/* 标签页切换 */}
+                <div className="flex p-1 bg-gray-100/80 rounded-lg">
+                    <button
+                        onClick={() => setActiveTab('list')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'list'
+                            ? 'bg-white text-indigo-600 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        工作簿列表
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('analysis')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'analysis'
+                            ? 'bg-white text-indigo-600 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        治理分析
+                    </button>
+                </div>
+            </div>
+
+            {/* 第二行：统计信息 + 排序按钮 */}
+            <div className="flex items-center justify-between">
+                <div className="text-sm text-gray-600">
+                    <span className="inline-flex items-center gap-1">
+                        <span>工作簿</span>
+                        <span className="font-semibold text-gray-800">{total.toLocaleString()}</span>
+                        <span>项 中的</span>
+                        <span className="font-bold text-indigo-600">{paginationState.total.toLocaleString()}</span>
+                    </span>
                 </div>
 
-                {activeTab === 'list' && (
+                {activeTab === 'list' ? (
                     <SortButtons
                         sortOptions={sortOptions}
                         currentSort={sortState}
                         onSortChange={handleSortChange}
+                    />
+                ) : govSortConfig && (
+                    <SortButtons
+                        sortOptions={govSortConfig.options}
+                        currentSort={govSortConfig.state}
+                        onSortChange={govSortConfig.onChange}
                     />
                 )}
             </div>
@@ -201,7 +230,7 @@ function WorkbooksContent() {
                     )}
                 </>
             ) : (
-                <EmptyWorkbooksAnalysis />
+                <EmptyWorkbooksAnalysis onSortUpdate={handleGovSortUpdate} />
             )}
         </div>
     );

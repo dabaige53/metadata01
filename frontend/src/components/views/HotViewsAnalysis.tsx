@@ -12,10 +12,15 @@ import {
     Eye,
     Search
 } from 'lucide-react';
-import { useDataTable } from '@/hooks/useDataTable';
+import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 import FacetFilterBar from '../data-table/FacetFilterBar';
-import SortButtons from '../data-table/SortButtons';
 import Pagination from '../data-table/Pagination';
+
+// 定义排序选项
+const SORT_OPTIONS: SortConfig[] = [
+    { key: 'total_view_count', label: '访问量' },
+    { key: 'name', label: '名称' }
+];
 
 interface ViewItem {
     id: string;
@@ -29,7 +34,15 @@ interface ViewItem {
     [key: string]: any;
 }
 
-export default function HotViewsAnalysis() {
+interface HotViewsAnalysisProps {
+    onSortUpdate?: (config: {
+        options: SortConfig[];
+        state: SortState;
+        onChange: (key: string) => void;
+    }) => void;
+}
+
+export default function HotViewsAnalysis({ onSortUpdate }: HotViewsAnalysisProps) {
     const [allData, setAllData] = useState<ViewItem[]>([]);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
@@ -64,6 +77,16 @@ export default function HotViewsAnalysis() {
         searchFields: ['name', 'workbook_name'],
         defaultPageSize: 20
     });
+
+    // 同步排序状态给父组件
+    useEffect(() => {
+        onSortUpdate?.({
+            options: SORT_OPTIONS,
+            state: sortState,
+            onChange: handleSortChange
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sortState]);
 
     const getViewTypeIcon = (type?: string) => {
         if (type === 'dashboard') return <LayoutDashboard className="w-4 h-4 text-indigo-500" />;
@@ -135,16 +158,8 @@ export default function HotViewsAnalysis() {
                     onFilterChange={handleBatchFilterChange}
                     onClearAll={handleClearAllFilters}
                 />
-                <div className="flex items-center gap-3">
-                    <SortButtons
-                        sortOptions={[
-                            { key: 'total_view_count', label: '访问量' },
-                            { key: 'name', label: '名称' }
-                        ]}
-                        currentSort={sortState}
-                        onSortChange={handleSortChange}
-                    />
-                    <div className="relative w-full md:w-64">
+                <div className="flex items-center gap-2">
+                    <div className="relative w-64">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <input
                             type="text"

@@ -1,14 +1,14 @@
 'use client';
 
-import { Loader2, Columns, Search } from 'lucide-react';
+import { Loader2, Columns, Search, HelpCircle } from 'lucide-react';
 import NoDescriptionFieldsAnalysis from '@/components/fields/NoDescriptionFieldsAnalysis';
 import OrphanFieldsAnalysis from '@/components/fields/OrphanFieldsAnalysis';
 import HotFieldsAnalysis from '@/components/fields/HotFieldsAnalysis';
 import FieldCatalog from '@/components/fields/FieldCatalog';
 import FacetFilterBar from '@/components/data-table/FacetFilterBar';
 import SortButtons from '@/components/data-table/SortButtons';
-import { useDataTable } from '@/hooks/useDataTable';
-import { Suspense, useEffect, useState } from 'react';
+import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
+import { Suspense, useEffect, useState, useCallback } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 
 function FieldsContent() {
@@ -67,6 +67,21 @@ function FieldsContent() {
         },
     });
 
+    // 治理 Tab 的排序配置与状态
+    const [govSortConfig, setGovSortConfig] = useState<{
+        options: SortConfig[];
+        state: SortState;
+        onChange: (key: string) => void;
+    } | null>(null);
+
+    const handleGovSortUpdate = useCallback((config: {
+        options: SortConfig[];
+        state: SortState;
+        onChange: (key: string) => void;
+    }) => {
+        setGovSortConfig(config);
+    }, []);
+
     const sortOptions = [
         { key: 'total_usage', label: '热度' },
         { key: 'instance_count', label: '实例数' },
@@ -75,65 +90,83 @@ function FieldsContent() {
 
     return (
         <div className="space-y-4">
-            {/* 页面标题与标签页切换 */}
+            {/* 第一行：页面标题与标签页切换 */}
+            <div className="flex items-center gap-4">
+                <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <Columns className="w-5 h-5 text-indigo-600" />
+                    原始字段
+                </h1>
+
+                {/* 标签页切换 */}
+                <div className="flex p-1 bg-gray-100/80 rounded-lg">
+                    <button
+                        onClick={() => setActiveTab('catalog')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'catalog'
+                            ? 'bg-white text-indigo-600 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        原始字段目录
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('noDescription')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'noDescription'
+                            ? 'bg-white text-indigo-600 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        无描述字段
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('orphan')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'orphan'
+                            ? 'bg-white text-indigo-600 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        孤立字段
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('hot')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'hot'
+                            ? 'bg-white text-indigo-600 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        热门字段
+                    </button>
+                </div>
+            </div>
+
+            {/* 第二行：统计信息 + 排序按钮 */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                    <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                        <Columns className="w-5 h-5 text-indigo-600" />
-                        原始字段
-                        {activeTab === 'catalog' && (
-                            <span className="text-sm font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-                                {total.toLocaleString()} 项
-                            </span>
-                        )}
-                    </h1>
-
-                    {/* 标签页切换 */}
-                    <div className="flex p-1 bg-gray-100/80 rounded-lg">
-                        <button
-                            onClick={() => setActiveTab('catalog')}
-                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'catalog'
-                                ? 'bg-white text-indigo-600 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            原始字段目录
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('noDescription')}
-                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'noDescription'
-                                ? 'bg-white text-indigo-600 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            无描述字段
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('orphan')}
-                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'orphan'
-                                ? 'bg-white text-indigo-600 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            孤立字段
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('hot')}
-                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'hot'
-                                ? 'bg-white text-indigo-600 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            热门字段
-                        </button>
+                    <div className="text-sm text-gray-600">
+                        <span className="inline-flex items-center gap-1">
+                            <span>原始字段</span>
+                            <span className="font-semibold text-gray-800">{total.toLocaleString()}</span>
+                            <span>项 中的</span>
+                            <span className="font-bold text-indigo-600">{paginationState.total.toLocaleString()}</span>
+                        </span>
+                    </div>
+                    {/* 去重说明 */}
+                    <div className="flex items-center gap-1.5 text-[11px] text-gray-400 bg-gray-50/50 px-2 py-1 rounded-md border border-gray-100">
+                        <HelpCircle className="w-3.5 h-3.5 text-gray-400" />
+                        <span>去重说明：原始字段按『物理名+所属表』聚合，不同数据源中的同名物理列仅计为 1 项</span>
                     </div>
                 </div>
 
-                {activeTab === 'catalog' && (
+                {activeTab === 'catalog' ? (
                     <SortButtons
                         sortOptions={sortOptions}
                         currentSort={sortState}
                         onSortChange={handleSortChange}
+                    />
+                ) : govSortConfig && (
+                    <SortButtons
+                        sortOptions={govSortConfig.options}
+                        currentSort={govSortConfig.state}
+                        onSortChange={govSortConfig.onChange}
                     />
                 )}
             </div>
@@ -206,11 +239,11 @@ function FieldsContent() {
                     onFieldClick={(field) => openDrawer(field.representative_id || '', 'fields')}
                 />
             ) : activeTab === 'noDescription' ? (
-                <NoDescriptionFieldsAnalysis />
+                <NoDescriptionFieldsAnalysis onSortUpdate={handleGovSortUpdate} />
             ) : activeTab === 'orphan' ? (
-                <OrphanFieldsAnalysis />
+                <OrphanFieldsAnalysis onSortUpdate={handleGovSortUpdate} />
             ) : (
-                <HotFieldsAnalysis />
+                <HotFieldsAnalysis onSortUpdate={handleGovSortUpdate} />
             )}
         </div>
     );

@@ -145,12 +145,12 @@ export default function OverviewPage() {
           <div className="col-span-2 lg:col-span-4 bg-gray-50 rounded-lg p-3 flex justify-around items-center border border-gray-200 border-dashed mt-1">
             <div className="text-center cursor-pointer hover:opacity-75 transition-opacity" onClick={() => navigateToModule('fields')}>
               <div className="text-[16px] font-bold text-gray-700">{data.total_assets.fields}</div>
-              <div className="text-[10px] text-gray-400 uppercase">字段</div>
+              <div className="text-[10px] text-gray-400 uppercase">原始字段</div>
             </div>
             <div className="w-px h-6 bg-gray-200"></div>
             <div className="text-center cursor-pointer hover:opacity-75 transition-opacity" onClick={() => navigateToModule('metrics')}>
               <div className="text-[16px] font-bold text-gray-700">{data.total_assets.calculated_fields}</div>
-              <div className="text-[10px] text-gray-400 uppercase">指标</div>
+              <div className="text-[10px] text-gray-400 uppercase">计算字段</div>
             </div>
             <div className="w-px h-6 bg-gray-200"></div>
             <div className="text-center cursor-pointer hover:opacity-75 transition-opacity" onClick={() => navigateToModule('tables')}>
@@ -174,9 +174,9 @@ export default function OverviewPage() {
             <FileText className="w-4 h-4 text-indigo-500" /> 元数据描述覆盖率
           </h4>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {buildCoverageBar('字段描述', data.quality_metrics?.field_coverage)}
+            {buildCoverageBar('原始字段描述', data.quality_metrics?.field_coverage)}
             {buildCoverageBar('表描述', data.quality_metrics?.table_coverage)}
-            {buildCoverageBar('指标描述', data.quality_metrics?.metric_coverage)}
+            {buildCoverageBar('计算字段描述', data.quality_metrics?.metric_coverage)}
             {buildCoverageBar('数据源描述', data.quality_metrics?.datasource_coverage)}
             {buildCoverageBar('工作簿描述', data.quality_metrics?.workbook_coverage)}
             <div className="bg-blue-50/50 rounded-xl p-4 flex flex-col justify-center">

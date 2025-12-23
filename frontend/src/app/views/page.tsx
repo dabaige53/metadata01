@@ -7,9 +7,10 @@ import FacetFilterBar from '@/components/data-table/FacetFilterBar';
 import SortButtons from '@/components/data-table/SortButtons';
 import Pagination from '@/components/data-table/Pagination';
 import ViewCard from '@/components/cards/ViewCard';
-import { useDataTable } from '@/hooks/useDataTable';
+import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 import ZeroAccessViewsAnalysis from '@/components/views/ZeroAccessViewsAnalysis';
 import HotViewsAnalysis from '@/components/views/HotViewsAnalysis';
+import { useCallback } from 'react';
 
 interface ViewItem {
     id: string;
@@ -57,6 +58,21 @@ function ViewsContent() {
             setLoading(false);
         }
     };
+
+    // 治理 Tab 的排序配置与状态
+    const [govSortConfig, setGovSortConfig] = useState<{
+        options: SortConfig[];
+        state: SortState;
+        onChange: (key: string) => void;
+    } | null>(null);
+
+    const handleGovSortUpdate = useCallback((config: {
+        options: SortConfig[];
+        state: SortState;
+        onChange: (key: string) => void;
+    }) => {
+        setGovSortConfig(config);
+    }, []);
 
     // 使用自定义 Hook 管理表格状态 (服务器端模式)
     const {
@@ -108,65 +124,76 @@ function ViewsContent() {
 
     return (
         <div className="space-y-4">
-            {/* 页面标题与标签页切换 */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                        <LayoutGrid className="w-5 h-5 text-indigo-600" />
-                        仪表盘/视图
-                        <span className="text-sm font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-                            {total.toLocaleString()} 项
-                        </span>
-                    </h1>
+            {/* 第一行：页面标题与标签页切换 */}
+            <div className="flex items-center gap-4">
+                <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <LayoutGrid className="w-5 h-5 text-indigo-600" />
+                    仪表盘/视图
+                </h1>
 
-                    {/* 标签页切换 */}
-                    <div className="flex p-1 bg-gray-100/80 rounded-lg">
-                        <button
-                            onClick={() => setActiveTab('dashboard')}
-                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'dashboard'
-                                ? 'bg-white text-indigo-600 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            仪表盘列表
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('list')}
-                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'list'
-                                ? 'bg-white text-indigo-600 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            全部视图
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('zeroAccess')}
-                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'zeroAccess'
-                                ? 'bg-white text-indigo-600 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            零访问视图
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('hot')}
-                            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'hot'
-                                ? 'bg-white text-indigo-600 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            热门视图
-                        </button>
-                    </div>
+                {/* 标签页切换 */}
+                <div className="flex p-1 bg-gray-100/80 rounded-lg">
+                    <button
+                        onClick={() => setActiveTab('dashboard')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'dashboard'
+                            ? 'bg-white text-indigo-600 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        仪表盘列表
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('list')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'list'
+                            ? 'bg-white text-indigo-600 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        全部视图
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('zeroAccess')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'zeroAccess'
+                            ? 'bg-white text-indigo-600 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        零访问视图
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('hot')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'hot'
+                            ? 'bg-white text-indigo-600 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        热门视图
+                    </button>
+                </div>
+            </div>
+
+            {/* 第二行：统计信息 + 排序按钮 */}
+            <div className="flex items-center justify-between">
+                <div className="text-sm text-gray-600">
+                    <span className="inline-flex items-center gap-1">
+                        <span>仪表盘/视图</span>
+                        <span className="font-semibold text-gray-800">{total.toLocaleString()}</span>
+                        <span>项 中的</span>
+                        <span className="font-bold text-indigo-600">{paginationState.total.toLocaleString()}</span>
+                    </span>
                 </div>
 
-
-
-                {(activeTab === 'list' || activeTab === 'dashboard') && (
+                {(activeTab === 'list' || activeTab === 'dashboard') ? (
                     <SortButtons
                         sortOptions={sortOptions}
                         currentSort={sortState}
                         onSortChange={handleSortChange}
+                    />
+                ) : govSortConfig && (
+                    <SortButtons
+                        sortOptions={govSortConfig.options}
+                        currentSort={govSortConfig.state}
+                        onSortChange={govSortConfig.onChange}
                     />
                 )}
             </div>
@@ -235,9 +262,9 @@ function ViewsContent() {
                         )}
                     </>
                 ) : activeTab === 'zeroAccess' ? (
-                    <ZeroAccessViewsAnalysis />
+                    <ZeroAccessViewsAnalysis onSortUpdate={handleGovSortUpdate} />
                 ) : (
-                    <HotViewsAnalysis />
+                    <HotViewsAnalysis onSortUpdate={handleGovSortUpdate} />
                 )
             }
         </div >

@@ -24,8 +24,8 @@ const ELEMENTS = [
     { id: 'all', label: '全部' },
     { id: 'database', label: '数据库' },
     { id: 'table', label: '数据表' },
-    { id: 'field', label: '字段字典' },
-    { id: 'metric', label: '指标库' },
+    { id: 'field', label: '原始字段' },
+    { id: 'metric', label: '计算字段' },
     { id: 'datasource', label: '数据源' },
     { id: 'workbook', label: '工作簿' },
     { id: 'view', label: '视图' },
@@ -80,8 +80,8 @@ export default function GlossaryPage() {
                             key={el.id}
                             onClick={() => setActiveElement(el.id)}
                             className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${activeElement === el.id
-                                    ? 'bg-indigo-50 text-indigo-700 font-medium'
-                                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                                ? 'bg-indigo-50 text-indigo-700 font-medium'
+                                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                                 }`}
                         >
                             {el.label}

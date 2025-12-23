@@ -11,10 +11,24 @@ import {
     AlertCircle,
     Search
 } from 'lucide-react';
-import { useDataTable } from '@/hooks/useDataTable';
 import FacetFilterBar from '../data-table/FacetFilterBar';
 import SortButtons from '../data-table/SortButtons';
 import Pagination from '../data-table/Pagination';
+import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
+
+// 定义排序选项
+const SORT_OPTIONS: SortConfig[] = [
+    { key: 'view_count', label: '视图数' },
+    { key: 'name', label: '名称' }
+];
+
+interface EmptyWorkbooksAnalysisProps {
+    onSortUpdate?: (config: {
+        options: SortConfig[];
+        state: SortState;
+        onChange: (key: string) => void;
+    }) => void;
+}
 
 interface WorkbookItem {
     id: string;
@@ -23,14 +37,14 @@ interface WorkbookItem {
     project_name?: string;
     projectName?: string;
     owner?: string;
-    viewCount?: number;
     view_count?: number;
     upstream_datasources?: string[];
     issue_type?: 'empty' | 'single-source';
+    is_single_source?: boolean;
     [key: string]: any;
 }
 
-export default function EmptyWorkbooksAnalysis() {
+export default function EmptyWorkbooksAnalysis({ onSortUpdate }: EmptyWorkbooksAnalysisProps) {
     const [allData, setAllData] = useState<WorkbookItem[]>([]);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
@@ -43,7 +57,7 @@ export default function EmptyWorkbooksAnalysis() {
         ])
             .then(([emptyResult, singleResult]) => {
                 const empty = (emptyResult.items || []).map((w: any) => ({ ...w, issue_type: 'empty' }));
-                const single = (singleResult.items || []).map((w: any) => ({ ...w, issue_type: 'single-source' }));
+                const single: WorkbookItem[] = (singleResult.items || []).map((w: any) => ({ ...w, issue_type: 'single-source' }));
 
                 // 合并逻辑
                 const merged = [...empty];
@@ -81,6 +95,16 @@ export default function EmptyWorkbooksAnalysis() {
         searchFields: ['name', 'project', 'owner'],
         defaultPageSize: 20
     });
+
+    // 同步排序状态给父组件
+    useEffect(() => {
+        onSortUpdate?.({
+            options: SORT_OPTIONS,
+            state: sortState,
+            onChange: handleSortChange
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sortState]);
 
     if (loading) {
         return (
@@ -130,14 +154,6 @@ export default function EmptyWorkbooksAnalysis() {
                     onClearAll={handleClearAllFilters}
                 />
                 <div className="flex items-center gap-3">
-                    <SortButtons
-                        sortOptions={[
-                            { key: 'view_count', label: '视图数' },
-                            { key: 'name', label: '名称' }
-                        ]}
-                        currentSort={sortState}
-                        onSortChange={handleSortChange}
-                    />
                     <div className="relative w-full md:w-64">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <input
@@ -167,7 +183,7 @@ export default function EmptyWorkbooksAnalysis() {
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                             {displayData.map((wb) => (
-                                <tr key={wb.id} className="hover:bg-gray-50 transition-colors">
+                                <tr key={`${wb.id}-${wb.issue_type}`} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-6 py-4">
                                         <div className="flex flex-wrap gap-1">
                                             {wb.issue_type === 'empty' && (

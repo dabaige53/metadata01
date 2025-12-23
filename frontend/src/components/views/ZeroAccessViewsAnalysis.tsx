@@ -14,10 +14,15 @@ import {
     ChevronUp,
     BookOpen
 } from 'lucide-react';
-import { useDataTable } from '@/hooks/useDataTable';
+import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 import FacetFilterBar from '../data-table/FacetFilterBar';
-import SortButtons from '../data-table/SortButtons';
 import Pagination from '../data-table/Pagination';
+
+// 定义排序选项
+const SORT_OPTIONS: SortConfig[] = [
+    { key: 'field_count', label: '字段数' },
+    { key: 'name', label: '名称' }
+];
 
 interface ViewItem {
     id: string;
@@ -32,7 +37,15 @@ interface ViewItem {
     [key: string]: any;
 }
 
-export default function ZeroAccessViewsAnalysis() {
+interface ZeroAccessViewsAnalysisProps {
+    onSortUpdate?: (config: {
+        options: SortConfig[];
+        state: SortState;
+        onChange: (key: string) => void;
+    }) => void;
+}
+
+export default function ZeroAccessViewsAnalysis({ onSortUpdate }: ZeroAccessViewsAnalysisProps) {
     const [allData, setAllData] = useState<ViewItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [expandedWorkbooks, setExpandedWorkbooks] = useState<Record<string, boolean>>({});
@@ -78,6 +91,16 @@ export default function ZeroAccessViewsAnalysis() {
         searchFields: ['name', 'workbook_name'],
         defaultPageSize: 50
     });
+
+    // 同步排序状态给父组件
+    useEffect(() => {
+        onSortUpdate?.({
+            options: SORT_OPTIONS,
+            state: sortState,
+            onChange: handleSortChange
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sortState]);
 
     const toggleWorkbook = (name: string) => {
         setExpandedWorkbooks(prev => ({

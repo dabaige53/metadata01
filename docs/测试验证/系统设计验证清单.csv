@@ -1,0 +1,39 @@
+验证模块,验证内容,实际定义(系统要求),验证逻辑(SQL/规则),API验证 (cURL & JQ),中文说明
+1. 物理基础设施,数据库主键ID冲突,数据库实体 ID 在全系统中出现重复，违反唯一性约束，会导致资产关联错乱。,COUNT(id) - COUNT(DISTINCT id),无 (仅DB内部约束),发现数据库表中的重复主键记录
+1. 物理基础设施,孤立数据表记录,数据表缺少 database_id，无法关联到任何数据库，属于无效的游离元数据。,database_id IS NULL,无 (仅DB内部约束),发现未指定所属数据库的孤立表
+1. 物理基础设施,无效的数据库引用,数据表关联的 database_id 指向了不存在的数据库，导致外键死链。,database_id NOT IN (SELECT id FROM databases),无 (仅DB内部约束),发现引用了不存在数据库的无效表
+1. 物理基础设施,孤立物理列记录,物理列缺少 table_id，无法关联到任何数据表，属于无效的游离元数据。,table_id IS NULL,无 (仅DB内部约束),发现未指定所属表的孤立列
+1. 物理基础设施,无效的数据表引用,物理列关联的 table_id 指向了不存在的数据表，导致外键死链。,table_id NOT IN (SELECT id FROM tables),无 (仅DB内部约束),发现引用了不存在表的无效列
+2. 数据源语义层,数据源名称为空,发布的数据源 name 字段为空，导致用户无法在界面上识别该提取对象。,name IS NULL OR name = '',curl -s http://localhost:8101/api/datasources | jq '.items[] | select(.name==null)',发现名称缺失的数据源
+2. 数据源语义层,数据源未归属项目,发布数据源 (is_embedded=0) 未关联 Project，导致权限管控失效或资产悬空。,is_embedded=0 AND (project_name IS NULL OR ''),curl -s http://localhost:8101/api/datasources | jq '.items[] | select(.project_name==null)',发现未分配项目的数据源
+2. 数据源语义层,空壳数据源(无表),数据源未通过 table_to_datasource 关联任何物理表，导致无法提取数据，属于无效定义。,NOT EXISTS (SELECT 1 FROM table_to_datasource ...),无 (需复杂API逻辑),发现未关联物理表的空壳数据源
+2. 数据源语义层,空壳数据源(无字段),数据源内部未定义任何字段 (Field)，没有任何分析价值，属于无效定义。,NOT EXISTS (SELECT 1 FROM fields ...),无 (需复杂API逻辑),发现不含字段的空壳数据源
+3. 消费层,工作簿未归属项目,工作簿未关联 Project，导致在服务器文件系统中位置不明，无法被正常检索。,project_name IS NULL OR project_name = '',curl -s http://localhost:8101/api/workbooks | jq '.items[] | select(.project_name==null)',发现未分配项目的工作簿
+3. 消费层,工作簿缺少负责人,工作簿 owner 字段为空，导致资产出现问题时无法定位责任人。,owner IS NULL OR owner = '',curl -s http://localhost:8101/api/workbooks | jq '.items[] | select(.owner==null)',发现无负责人的工作簿
+3. 消费层,工作簿名称为空,工作簿缺少 name 标识，导致无法在列表中正常展示。,name IS NULL OR name = '',curl -s http://localhost:8101/api/workbooks | jq '.items[] | select(.name==null)',发现名称缺失的工作簿
+3. 消费层,孤立视图记录,视图缺少 workbook_id，未归属于任何工作簿，属于系统中的游离垃圾数据。,workbook_id IS NULL,curl -s http://localhost:8101/api/views | jq '.items[] | select(.workbook_id==null)',发现未关联工作簿的孤立视图
+3. 消费层,无效的工作簿引用,视图关联的 workbook_id 指向了不存在的工作簿，导致父子关系破裂。,workbook_id NOT IN workbooks,无 (仅DB内部约束),发现引用了不存在工作簿的无效视图
+3. 消费层,仪表板内容缺失,类型为 Dashboard 的视图未包含任何 Worksheet，说明元数据解析不完整或文件损坏。,view_type='dashboard' AND NOT EXISTS sheets,无 (需复杂API逻辑),发现不含工作表的异常仪表板
+4. 字段与指标逻辑,幽灵字段(悬空),字段既不属于数据源也不属于工作簿，完全脱离了上层容器，属于同步错误的垃圾数据。【注意：统计采用去重口径 (name+formula_hash)】,COUNT(DISTINCT name || formula_hash) WHERE ds_id IS NULL AND wb_id IS NULL,curl -s http://localhost:8101/api/stats | jq '.orphanedFields',发现无任何归属的悬空字段(去重后逻辑实体)
+4. 字段与指标逻辑,计算公式丢失,标记为计算字段 (is_calculated=1) 但 formula 内容为空，导致计算逻辑缺失。,formula IS NULL OR formula = '',无 (需复杂API逻辑),发现丢失公式的计算字段
+4. 字段与指标逻辑,度量数据类型缺失,标记为度量 (Role='MEASURE') 的字段缺少 data_type，导致前端无法判断聚合方式 (Sum/Avg等)。,role='MEASURE' AND (data_type IS NULL OR ''),curl -s http://localhost:8101/api/fields?role=measure | jq '.items[] | select(.data_type==null)',发现缺少数据类型的度量字段
+4. 字段与指标逻辑,计算字段角色未定义,计算字段未指定 Role (Dimension/Measure)，导致分析时无法正确分类。,is_calculated=1 AND role IS NULL,无 (需复杂API逻辑),发现未定义角色的计算字段
+6. 血缘全链路,物理-语义血缘中断,物理表存在但未关联任何数据源，导致该物理资产无法进入语义层被业务使用。,NOT EXISTS table_to_datasource,无 (API未暴露),发现未接入语义层的物理表(血缘断点)
+7. 治理合理性-利用率,语义-消费血缘中断,数据源已发布但未关联任何工作簿，导致下游链路中断，资产价值无法传递。,NOT EXISTS datasource_to_workbook,无 (API未暴露),发现未被消费的数据源(血缘断点)
+7. 治理合理性-利用率,字段-视图血缘中断,字段已定义但未在任何视图中被引用，导致最细粒度的血缘分析在终点断裂。【注意：统计采用去重口径 (name+formula_hash)，去重后约3916个逻辑实体】,COUNT(DISTINCT name || formula_hash) WHERE NOT IN field_to_view,无 (API未暴露),发现未被使用的字段(去重后逻辑实体)
+7. 治理合理性-利用率,僵尸计算指标,已定义的计算指标 (Measure) 在所有视图中均未被引用，属于无效的计算逻辑开发。【注意：统计采用去重口径 (name+formula_hash)，去重后约774个逻辑实体】,COUNT(DISTINCT name || formula_hash) WHERE role='MEASURE' AND NOT IN field_to_view,无 (API仅统计All Orphan),发现未被使用的僵尸计算指标(去重后逻辑实体)
+7. 治理合理性-利用率,僵尸计算维度,已定义的计算维度 (Dimension) 在所有视图中均未被引用，属于闲置中间变量。【注意：统计采用去重口径 (name+formula_hash)，去重后约374个逻辑实体】,COUNT(DISTINCT name || formula_hash) WHERE role='DIMENSION' AND NOT IN field_to_view,无 (API仅统计All Orphan),发现未被使用的僵尸计算维度(去重后逻辑实体)
+7. 治理合理性-利用率,冗余物理列,物理列存在于数据源中但完全未被使用，徒增提取与存储成本。【注意：统计采用去重口径 (name)，去重后约2769个逻辑实体】,COUNT(DISTINCT name) WHERE is_calculated=0 AND NOT IN field_to_view,无 (API仅统计All Orphan),发现未被使用的物理冗余列(去重后逻辑实体)
+7. 治理合理性-利用率,僵尸数据源,已发布数据源长期未被连接，属于完全闲置的服务器资产。,is_embedded=0 AND NOT EXISTS datasource_to_workbook,无 (API未暴露),发现完全未被引用的僵尸数据源
+7. 治理合理性-冗余度,逻辑重复定义,多个字段使用完全相同的计算公式，造成逻辑冗余和维护困难。,GROUP BY formula HAVING count > 1,curl -s http://localhost:8101/api/dashboard/analysis | jq '.duplicate_formulas_top',发现逻辑完全重复的冗余字段
+7. 治理合理性-冗余度,字段名歧义冲突,不同字段使用相同名称但公式不同，导致极其严重的语义混淆风险。,GROUP BY name HAVING COUNT(DISTINCT formula) > 1,无 (API未暴露),发现同名不同义的风险字段
+7. 治理合理性-有效性,空容器工作簿,工作簿内不包含任何视图，通常是空文件或误操作残留。,NOT EXISTS (SELECT 1 FROM views ...),无 (API未暴露),发现无视图的无效工作簿
+7. 治理合理性-有效性,空容器仪表板,仪表板内未放置任何工作表，通常是解析错误或未完成的草稿。,NOT EXISTS dashboard_to_sheet,无 (API未暴露),发现无内容是无效仪表板
+7. 治理合理性-规范性,非认证数据源,数据源未获得官方认证 (is_certified=0)，可能存在数据质量风险。,is_embedded=0 AND is_certified=0,curl -s http://localhost:8101/api/dashboard/analysis | jq '.quality_metrics.datasource_coverage.certified',发现未经过认证的数据源
+7. 治理合理性-规范性,资产描述缺失,核心资产 (表/字段) 缺少业务描述，严重影响用户理解和自助使用。,description IS NULL,curl -s http://localhost:8101/api/dashboard/analysis | jq '.issues.missing_description',发现缺少描述的核心资产
+7. 治理合理性-规范性,低价值重命名,计算字段过于简单 (Score<=1)，仅做重命名或类型转换，掩盖了真实逻辑。,complexity_score <= 1,curl -s http://localhost:8101/api/dashboard/analysis | jq '.complexity_distribution.low',发现低价值的简单计算字段
+7. 治理合理性-规范性,无主资产,工作簿缺少 owner 信息，导致治理责任主体缺失。,owner IS NULL,无 (API未暴露),发现权责不明的无主资产
+8. 统计准确性,全局计数不一致,API 返回的资产总数与数据库实时 Count 不一致，表明前端展示存在误差或缓存延迟。,SELECT COUNT(*) FROM table vs API,curl -s http://localhost:8101/api/stats,发现前后端资产计数不一致
+8. 统计准确性,字段来源归类错误,API 统计的"字段来源"分类总和不等于字段总数，表明分类逻辑存在漏洞或数据丢失。,GROUP BY source_type,curl -s http://localhost:8101/api/dashboard/analysis | jq '.field_source_distribution',发现字段来源统计逻辑错误
+8. 统计准确性,质量分计算偏差,健康度/完整性评分与底层数据实时状态不符，表明评分算法存在误差。,CASE WHEN ... THEN 1,curl -s http://localhost:8101/api/dashboard/analysis | jq '.quality_metrics',发现质量评分计算不准确
+8. 统计准确性,治理看板计数偏差,治理页面展示的问题数 (如过期DS) 与 SQL 核查结果不一致，误导治理决策。,WHERE condition_matches_api_logic,curl -s http://localhost:8101/api/dashboard/analysis | jq '.issues',发现治理问题计数不准确

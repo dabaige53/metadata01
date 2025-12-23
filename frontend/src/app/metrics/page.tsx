@@ -1,14 +1,14 @@
 'use client';
 
-import { Loader2, FunctionSquare, Search } from 'lucide-react';
+import { Loader2, FunctionSquare, Search, HelpCircle } from 'lucide-react';
 import DuplicateMetricsAnalysis from '@/components/metrics/DuplicateMetricsAnalysis';
 import ComplexMetricsAnalysis from '@/components/metrics/ComplexMetricsAnalysis';
 import UnusedMetricsAnalysis from '@/components/metrics/UnusedMetricsAnalysis';
 import MetricCatalog from '@/components/metrics/MetricCatalog';
 import FacetFilterBar from '@/components/data-table/FacetFilterBar';
 import SortButtons from '@/components/data-table/SortButtons';
-import { useDataTable } from '@/hooks/useDataTable';
-import { Suspense, useEffect, useState, useCallback } from 'react';
+import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
+import { Suspense, useEffect, useState, useCallback, useMemo } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 
 function MetricsContent() {
@@ -26,6 +26,21 @@ function MetricsContent() {
         complex: 0,
         unused: 0
     });
+
+    // 治理 Tab 的排序配置与状态
+    const [govSortConfig, setGovSortConfig] = useState<{
+        options: SortConfig[];
+        state: SortState;
+        onChange: (key: string) => void;
+    } | null>(null);
+
+    const handleGovSortUpdate = useCallback((config: {
+        options: SortConfig[];
+        state: SortState;
+        onChange: (key: string) => void;
+    }) => {
+        setGovSortConfig(config);
+    }, []);
 
     const fetchData = async (params: Record<string, any>) => {
         setLoading(true);
@@ -155,21 +170,33 @@ function MetricsContent() {
 
             {/* 第二行：统计信息 + 排序按钮 */}
             <div className="flex items-center justify-between">
-                <div className="text-sm text-gray-600">
-                    <span className="inline-flex items-center gap-1">
-                        <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 text-xs font-bold flex items-center justify-center">①</span>
-                        <span>{stats.label}</span>
-                        <span className="font-semibold text-gray-800">{stats.total.toLocaleString()}</span>
-                        <span>项 中的</span>
-                        <span className="font-bold text-indigo-600">{stats.count.toLocaleString()}</span>
-                    </span>
+                <div className="flex items-center gap-4">
+                    <div className="text-sm text-gray-600">
+                        <span className="inline-flex items-center gap-1">
+                            <span>{stats.label}</span>
+                            <span className="font-semibold text-gray-800">{stats.total.toLocaleString()}</span>
+                            <span>项 中的</span>
+                            <span className="font-bold text-indigo-600">{stats.count.toLocaleString()}</span>
+                        </span>
+                    </div>
+                    {/* 去重说明 */}
+                    <div className="flex items-center gap-1.5 text-[11px] text-gray-400 bg-gray-50/50 px-2 py-1 rounded-md border border-gray-100">
+                        <HelpCircle className="w-3.5 h-3.5 text-gray-400" />
+                        <span>去重说明：计算字段按『名称+公式哈希』聚合，不同工作簿中逻辑相同的公式仅计为 1 项</span>
+                    </div>
                 </div>
 
-                {activeTab === 'catalog' && (
+                {activeTab === 'catalog' ? (
                     <SortButtons
                         sortOptions={sortOptions}
                         currentSort={sortState}
                         onSortChange={handleSortChange}
+                    />
+                ) : govSortConfig && (
+                    <SortButtons
+                        sortOptions={govSortConfig.options}
+                        currentSort={govSortConfig.state}
+                        onSortChange={govSortConfig.onChange}
                     />
                 )}
             </div>
@@ -211,11 +238,20 @@ function MetricsContent() {
                     onMetricClick={(metric) => openDrawer(metric.representative_id || '', 'metrics')}
                 />
             ) : activeTab === 'duplicate' ? (
-                <DuplicateMetricsAnalysis onCountUpdate={(count: number) => handleTabCountUpdate('duplicate', count)} />
+                <DuplicateMetricsAnalysis
+                    onCountUpdate={(count: number) => handleTabCountUpdate('duplicate', count)}
+                    onSortUpdate={handleGovSortUpdate}
+                />
             ) : activeTab === 'complex' ? (
-                <ComplexMetricsAnalysis onCountUpdate={(count: number) => handleTabCountUpdate('complex', count)} />
+                <ComplexMetricsAnalysis
+                    onCountUpdate={(count: number) => handleTabCountUpdate('complex', count)}
+                    onSortUpdate={handleGovSortUpdate}
+                />
             ) : (
-                <UnusedMetricsAnalysis onCountUpdate={(count: number) => handleTabCountUpdate('unused', count)} />
+                <UnusedMetricsAnalysis
+                    onCountUpdate={(count: number) => handleTabCountUpdate('unused', count)}
+                    onSortUpdate={handleGovSortUpdate}
+                />
             )}
         </div>
     );

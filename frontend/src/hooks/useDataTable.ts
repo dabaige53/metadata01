@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { FacetConfig, ActiveFilters } from '@/components/data-table/FacetFilterBar';
-import type { SortState } from '@/components/data-table/SortButtons';
+import type { SortState, SortConfig } from '@/components/data-table/SortButtons';
 import type { PaginationState } from '@/components/data-table/Pagination';
+
+export type { SortState, SortConfig };
 
 export interface FacetFieldConfig {
   [moduleName: string]: string[]; // module -> facet keys
@@ -66,10 +68,10 @@ export function useDataTable<T extends Record<string, any>>({
   const [appliedSearchTerm, setAppliedSearchTerm] = useState(initialSearch); // 实际搜索生效状态
 
   // 手动触发搜索
-  const handleSearch = () => {
+  const handleSearch = useCallback(() => {
     setAppliedSearchTerm(searchTerm);
     setCurrentPage(1); // 搜索时重置页码
-  };
+  }, [searchTerm]);
 
   // 监听初始 URL 参数变化同步到 appliedSearchTerm
   useEffect(() => {
@@ -206,7 +208,7 @@ export function useDataTable<T extends Record<string, any>>({
   }, [sortState, currentPage, appliedSearchTerm, activeFilters, pageSize, router, serverSide]);
 
   // 处理筛选变化（单项）
-  const handleFilterChange = (key: string, value: string, checked: boolean) => {
+  const handleFilterChange = useCallback((key: string, value: string, checked: boolean) => {
     setActiveFilters((prev) => {
       const current = prev[key] || [];
       const updated = checked
@@ -219,27 +221,27 @@ export function useDataTable<T extends Record<string, any>>({
       };
     });
     setCurrentPage(1); // 重置到第一页
-  };
+  }, []);
 
   // 处理筛选变化（批量更新，用于下拉面板确认）
-  const handleBatchFilterChange = (key: string, values: string[]) => {
+  const handleBatchFilterChange = useCallback((key: string, values: string[]) => {
     setActiveFilters((prev) => ({
       ...prev,
       [key]: values,
     }));
     setCurrentPage(1);
-  };
+  }, []);
 
   // 清空所有筛选
-  const handleClearAllFilters = () => {
+  const handleClearAllFilters = useCallback(() => {
     setActiveFilters({});
     setSearchTerm('');
     setAppliedSearchTerm('');
     setCurrentPage(1);
-  };
+  }, []);
 
   // 处理排序变化
-  const handleSortChange = (key: string) => {
+  const handleSortChange = useCallback((key: string) => {
     setSortState((prev) => {
       if (prev.sortKey === key) {
         return {
@@ -253,20 +255,20 @@ export function useDataTable<T extends Record<string, any>>({
       };
     });
     setCurrentPage(1); // 重置到第一页
-  };
+  }, []);
 
   // 处理页码变化
-  const handlePageChange = (page: number) => {
-    if (page >= 1 && page <= paginationState.totalPages) {
+  const handlePageChange = useCallback((page: number) => {
+    if (page >= 1 && (serverSide || page <= Math.ceil(sortedData.length / pageSize))) {
       setCurrentPage(page);
     }
-  };
+  }, [serverSide, sortedData.length, pageSize]);
 
   // 处理页大小变化
-  const handlePageSizeChange = (newSize: number) => {
+  const handlePageSizeChange = useCallback((newSize: number) => {
     setPageSize(newSize);
     setCurrentPage(1); // 切换每页条数重置到第一页
-  };
+  }, []);
 
   return {
     // 数据

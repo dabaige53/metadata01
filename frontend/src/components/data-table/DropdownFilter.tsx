@@ -38,10 +38,15 @@ export default function DropdownFilter({
     const dropdownRef = useRef<HTMLDivElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
-    // 同步外部选中状态
+    // 同步外部选中状态 - 使用 JSON 比较避免引用变化导致的无限循环
     useEffect(() => {
-        setPendingSelection(selectedValues);
-    }, [selectedValues]);
+        const selectedStr = JSON.stringify(selectedValues);
+        const pendingStr = JSON.stringify(pendingSelection);
+        if (selectedStr !== pendingStr) {
+            setPendingSelection(selectedValues);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [JSON.stringify(selectedValues)]);
 
     // 点击外部关闭
     useEffect(() => {
@@ -104,7 +109,7 @@ export default function DropdownFilter({
                 type="button"
                 onClick={() => setIsOpen(!isOpen)}
                 className={`
-          inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
+          inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium
           border transition-all duration-200
           ${hasSelection
                         ? 'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-sm'

@@ -11,10 +11,15 @@ import {
     CheckCircle2,
     Search
 } from 'lucide-react';
-import { useDataTable } from '@/hooks/useDataTable';
+import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 import FacetFilterBar from '../data-table/FacetFilterBar';
-import SortButtons from '../data-table/SortButtons';
 import Pagination from '../data-table/Pagination';
+
+// 定义排序选项
+const SORT_OPTIONS: SortConfig[] = [
+    { key: 'column_count', label: '列数' },
+    { key: 'name', label: '名称' }
+];
 
 interface TableItem {
     id: string;
@@ -31,7 +36,15 @@ interface TableItem {
     [key: string]: any;
 }
 
-export default function UnusedTablesAnalysis() {
+interface UnusedTablesAnalysisProps {
+    onSortUpdate?: (config: {
+        options: SortConfig[];
+        state: SortState;
+        onChange: (key: string) => void;
+    }) => void;
+}
+
+export default function UnusedTablesAnalysis({ onSortUpdate }: UnusedTablesAnalysisProps) {
     const [allData, setAllData] = useState<TableItem[]>([]);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
@@ -71,6 +84,16 @@ export default function UnusedTablesAnalysis() {
         searchFields: ['name', 'schema', 'database'],
         defaultPageSize: 20
     });
+
+    // 同步排序状态给父组件
+    useEffect(() => {
+        onSortUpdate?.({
+            options: SORT_OPTIONS,
+            state: sortState,
+            onChange: handleSortChange
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sortState]);
 
     if (loading) {
         return (
@@ -119,16 +142,8 @@ export default function UnusedTablesAnalysis() {
                     onFilterChange={handleBatchFilterChange}
                     onClearAll={handleClearAllFilters}
                 />
-                <div className="flex items-center gap-3">
-                    <SortButtons
-                        sortOptions={[
-                            { key: 'column_count', label: '列数' },
-                            { key: 'name', label: '名称' }
-                        ]}
-                        currentSort={sortState}
-                        onSortChange={handleSortChange}
-                    />
-                    <div className="relative w-full md:w-64">
+                <div className="flex items-center gap-2">
+                    <div className="relative w-64">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <input
                             type="text"
@@ -157,7 +172,7 @@ export default function UnusedTablesAnalysis() {
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                             {displayData.map((table) => (
-                                <tr key={table.id} className="hover:bg-gray-50 transition-colors">
+                                <tr key={`${table.id}-${table.issue_type}`} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-6 py-4">
                                         {table.issue_type === 'unused' ? (
                                             <span className="px-2 py-1 bg-amber-50 text-amber-600 rounded text-[10px] font-bold uppercase tracking-wider">未使用</span>

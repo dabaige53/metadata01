@@ -14,9 +14,24 @@ import { FieldCatalogItem } from '../cards/FieldCatalogCard';
 import FacetFilterBar from '../data-table/FacetFilterBar';
 import SortButtons from '../data-table/SortButtons';
 import Pagination from '../data-table/Pagination';
-import { useDataTable } from '@/hooks/useDataTable';
+import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 
-export default function NoDescriptionFieldsAnalysis() {
+// 定义排序选项
+const SORT_OPTIONS: SortConfig[] = [
+    { key: 'total_usage', label: '热度' },
+    { key: 'instance_count', label: '实例数' },
+    { key: 'name', label: '名称' }
+];
+
+interface NoDescriptionFieldsAnalysisProps {
+    onSortUpdate?: (config: {
+        options: SortConfig[];
+        state: SortState;
+        onChange: (key: string) => void;
+    }) => void;
+}
+
+export default function NoDescriptionFieldsAnalysis({ onSortUpdate }: NoDescriptionFieldsAnalysisProps) {
     const [allData, setAllData] = useState<FieldCatalogItem[]>([]);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
@@ -51,6 +66,16 @@ export default function NoDescriptionFieldsAnalysis() {
         searchFields: ['canonical_name', 'table_name'],
         defaultPageSize: 20
     });
+
+    // 同步排序状态给父组件
+    useEffect(() => {
+        onSortUpdate?.({
+            options: SORT_OPTIONS,
+            state: sortState,
+            onChange: handleSortChange
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sortState]);
 
     // 统计多数据源字段数量
     const multiDatasourceCount = allData.filter(f => f.datasource_count > 1).length;
@@ -95,18 +120,6 @@ export default function NoDescriptionFieldsAnalysis() {
                         {new Set(allData.filter(f => f.table_id).map(f => f.table_id)).size}
                     </div>
                 </div>
-            </div>
-
-            {/* 工具栏: 右上排序 */}
-            <div className="flex justify-end">
-                <SortButtons
-                    sortOptions={[
-                        { key: 'total_usage', label: '热度' },
-                        { key: 'canonical_name', label: '名称' }
-                    ]}
-                    currentSort={sortState}
-                    onSortChange={handleSortChange}
-                />
             </div>
 
             {/* 工具栏: 左下筛选 + 右下搜索 */}

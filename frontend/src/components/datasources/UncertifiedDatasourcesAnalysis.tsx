@@ -13,10 +13,16 @@ import {
     AlertCircle,
     Search
 } from 'lucide-react';
-import { useDataTable } from '@/hooks/useDataTable';
+import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 import FacetFilterBar from '../data-table/FacetFilterBar';
-import SortButtons from '../data-table/SortButtons';
 import Pagination from '../data-table/Pagination';
+
+// 定义排序选项
+const SORT_OPTIONS: SortConfig[] = [
+    { key: 'workbook_count', label: '引用数' },
+    { key: 'field_count', label: '字段数' },
+    { key: 'name', label: '名称' }
+];
 
 interface DatasourceItem {
     id: string;
@@ -30,10 +36,19 @@ interface DatasourceItem {
     workbook_count?: number;
     field_count?: number;
     issue_type?: 'uncertified' | 'orphaned';
+    is_orphaned?: boolean;
     [key: string]: any;
 }
 
-export default function UncertifiedDatasourcesAnalysis() {
+interface UncertifiedDatasourcesAnalysisProps {
+    onSortUpdate?: (config: {
+        options: SortConfig[];
+        state: SortState;
+        onChange: (key: string) => void;
+    }) => void;
+}
+
+export default function UncertifiedDatasourcesAnalysis({ onSortUpdate }: UncertifiedDatasourcesAnalysisProps) {
     const [allData, setAllData] = useState<DatasourceItem[]>([]);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
@@ -45,13 +60,13 @@ export default function UncertifiedDatasourcesAnalysis() {
 
                 // 给所有数据打标签，并合并
                 // 未认证
-                const uncert = items.filter(d => !(d.isCertified ?? d.is_certified)).map(d => ({ ...d, issue_type: 'uncertified' }));
+                const uncert = items.filter(d => !(d.isCertified ?? d.is_certified)).map(d => ({ ...d, issue_type: 'uncertified' as const }));
                 // 孤立 (且已认证，避免重复，或者保留重复由筛选器处理)
-                const orph = items.filter(d => (!d.workbook_count || d.workbook_count === 0)).map(d => ({ ...d, issue_type: 'orphaned' }));
+                const orph = items.filter(d => (!d.workbook_count || d.workbook_count === 0)).map(d => ({ ...d, issue_type: 'orphaned' as const }));
 
                 // 去重合并：一个数据源可能既未认证也是孤立的。这里我们选择展示所有问题记录，搜索和筛选会处理它。
                 // 如果想去重，则需要唯一标识符。
-                const merged = [...uncert];
+                const merged: DatasourceItem[] = [...uncert];
                 orph.forEach(o => {
                     if (!merged.find(m => m.id === o.id)) {
                         merged.push(o);
@@ -90,6 +105,16 @@ export default function UncertifiedDatasourcesAnalysis() {
         searchFields: ['name', 'project', 'owner'],
         defaultPageSize: 20
     });
+
+    // 同步排序状态给父组件
+    useEffect(() => {
+        onSortUpdate?.({
+            options: SORT_OPTIONS,
+            state: sortState,
+            onChange: handleSortChange
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sortState]);
 
     if (loading) {
         return (
@@ -138,15 +163,7 @@ export default function UncertifiedDatasourcesAnalysis() {
                     onFilterChange={handleBatchFilterChange}
                     onClearAll={handleClearAllFilters}
                 />
-                <div className="flex items-center gap-3">
-                    <SortButtons
-                        sortOptions={[
-                            { key: 'workbook_count', label: '引用数' },
-                            { key: 'name', label: '名称' }
-                        ]}
-                        currentSort={sortState}
-                        onSortChange={handleSortChange}
-                    />
+                <div className="flex items-center gap-2">
                     <div className="relative w-full md:w-64">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <input
@@ -176,7 +193,7 @@ export default function UncertifiedDatasourcesAnalysis() {
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                             {displayData.map((ds) => (
-                                <tr key={ds.id} className="hover:bg-gray-50 transition-colors">
+                                <tr key={`${ds.id}-${ds.issue_type}`} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-6 py-4">
                                         <div className="flex flex-wrap gap-1">
                                             {!(ds.isCertified ?? ds.is_certified) && (

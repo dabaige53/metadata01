@@ -738,6 +738,13 @@ export default function DetailDrawer() {
                                         重命名: {ds.field_name}
                                     </span>
                                 )}
+                                {/* 新增：显示描述或认证说明 (即用户所谓的"标记") */}
+                                {(ds.description || ds.certification_note) && (
+                                    <span className="flex items-center gap-1 bg-gray-100 px-1.5 py-0.5 rounded text-gray-600 truncate max-w-[200px]" title={ds.description || ds.certification_note}>
+                                        <Info className="w-3 h-3 text-gray-500" />
+                                        {ds.description || ds.certification_note}
+                                    </span>
+                                )}
                             </div>
                             {/* 第三行：统计信息 */}
                             <div className="flex items-center gap-3 mt-1.5 text-[11px] flex-wrap">

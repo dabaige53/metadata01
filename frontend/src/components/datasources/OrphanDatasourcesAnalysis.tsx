@@ -13,10 +13,17 @@ import {
     ShieldOff,
     Search
 } from 'lucide-react';
-import { useDataTable } from '@/hooks/useDataTable';
+import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 import FacetFilterBar from '../data-table/FacetFilterBar';
 import SortButtons from '../data-table/SortButtons';
 import Pagination from '../data-table/Pagination';
+
+// 定义排序选项
+const SORT_OPTIONS: SortConfig[] = [
+    { key: 'field_count', label: '字段数' },
+    { key: 'last_refresh', label: '更新时间' },
+    { key: 'name', label: '名称' }
+];
 
 interface DatasourceItem {
     id: string;
@@ -32,7 +39,15 @@ interface DatasourceItem {
     [key: string]: any;
 }
 
-export default function OrphanDatasourcesAnalysis() {
+interface OrphanDatasourcesAnalysisProps {
+    onSortUpdate?: (config: {
+        options: SortConfig[];
+        state: SortState;
+        onChange: (key: string) => void;
+    }) => void;
+}
+
+export default function OrphanDatasourcesAnalysis({ onSortUpdate }: OrphanDatasourcesAnalysisProps) {
     const [allData, setAllData] = useState<DatasourceItem[]>([]);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
@@ -67,8 +82,18 @@ export default function OrphanDatasourcesAnalysis() {
         data: allData,
         facetFields: ['project', 'is_certified'],
         searchFields: ['name', 'project', 'owner'],
-        defaultPageSize: 20
+        defaultPageSize: 20,
     });
+
+    // 同步排序状态给父组件
+    useEffect(() => {
+        onSortUpdate?.({
+            options: SORT_OPTIONS,
+            state: sortState,
+            onChange: handleSortChange
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sortState, onSortUpdate, handleSortChange]);
 
     if (loading) {
         return (
@@ -123,16 +148,8 @@ export default function OrphanDatasourcesAnalysis() {
                     onFilterChange={handleBatchFilterChange}
                     onClearAll={handleClearAllFilters}
                 />
-                <div className="flex items-center gap-3">
-                    <SortButtons
-                        sortOptions={[
-                            { key: 'field_count', label: '字段数' },
-                            { key: 'name', label: '名称' }
-                        ]}
-                        currentSort={sortState}
-                        onSortChange={handleSortChange}
-                    />
-                    <div className="relative w-full md:w-64">
+                <div className="flex items-center gap-2">
+                    <div className="relative w-64">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <input
                             type="text"

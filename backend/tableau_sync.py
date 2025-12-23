@@ -1551,7 +1551,7 @@ class MetadataSync:
                     field.is_calculated = True
                     field.formula = f_data.get("formula") or ""
                     field.data_type = f_data.get("dataType") or ""
-                    field.role = f_data.get("role") or ""
+                    field.role = (f_data.get("role") or "").lower()
                     field.is_hidden = f_data.get("isHidden") or False
                     field.folder_name = f_data.get("folderName")
                     
@@ -1568,7 +1568,7 @@ class MetadataSync:
                                     break
                 elif typename == "ColumnField":
                     field.data_type = f_data.get("dataType") or ""
-                    field.role = f_data.get("role") or ""
+                    field.role = (f_data.get("role") or "").lower()
                     field.is_hidden = f_data.get("isHidden") or False
                     field.folder_name = f_data.get("folderName")
                     
@@ -1646,8 +1646,9 @@ class MetadataSync:
                 field.data_type = cf_data.get("dataType") or ""
                 field.is_calculated = True
                 field.formula = cf_data.get("formula") or ""
-                field.role = cf_data.get("role") or ""
-                field.datasource_id = cf_data.get("datasource_id")
+                field.role = (cf_data.get("role") or "").lower()
+                if not field.datasource_id:
+                    field.datasource_id = cf_data.get("datasource_id")
                 
                 # 更新/创建 CalculatedField 记录
                 calc_field = self.session.query(CalculatedField).filter_by(
@@ -1933,7 +1934,7 @@ class MetadataSync:
             field.is_calculated = True
             field.formula = f_data.get("formula") or ""
             field.data_type = f_data.get("dataType") or field.data_type
-            field.role = f_data.get("role") or field.role
+            field.role = (f_data.get("role") or field.role or "").lower()
             field.is_hidden = f_data.get("isHidden") or False
             
             # 确保 CalculatedField 记录
@@ -1946,7 +1947,7 @@ class MetadataSync:
 
         elif typename == "ColumnField" or f_data.get("remoteType"):
             field.data_type = f_data.get("dataType") or field.data_type
-            field.role = f_data.get("role") or field.role
+            field.role = (f_data.get("role") or field.role or "").lower()
             field.is_hidden = f_data.get("isHidden") or False
             # 嵌入式列通常没有 upstreamColumns 因为它是直接连接
 

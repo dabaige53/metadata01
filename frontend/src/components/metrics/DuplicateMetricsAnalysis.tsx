@@ -13,13 +13,25 @@ import { MetricCatalogItem } from '../cards/MetricCatalogCard';
 import FacetFilterBar from '../data-table/FacetFilterBar';
 import SortButtons from '../data-table/SortButtons';
 import Pagination from '../data-table/Pagination';
-import { useDataTable } from '@/hooks/useDataTable';
+import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 
 interface DuplicateMetricsAnalysisProps {
     onCountUpdate?: (count: number) => void;
+    onSortUpdate?: (config: {
+        options: SortConfig[];
+        state: SortState;
+        onChange: (key: string) => void;
+    }) => void;
 }
 
-export default function DuplicateMetricsAnalysis({ onCountUpdate }: DuplicateMetricsAnalysisProps) {
+// 定义排序选项
+const SORT_OPTIONS: SortConfig[] = [
+    { key: 'total_references', label: '引用数' },
+    { key: 'instance_count', label: '实例数' },
+    { key: 'name', label: '名称' }
+];
+
+export default function DuplicateMetricsAnalysis({ onCountUpdate, onSortUpdate }: DuplicateMetricsAnalysisProps) {
     const [allData, setAllData] = useState<MetricCatalogItem[]>([]);
     const [totalCount, setTotalCount] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -57,6 +69,15 @@ export default function DuplicateMetricsAnalysis({ onCountUpdate }: DuplicateMet
         searchFields: ['name', 'formula'],
         defaultPageSize: 20
     });
+
+    // 同步排序状态给父组件
+    useEffect(() => {
+        onSortUpdate?.({
+            options: SORT_OPTIONS,
+            state: sortState,
+            onChange: handleSortChange
+        });
+    }, [sortState, onSortUpdate, handleSortChange]);
 
     // 统计多数据源/多工作簿数量
     const multiDatasourceCount = allData.filter(m => m.datasource_count > 1).length;
@@ -103,21 +124,8 @@ export default function DuplicateMetricsAnalysis({ onCountUpdate }: DuplicateMet
                 </div>
             </div>
 
-            {/* 工具栏: 右上排序 */}
-            <div className="flex justify-end">
-                <SortButtons
-                    sortOptions={[
-                        { key: 'total_references', label: '引用数' },
-                        { key: 'instance_count', label: '实例数' },
-                        { key: 'name', label: '名称' }
-                    ]}
-                    currentSort={sortState}
-                    onSortChange={handleSortChange}
-                />
-            </div>
-
-            {/* 工具栏: 左下筛选 + 右下搜索 */}
-            <div className="flex items-center justify-between gap-4">
+            {/* 统一工具栏: 筛选 (左) + 排序 & 搜索 (右) */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <FacetFilterBar
                     facets={facets}
                     activeFilters={activeFilters}
@@ -125,17 +133,19 @@ export default function DuplicateMetricsAnalysis({ onCountUpdate }: DuplicateMet
                     onClearAll={handleClearAllFilters}
                 />
 
-                <div className="relative w-64">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Search className="h-4 w-4 text-gray-400" />
+                <div className="flex items-center gap-2">
+                    <div className="relative w-64">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <Search className="h-4 w-4 text-gray-400" />
+                        </div>
+                        <input
+                            type="text"
+                            placeholder="搜索指标名称或公式..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                        />
                     </div>
-                    <input
-                        type="text"
-                        placeholder="搜索指标名称或公式..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-                    />
                 </div>
             </div>
 
