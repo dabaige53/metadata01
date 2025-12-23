@@ -31,12 +31,27 @@ interface ViewItem {
 }
 
 function ViewsContent() {
+    const { openDrawer } = useDrawer();
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'zeroAccess' | 'hot'>('dashboard');
+
+    // 数据状态
     const [data, setData] = useState<ViewItem[]>([]);
     const [total, setTotal] = useState(0);
     const [facetsData, setFacetsData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'zeroAccess' | 'hot'>('dashboard');
-    const { openDrawer } = useDrawer();
+
+    // 各 Tab 统计数量
+    const [tabCounts, setTabCounts] = useState<{ [key: string]: number }>({
+        dashboard: 0,
+        list: 0,
+        zeroAccess: 0,
+        hot: 0
+    });
+
+    // 处理子组件回传的统计数量
+    const handleTabCountUpdate = useCallback((tab: string, count: number) => {
+        setTabCounts(prev => ({ ...prev, [tab]: count }));
+    }, []);
 
     const fetchViews = async (params: Record<string, any>) => {
         setLoading(true);
@@ -52,6 +67,10 @@ function ViewsContent() {
             setData(result.items || []);
             setTotal(result.total || 0);
             setFacetsData(result.facets || null);
+            // 同步当前列表数量
+            if (activeTab === 'dashboard' || activeTab === 'list') {
+                setTabCounts(prev => ({ ...prev, [activeTab]: result.total || 0 }));
+            }
         } catch (error) {
             console.error('Failed to fetch views:', error);
         } finally {
@@ -107,12 +126,28 @@ function ViewsContent() {
         },
     });
 
+    // 同步列表页数量 (如果有筛选)
+    useEffect(() => {
+        if (activeTab === 'dashboard' || activeTab === 'list') {
+            handleTabCountUpdate(activeTab, paginationState.total);
+        }
+    }, [paginationState.total, activeTab, handleTabCountUpdate]);
+
     // 排序选项
     const sortOptions = [
         { key: 'hits_total', label: '访问量' },
         { key: 'field_count', label: '字段数' },
         { key: 'name', label: '名称' },
     ];
+
+    // 获取当前 Tab 的统计信息
+    const stats = {
+        label: activeTab === 'dashboard' ? '仪表盘' :
+            activeTab === 'list' ? '全部视图' :
+                activeTab === 'zeroAccess' ? '零访问视图' : '热门视图',
+        total: total,
+        count: tabCounts[activeTab] || 0
+    };
 
     if (loading) {
         return (
@@ -176,10 +211,10 @@ function ViewsContent() {
             <div className="flex items-center justify-between">
                 <div className="text-sm text-gray-600">
                     <span className="inline-flex items-center gap-1">
-                        <span>仪表盘/视图</span>
-                        <span className="font-semibold text-gray-800">{total.toLocaleString()}</span>
+                        <span>{stats.label}</span>
+                        <span className="font-semibold text-gray-800">{stats.total.toLocaleString()}</span>
                         <span>项 中的</span>
-                        <span className="font-bold text-indigo-600">{paginationState.total.toLocaleString()}</span>
+                        <span className="font-bold text-indigo-600">{stats.count.toLocaleString()}</span>
                     </span>
                 </div>
 
@@ -262,9 +297,15 @@ function ViewsContent() {
                         )}
                     </>
                 ) : activeTab === 'zeroAccess' ? (
-                    <ZeroAccessViewsAnalysis onSortUpdate={handleGovSortUpdate} />
+                    <ZeroAccessViewsAnalysis
+                        onSortUpdate={handleGovSortUpdate}
+                        onCountUpdate={(count) => handleTabCountUpdate('zeroAccess', count)}
+                    />
                 ) : (
-                    <HotViewsAnalysis onSortUpdate={handleGovSortUpdate} />
+                    <HotViewsAnalysis
+                        onSortUpdate={handleGovSortUpdate}
+                        onCountUpdate={(count) => handleTabCountUpdate('hot', count)}
+                    />
                 )
             }
         </div >

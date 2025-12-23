@@ -47,7 +47,8 @@ export default function ComplexMetricsAnalysis({ onCountUpdate, onSortUpdate }: 
             })
             .catch(console.error)
             .finally(() => setLoading(false));
-    }, [onCountUpdate]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // 只在挂载时获取数据
 
     const {
         displayData,

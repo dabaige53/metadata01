@@ -47,7 +47,8 @@ export default function DuplicateMetricsAnalysis({ onCountUpdate, onSortUpdate }
             })
             .catch(console.error)
             .finally(() => setLoading(false));
-    }, [onCountUpdate]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // 只在挂载时获取数据
 
     const {
         displayData,
@@ -77,7 +78,8 @@ export default function DuplicateMetricsAnalysis({ onCountUpdate, onSortUpdate }
             state: sortState,
             onChange: handleSortChange
         });
-    }, [sortState, onSortUpdate, handleSortChange]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sortState]); // 只在排序状态变化时同步
 
     // 统计多数据源/多工作簿数量
     const multiDatasourceCount = allData.filter(m => m.datasource_count > 1).length;

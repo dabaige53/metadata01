@@ -12,12 +12,25 @@ import { Suspense, useEffect, useState, useCallback } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 
 function FieldsContent() {
+    // 各 Tab 统计数量
+    const [tabCounts, setTabCounts] = useState<{ [key: string]: number }>({
+        catalog: 0,
+        noDescription: 0,
+        orphan: 0,
+        hot: 0
+    });
+
     const [activeTab, setActiveTab] = useState<'catalog' | 'noDescription' | 'orphan' | 'hot'>('catalog');
     const { openDrawer } = useDrawer();
     const [data, setData] = useState<any[]>([]);
     const [total, setTotal] = useState(0);
     const [facetsData, setFacetsData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+
+    // 处理子组件回传的统计数量
+    const handleTabCountUpdate = useCallback((tab: string, count: number) => {
+        setTabCounts(prev => ({ ...prev, [tab]: count }));
+    }, []);
 
     const fetchData = async (params: Record<string, any>) => {
         setLoading(true);
@@ -33,6 +46,8 @@ function FieldsContent() {
             setData(result.items || []);
             setTotal(result.total || 0);
             setFacetsData(result.facets || null);
+            // 同步主目录数量
+            setTabCounts(prev => ({ ...prev, catalog: result.total || 0 }));
         } catch (error) {
             console.error('Failed to fetch field catalog:', error);
         } finally {
@@ -67,6 +82,13 @@ function FieldsContent() {
         },
     });
 
+    // 同步列表页数量 (如果有筛选)
+    useEffect(() => {
+        if (activeTab === 'catalog') {
+            handleTabCountUpdate('catalog', paginationState.total);
+        }
+    }, [paginationState.total, activeTab, handleTabCountUpdate]);
+
     // 治理 Tab 的排序配置与状态
     const [govSortConfig, setGovSortConfig] = useState<{
         options: SortConfig[];
@@ -87,6 +109,15 @@ function FieldsContent() {
         { key: 'instance_count', label: '实例数' },
         { key: 'name', label: '名称' },
     ];
+
+    // 获取当前 Tab 的统计信息
+    const stats = {
+        label: activeTab === 'catalog' ? '原始字段' :
+            activeTab === 'noDescription' ? '无描述字段' :
+                activeTab === 'orphan' ? '孤立字段' : '热门字段',
+        total: total,
+        count: tabCounts[activeTab] || 0
+    };
 
     return (
         <div className="space-y-4">
@@ -143,10 +174,10 @@ function FieldsContent() {
                 <div className="flex items-center gap-4">
                     <div className="text-sm text-gray-600">
                         <span className="inline-flex items-center gap-1">
-                            <span>原始字段</span>
-                            <span className="font-semibold text-gray-800">{total.toLocaleString()}</span>
+                            <span>{stats.label}</span>
+                            <span className="font-semibold text-gray-800">{stats.total.toLocaleString()}</span>
                             <span>项 中的</span>
-                            <span className="font-bold text-indigo-600">{paginationState.total.toLocaleString()}</span>
+                            <span className="font-bold text-indigo-600">{stats.count.toLocaleString()}</span>
                         </span>
                     </div>
                     {/* 去重说明 */}
@@ -239,11 +270,20 @@ function FieldsContent() {
                     onFieldClick={(field) => openDrawer(field.representative_id || '', 'fields')}
                 />
             ) : activeTab === 'noDescription' ? (
-                <NoDescriptionFieldsAnalysis onSortUpdate={handleGovSortUpdate} />
+                <NoDescriptionFieldsAnalysis
+                    onSortUpdate={handleGovSortUpdate}
+                    onCountUpdate={(count) => handleTabCountUpdate('noDescription', count)}
+                />
             ) : activeTab === 'orphan' ? (
-                <OrphanFieldsAnalysis onSortUpdate={handleGovSortUpdate} />
+                <OrphanFieldsAnalysis
+                    onSortUpdate={handleGovSortUpdate}
+                    onCountUpdate={(count) => handleTabCountUpdate('orphan', count)}
+                />
             ) : (
-                <HotFieldsAnalysis onSortUpdate={handleGovSortUpdate} />
+                <HotFieldsAnalysis
+                    onSortUpdate={handleGovSortUpdate}
+                    onCountUpdate={(count) => handleTabCountUpdate('hot', count)}
+                />
             )}
         </div>
     );

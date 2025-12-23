@@ -57,7 +57,7 @@ check_item "幽灵字段(悬空)" "字段既不属于数据源也不属于工作
 curl -s "$BASE_URL/api/stats" | jq '.orphanedFields'
 
 # 8. 度量数据类型缺失
-check_item "度量数据类型缺失" "标记为度量 (Role='MEASURE') 的字段缺少 data_type" \
+check_item "度量数据类型缺失" "标记为度量 (role='measure') 的字段缺少 data_type" \
 "curl -s $BASE_URL/api/fields?role=measure | jq '.items[] | select(.data_type==null)'"
 curl -s "$BASE_URL/api/fields?role=measure" | jq '.items[] | select(.data_type==null)'
 
@@ -100,6 +100,21 @@ curl -s "$BASE_URL/api/dashboard/analysis" | jq '.quality_metrics'
 check_item "治理看板计数偏差" "治理页面展示的问题数" \
 "curl -s $BASE_URL/api/dashboard/analysis | jq '.issues'"
 curl -s "$BASE_URL/api/dashboard/analysis" | jq '.issues'
+
+# 17. 未使用指标统计口径
+check_item "未使用指标统计口径" "聚合后的未使用指标列表 (期望 INDEX() 不在其中)" \
+"curl -s $BASE_URL/api/metrics/catalog/unused | jq '.total_count'"
+curl -s "$BASE_URL/api/metrics/catalog/unused" | jq '.total_count'
+
+# 18. 字段血缘物理表映射补齐 (P0)
+check_item "字段血缘物理表映射补齐" "副本字段通过继承获取物理表信息 (期望 table_info 不为 null)" \
+"curl -s $BASE_URL/api/fields/01332753-6b5f-b122-b4c9-9d627d11e420 | jq '.table_info.name'"
+curl -s "$BASE_URL/api/fields/01332753-6b5f-b122-b4c9-9d627d11e420" | jq '.table_info.name'
+
+# 19. 字段血缘命名一致性 (P0)
+check_item "字段血缘命名一致性" "后端返回 usedInWorkbooks 兼容字段 (期望长度 >= 1)" \
+"curl -s $BASE_URL/api/fields/01332753-6b5f-b122-b4c9-9d627d11e420 | jq '.usedInWorkbooks | length'"
+curl -s "$BASE_URL/api/fields/01332753-6b5f-b122-b4c9-9d627d11e420" | jq '.usedInWorkbooks | length'
 
 echo ""
 echo "================================================================"

@@ -848,8 +848,7 @@ def get_table_detail(table_id):
 
     for f in source_fields:
         f_data = f.to_dict()
-        # 按需查询字段引用情况（替代全量索引）
-        f_data['used_by_metrics'] = get_field_usage_by_name(session, f.name)
+        # 指标引用信息已在 f.metric_usage_count 预计算字段中，无需额外查询
         if data['source_type'] == 'derived' and f.datasource:
             f_data['via_datasource'] = f.datasource.name
         full_fields.append(f_data)
@@ -1087,27 +1086,49 @@ def get_datasource_detail(ds_id):
         })
     data['workbooks'] = workbooks_data
 
-    # 字段列表（含指标引用）
+    # 字段列表（性能优化：限制返回数量，精简数据格式）
+    # 注意：对于大数据源，完整字段列表通过分页 API 获取
+    FIELD_LIMIT = 100  # 详情页只展示前 100 条，完整列表通过专属分页接口获取
+    
     full_fields = []
     metrics_list = []
+    field_count = 0
+    metric_count = 0
+    
     for f in ds.fields:
-        f_data = f.to_dict()
-        # 按需查询字段引用情况
-        f_data['used_by_metrics'] = get_field_usage_by_name(session, f.name)
+        # 精简的字段摘要（避免返回完整对象和 N+1 查询）
+        summary = {
+            'id': f.id,
+            'name': f.name,
+            'role': f.role,
+            'data_type': f.data_type or f.remote_type,
+            'description': f.description[:100] if f.description else '',
+            'usage_count': f.usage_count or 0,
+            'is_calculated': f.is_calculated or False
+        }
+        
         if f.is_calculated:
-            metrics_list.append(f_data)
+            metric_count += 1
+            if len(metrics_list) < FIELD_LIMIT:
+                metrics_list.append(summary)
         else:
-            full_fields.append(f_data)
+            field_count += 1
+            if len(full_fields) < FIELD_LIMIT:
+                full_fields.append(summary)
 
     data['full_fields'] = full_fields
     data['metrics'] = metrics_list
+    data['has_more_fields'] = field_count > FIELD_LIMIT
+    data['has_more_metrics'] = metric_count > FIELD_LIMIT
+    data['total_field_count'] = field_count
+    data['total_metric_count'] = metric_count
 
     # 统计信息
     data['stats'] = {
         'table_count': len(ds.tables),
         'workbook_count': len(ds.workbooks),
-        'field_count': len(full_fields),
-        'metric_count': len(metrics_list)
+        'field_count': field_count,  # 使用实际总数，非限制后的返回数
+        'metric_count': metric_count  # 使用实际总数，非限制后的返回数
     }
     
     # 构建 Tableau Server 在线查看链接
@@ -1252,9 +1273,15 @@ def get_workbook_detail(wb_id):
     """获取工作簿详情 - 完整上下文"""
     session = g.db_session
     
-    wb = session.query(Workbook).filter(Workbook.id == wb_id).first()
+    from sqlalchemy.orm import selectinload
+    
+    # 预加载 views.fields 和 datasources，避免 N+1
+    wb = session.query(Workbook).options(
+        selectinload(Workbook.views).selectinload(View.fields),
+        selectinload(Workbook.datasources)
+    ).filter(Workbook.id == wb_id).first()
+    
     if not wb:
-        return jsonify({'error': 'Not found'}), 404
         return jsonify({'error': 'Not found'}), 404
     
     data = wb.to_dict()
@@ -1342,6 +1369,15 @@ def get_workbook_detail(wb_id):
     
     data['used_fields'] = list(fields_set.values())
     data['used_metrics'] = list(metrics_set.values())
+    
+    # 统计信息
+    data['stats'] = {
+        'view_count': len(views_data),
+        'datasource_count': len(datasources_data),
+        'table_count': len(tables_data),
+        'field_count': len(fields_set),
+        'metric_count': len(metrics_set)
+    }
     
     # 构建 Tableau Server 在线查看链接
     # 对于工作簿，使用第一个视图的路径来构建可访问的 URL
@@ -1561,7 +1597,13 @@ def get_view_detail(view_id):
     """获取视图详情 - 完整上下文"""
     session = g.db_session
     
-    view = session.query(View).filter(View.id == view_id).first()
+    from sqlalchemy.orm import selectinload
+    
+    # 预加载 fields 和 workbook
+    view = session.query(View).options(
+        selectinload(View.fields),
+        selectinload(View.workbook)
+    ).filter(View.id == view_id).first()
     if not view:
         return jsonify({'error': 'Not found'}), 404
     
@@ -2419,6 +2461,36 @@ def get_field_detail(field_id):
             'database_name': field.table.database.name if field.table.database else None,
             'database_id': field.table.database_id
         }
+    elif not field.table and field.datasource_id:
+        # 补齐逻辑：如果当前字段是工作簿中的引用（无 table_id），尝试从发布数据源的主字段继承
+        # 主字段特征：同 datasource_id，同名，workbook_id 为空，且有 table_id
+        master_field = session.query(Field).filter(
+            Field.datasource_id == field.datasource_id,
+            Field.name == field.name,
+            Field.workbook_id == None,
+            Field.table_id != None
+        ).first()
+
+        if master_field and master_field.table:
+            data['table_info'] = {
+                'id': master_field.table.id,
+                'name': master_field.table.name,
+                'schema': master_field.table.schema,
+                'database_name': master_field.table.database.name if master_field.table.database else None,
+                'database_id': master_field.table.database_id,
+                '_inherited_from_master': True  # 标记：继承自发布数据源主字段
+            }
+        elif field.datasource and field.datasource.tables:
+            # 兜底：如果是系统字段（如 :Measure Names），关联到数据源的第一个表
+            primary_table = field.datasource.tables[0]
+            data['table_info'] = {
+                'id': primary_table.id,
+                'name': primary_table.name,
+                'schema': primary_table.schema,
+                'database_name': primary_table.database.name if primary_table.database else None,
+                'database_id': primary_table.database_id,
+                '_inherited_from_ds_primary': True  # 标记：继承自数据源主表
+            }
 
     # 所属数据源信息
     if field.datasource:
@@ -2440,8 +2512,31 @@ def get_field_detail(field_id):
             'is_embedded_fallback': True
         }
 
-    # 使用该字段的指标 (按需查询)
-    data['used_by_metrics'] = get_field_usage_by_name(session, field.name)
+    # 获取使用该字段的指标（通过 FieldDependency 反向查询，无 N+1）
+    metric_deps = session.query(FieldDependency).filter(
+        FieldDependency.dependency_name == field.name
+    ).limit(100).all()  # 限制返回数量，避免过大响应
+    
+    used_by_metrics = []
+    for dep in metric_deps:
+        if dep.source_field:
+            calc_field = session.query(CalculatedField).filter(
+                CalculatedField.field_id == dep.source_field_id
+            ).first()
+            used_by_metrics.append({
+                'id': dep.source_field.id,
+                'name': dep.source_field.name,
+                'datasourceId': dep.source_field.datasource_id,
+                'datasourceName': dep.source_field.datasource.name if dep.source_field.datasource else None,
+                'workbookId': dep.source_field.workbook_id,
+                'workbookName': dep.source_field.workbook.name if dep.source_field.workbook else None,
+                'description': dep.source_field.description,
+                'formula': calc_field.formula if calc_field else None,
+                'role': dep.source_field.role,
+                'dataType': dep.source_field.data_type
+            })
+    
+    data['used_by_metrics'] = used_by_metrics
 
     # 使用该字段的视图（已预加载，无 N+1）
     views_data = []
@@ -2467,6 +2562,10 @@ def get_field_detail(field_id):
             }
     data['used_in_views'] = views_data
     data['used_in_workbooks'] = list(workbooks_set.values())
+    
+    # 兼容性字段：提供驼峰式命名给前端
+    data['usedInViews'] = data['used_in_views']
+    data['usedInWorkbooks'] = data['used_in_workbooks']
 
     # 计算字段额外信息
     calc_field = session.query(CalculatedField).filter(

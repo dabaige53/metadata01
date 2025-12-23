@@ -24,6 +24,7 @@ const SORT_OPTIONS: SortConfig[] = [
 ];
 
 interface OrphanFieldsAnalysisProps {
+    onCountUpdate?: (count: number) => void;
     onSortUpdate?: (config: {
         options: SortConfig[];
         state: SortState;
@@ -31,7 +32,7 @@ interface OrphanFieldsAnalysisProps {
     }) => void;
 }
 
-export default function OrphanFieldsAnalysis({ onSortUpdate }: OrphanFieldsAnalysisProps) {
+export default function OrphanFieldsAnalysis({ onCountUpdate, onSortUpdate }: OrphanFieldsAnalysisProps) {
     const [allData, setAllData] = useState<FieldCatalogItem[]>([]);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
@@ -76,6 +77,12 @@ export default function OrphanFieldsAnalysis({ onSortUpdate }: OrphanFieldsAnaly
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sortState]);
+
+    // 同步统计数量给父组件
+    useEffect(() => {
+        onCountUpdate?.(paginationState.total);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [paginationState.total]); // 不包含 onCountUpdate，避免匿名回调引起无限循环
 
     // 统计多数据源字段数量
     const multiDatasourceCount = allData.filter(f => f.datasource_count > 1).length;

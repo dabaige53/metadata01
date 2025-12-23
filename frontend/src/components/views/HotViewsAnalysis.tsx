@@ -35,6 +35,7 @@ interface ViewItem {
 }
 
 interface HotViewsAnalysisProps {
+    onCountUpdate?: (count: number) => void;
     onSortUpdate?: (config: {
         options: SortConfig[];
         state: SortState;
@@ -42,7 +43,7 @@ interface HotViewsAnalysisProps {
     }) => void;
 }
 
-export default function HotViewsAnalysis({ onSortUpdate }: HotViewsAnalysisProps) {
+export default function HotViewsAnalysis({ onCountUpdate, onSortUpdate }: HotViewsAnalysisProps) {
     const [allData, setAllData] = useState<ViewItem[]>([]);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
@@ -87,6 +88,12 @@ export default function HotViewsAnalysis({ onSortUpdate }: HotViewsAnalysisProps
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sortState]);
+
+    // 同步统计数量给父组件
+    useEffect(() => {
+        onCountUpdate?.(paginationState.total);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [paginationState.total]); // 不包含 onCountUpdate，避免匿名回调引起无限循环
 
     const getViewTypeIcon = (type?: string) => {
         if (type === 'dashboard') return <LayoutDashboard className="w-4 h-4 text-indigo-500" />;

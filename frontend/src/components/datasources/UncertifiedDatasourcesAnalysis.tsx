@@ -41,6 +41,7 @@ interface DatasourceItem {
 }
 
 interface UncertifiedDatasourcesAnalysisProps {
+    onCountUpdate?: (count: number) => void;
     onSortUpdate?: (config: {
         options: SortConfig[];
         state: SortState;
@@ -48,7 +49,7 @@ interface UncertifiedDatasourcesAnalysisProps {
     }) => void;
 }
 
-export default function UncertifiedDatasourcesAnalysis({ onSortUpdate }: UncertifiedDatasourcesAnalysisProps) {
+export default function UncertifiedDatasourcesAnalysis({ onCountUpdate, onSortUpdate }: UncertifiedDatasourcesAnalysisProps) {
     const [allData, setAllData] = useState<DatasourceItem[]>([]);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
@@ -115,6 +116,12 @@ export default function UncertifiedDatasourcesAnalysis({ onSortUpdate }: Uncerti
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sortState]);
+
+    // 同步统计数量给父组件
+    useEffect(() => {
+        onCountUpdate?.(paginationState.total);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [paginationState.total]); // 不包含 onCountUpdate，避免匿名回调引起无限循环
 
     if (loading) {
         return (

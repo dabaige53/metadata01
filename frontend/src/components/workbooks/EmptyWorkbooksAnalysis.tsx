@@ -23,6 +23,7 @@ const SORT_OPTIONS: SortConfig[] = [
 ];
 
 interface EmptyWorkbooksAnalysisProps {
+    onCountUpdate?: (count: number) => void;
     onSortUpdate?: (config: {
         options: SortConfig[];
         state: SortState;
@@ -105,6 +106,8 @@ export default function EmptyWorkbooksAnalysis({ onSortUpdate }: EmptyWorkbooksA
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sortState]);
+
+    // 注意: 此组件未解构 onCountUpdate props，故不需要同步统计数量
 
     if (loading) {
         return (

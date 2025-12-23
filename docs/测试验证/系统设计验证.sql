@@ -103,8 +103,8 @@ SELECT '计算公式丢失' as 验证内容, COUNT(*) as 异常数, 'is_calculat
 FROM fields WHERE is_calculated = 1 AND (formula IS NULL OR formula = '');
 
 -- 4.3 度量类型缺失
-SELECT '度量数据类型缺失' as 验证内容, COUNT(*) as 异常数, 'Role=MEASURE 必须有 data_type' as 规则 
-FROM fields WHERE role = 'MEASURE' AND (data_type IS NULL OR data_type = '');
+SELECT '度量数据类型缺失' as 验证内容, COUNT(*) as 异常数, 'Role=measure 必须有 data_type' as 规则 
+FROM fields WHERE role = 'measure' AND (data_type IS NULL OR data_type = '');
 
 -- 4.4 度量角色缺失 (如果定义为 Metric 但没 Role)
 SELECT '计算字段角色未定义' as 验证内容, COUNT(*) as 异常数, 'is_calculated=1 且名为 Metric 的字段应有 Role' as 规则 
@@ -150,27 +150,35 @@ SELECT '★★★ 7. 数据治理合理性验证 (Deep Dive) ★★★' as 验�
 
 -- ==================== 7.1 资产利用率 (Utilization) ====================
 
--- 7.1.1 未使用计算度量 (去重: name + formula_hash)
+-- 7.1.1 未使用计算指标 (需要满足: 所有实例均无任何引用)
 SELECT 
     '僵尸计算指标' as 验证内容,
-    COUNT(DISTINCT f.name || COALESCE(cf.formula_hash, '')) as 异常数,
-    '去重后未被引用的计算度量逻辑实体' as 规则
-FROM fields f
-LEFT JOIN calculated_fields cf ON f.id = cf.field_id
-WHERE f.is_calculated = 1 
-  AND f.role = 'MEASURE'
-  AND NOT EXISTS (SELECT 1 FROM field_to_view fv WHERE fv.field_id = f.id);
+    COUNT(*) as 异常数,
+    '聚合后全局引用次数为 0 的指标' as 规则
+FROM (
+    SELECT f.name, cf.formula_hash
+    FROM fields f
+    JOIN calculated_fields cf ON f.id = cf.field_id
+    WHERE f.is_calculated = 1 AND f.role = 'measure'
+    GROUP BY f.name, cf.formula_hash
+    HAVING SUM(COALESCE(cf.reference_count, 0)) = 0 
+       AND SUM(COALESCE(f.usage_count, 0)) = 0
+);
 
--- 7.1.2 未使用计算维度 (去重: name + formula_hash)
+-- 7.1.2 未使用计算维度 (需要满足: 所有实例均无任何引用)
 SELECT 
     '僵尸计算维度' as 验证内容,
-    COUNT(DISTINCT f.name || COALESCE(cf.formula_hash, '')) as 异常数,
-    '去重后未被引用的计算维度逻辑实体' as 规则
-FROM fields f
-LEFT JOIN calculated_fields cf ON f.id = cf.field_id
-WHERE f.is_calculated = 1 
-  AND f.role = 'DIMENSION'
-  AND NOT EXISTS (SELECT 1 FROM field_to_view fv WHERE fv.field_id = f.id);
+    COUNT(*) as 异常数,
+    '聚合后全局引用次数为 0 的维度' as 规则
+FROM (
+    SELECT f.name, cf.formula_hash
+    FROM fields f
+    JOIN calculated_fields cf ON f.id = cf.field_id
+    WHERE f.is_calculated = 1 AND f.role = 'dimension'
+    GROUP BY f.name, cf.formula_hash
+    HAVING SUM(COALESCE(cf.reference_count, 0)) = 0 
+       AND SUM(COALESCE(f.usage_count, 0)) = 0
+);
 
 -- 7.1.3 零引用物理字段 (去重: name，物理字段无 formula_hash)
 SELECT 
@@ -278,5 +286,84 @@ SELECT
     'Owner 字段为空的工作簿' as 规则
 FROM workbooks
 WHERE owner IS NULL OR owner = '';
+
+-- ==================== 7.5 实例统计验证 (Instance Count Verification) ====================
+-- 目的: 验证实例数统计的准确性和一致性
+
+-- 7.5.1 原始字段实例数验证
+-- 定义: instance_count = 按 (规范名称 + table_id) 分组后的记录数
+-- 验证: 实例数 vs 实际关联数据源数 的差异
+SELECT 
+    '原始字段实例-数据源差异' as 验证内容,
+    COUNT(*) as 异常数,
+    '实例数与数据源数不一致的字段组' as 规则
+FROM (
+    SELECT 
+        COALESCE(upstream_column_name, name) as canonical_name,
+        table_id,
+        COUNT(*) as instance_count,
+        COUNT(DISTINCT datasource_id) as datasource_count
+    FROM fields
+    WHERE is_calculated = 0 OR is_calculated IS NULL
+    GROUP BY COALESCE(upstream_column_name, name), table_id
+    HAVING instance_count != datasource_count
+);
+
+-- 7.5.2 计算字段实例数验证
+-- 定义: instance_count = 按 (name + formula_hash) 分组后的记录数
+-- 验证: 实例数 vs 工作簿数 的关系
+SELECT 
+    '计算字段工作簿分布' as 验证内容,
+    COUNT(*) as 异常数,
+    '实例来自相同工作簿(可能是内嵌重复)' as 规则
+FROM (
+    SELECT 
+        f.name,
+        cf.formula_hash,
+        COUNT(*) as instance_count,
+        COUNT(DISTINCT f.datasource_id) as datasource_count,
+        COUNT(DISTINCT f.workbook_id) as workbook_count
+    FROM fields f
+    JOIN calculated_fields cf ON f.id = cf.field_id
+    GROUP BY f.name, cf.formula_hash
+    HAVING instance_count > 1 AND datasource_count = 1
+);
+
+-- 7.5.3 实例统计口径说明 (信息输出)
+SELECT 
+    '实例统计口径' as 验证内容,
+    '原始字段: 按(名称+表)分组的记录数 | 计算字段: 按(名称+公式哈希)分组的记录数' as 说明,
+    '实例可能来自同一数据源的多个工作簿' as 注意事项;
+
+-- 7.5.4 高实例数字段 (Top 10)
+SELECT 
+    '高实例数原始字段 Top 5' as 验证内容,
+    canonical_name as 字段名,
+    instance_count as 实例数,
+    datasource_count as 数据源数
+FROM (
+    SELECT 
+        COALESCE(upstream_column_name, name) as canonical_name,
+        COUNT(*) as instance_count,
+        COUNT(DISTINCT datasource_id) as datasource_count
+    FROM fields
+    WHERE is_calculated = 0 OR is_calculated IS NULL
+    GROUP BY COALESCE(upstream_column_name, name), table_id
+    ORDER BY instance_count DESC
+    LIMIT 5
+);
+
+-- 7.5.5 高实例数计算字段 (Top 5)
+SELECT 
+    '高实例数计算字段 Top 5' as 验证内容,
+    f.name as 字段名,
+    COUNT(*) as 实例数,
+    COUNT(DISTINCT f.datasource_id) as 数据源数,
+    COUNT(DISTINCT f.workbook_id) as 工作簿数
+FROM fields f
+JOIN calculated_fields cf ON f.id = cf.field_id
+GROUP BY f.name, cf.formula_hash
+ORDER BY COUNT(*) DESC
+LIMIT 5;
 
 SELECT '========== 问题扫描完成 ==========' as 状态;

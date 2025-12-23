@@ -26,6 +26,7 @@ const SORT_OPTIONS: SortConfig[] = [
 ];
 
 interface HotFieldsAnalysisProps {
+    onCountUpdate?: (count: number) => void;
     onSortUpdate?: (config: {
         options: SortConfig[];
         state: SortState;
@@ -33,7 +34,7 @@ interface HotFieldsAnalysisProps {
     }) => void;
 }
 
-export default function HotFieldsAnalysis({ onSortUpdate }: HotFieldsAnalysisProps) {
+export default function HotFieldsAnalysis({ onCountUpdate, onSortUpdate }: HotFieldsAnalysisProps) {
     const [allData, setAllData] = useState<FieldCatalogItem[]>([]);
     const [maxUsage, setMaxUsage] = useState(0);
     const [avgUsage, setAvgUsage] = useState(0);
@@ -81,6 +82,12 @@ export default function HotFieldsAnalysis({ onSortUpdate }: HotFieldsAnalysisPro
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sortState]);
+
+    // 同步统计数量给父组件
+    useEffect(() => {
+        onCountUpdate?.(paginationState.total);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [paginationState.total]); // 不包含 onCountUpdate，避免匿名回调引起无限循环
 
     // 统计多数据源字段数量
     const multiDatasourceCount = allData.filter(f => f.datasource_count > 1).length;

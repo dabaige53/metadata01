@@ -25,12 +25,30 @@ interface WorkbookItem {
 }
 
 function WorkbooksContent() {
+    const { openDrawer } = useDrawer();
+    const [activeTab, setActiveTab] = useState<'list' | 'analysis'>('list');
+
+    // 数据状态
     const [data, setData] = useState<WorkbookItem[]>([]);
     const [total, setTotal] = useState(0);
     const [facetsData, setFacetsData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'list' | 'analysis'>('list');
-    const { openDrawer, prefetch } = useDrawer();
+
+    // 预取函数 (暂时为空)
+    const prefetch = useCallback((id: string, type: string) => {
+        // TODO: 实现预取逻辑
+    }, []);
+
+    // 各 Tab 统计数量
+    const [tabCounts, setTabCounts] = useState<{ [key: string]: number }>({
+        list: 0,
+        analysis: 0
+    });
+
+    // 处理子组件回传的统计数量
+    const handleTabCountUpdate = useCallback((tab: string, count: number) => {
+        setTabCounts(prev => ({ ...prev, [tab]: count }));
+    }, []);
 
     const fetchWorkbooks = async (params: Record<string, any>) => {
         setLoading(true);
@@ -46,6 +64,8 @@ function WorkbooksContent() {
             setData(result.items || []);
             setTotal(result.total || 0);
             setFacetsData(result.facets || null);
+            // 同步列表页数量
+            setTabCounts(prev => ({ ...prev, list: result.total || 0 }));
         } catch (error) {
             console.error('Failed to fetch workbooks:', error);
         } finally {
@@ -96,11 +116,25 @@ function WorkbooksContent() {
         },
     });
 
+    // 同步列表页数量 (如果有筛选)
+    useEffect(() => {
+        if (activeTab === 'list') {
+            handleTabCountUpdate('list', paginationState.total);
+        }
+    }, [paginationState.total, activeTab, handleTabCountUpdate]);
+
     // 排序选项
     const sortOptions = [
         { key: 'viewCount', label: '视图数' },
         { key: 'name', label: '名称' },
     ];
+
+    // 获取当前 Tab 的统计信息
+    const stats = {
+        label: activeTab === 'list' ? '工作簿' : '治理分析',
+        total: total,
+        count: tabCounts[activeTab] || 0
+    };
 
     if (loading) {
         return (
@@ -146,10 +180,10 @@ function WorkbooksContent() {
             <div className="flex items-center justify-between">
                 <div className="text-sm text-gray-600">
                     <span className="inline-flex items-center gap-1">
-                        <span>工作簿</span>
-                        <span className="font-semibold text-gray-800">{total.toLocaleString()}</span>
+                        <span>{stats.label}</span>
+                        <span className="font-semibold text-gray-800">{stats.total.toLocaleString()}</span>
                         <span>项 中的</span>
-                        <span className="font-bold text-indigo-600">{paginationState.total.toLocaleString()}</span>
+                        <span className="font-bold text-indigo-600">{stats.count.toLocaleString()}</span>
                     </span>
                 </div>
 
@@ -230,7 +264,10 @@ function WorkbooksContent() {
                     )}
                 </>
             ) : (
-                <EmptyWorkbooksAnalysis onSortUpdate={handleGovSortUpdate} />
+                <EmptyWorkbooksAnalysis
+                    onSortUpdate={handleGovSortUpdate}
+                    onCountUpdate={(count) => handleTabCountUpdate('analysis', count)}
+                />
             )}
         </div>
     );

@@ -59,6 +59,7 @@ interface DetailItem {
     used_by_metrics?: any[];
     used_in_views?: any[];
     usedInViews?: any[];
+    used_in_workbooks?: any[];
     usedInWorkbooks?: any[];
     workbooks?: any[];
     full_fields?: any[];
@@ -242,43 +243,31 @@ export default function DetailDrawer() {
         }
 
         if (type === 'fields' || type === 'metrics') {
-            // 所属数据表 (如有关联)
-            const table = data.table_info;
-            if (table) tabs.push({ id: 'table', label: '所属数据表', icon: Table2 });
+            // 所属数据表 - 始终显示
+            tabs.push({ id: 'table', label: '所属数据表', icon: Table2 });
 
-            // 依赖字段 - 仅对计算字段/指标显示，普通字段不需要
+            // 依赖字段 - 仅对计算字段/指标显示
             const deps = data.dependencyFields || data.formula_references || [];
-            if (deps.length > 0 && (data.isCalculated || data.formula)) {
+            if (data.isCalculated || data.formula) {
                 tabs.push({ id: 'deps', label: `依赖字段 (${deps.length})`, icon: Columns });
             }
 
-            // 所属数据源 - 多源场景下显示字段所在的各个数据源
-            // 优先使用 related_datasources，兜底使用 datasource_info
+            // 所属数据源 - 始终显示
             const relatedDs = data.related_datasources || [];
-            if (relatedDs.length > 0) {
-                tabs.push({ id: 'datasources', label: `所属数据源 (${relatedDs.length})`, icon: Layers });
-            } else if (data.datasource_info) {
-                // 如果只有单个数据源，也显示该 Tab
-                tabs.push({ id: 'datasources', label: '所属数据源 (1)', icon: Layers });
-            }
+            const dsCount = relatedDs.length > 0 ? relatedDs.length : (data.datasource_info ? 1 : 0);
+            tabs.push({ id: 'datasources', label: `所属数据源 (${dsCount})`, icon: Layers });
 
-            // 影响指标 - 只有被指标引用时才显示
+            // 影响指标 - 始终显示（仅对普通字段有意义，计算字段一般不被其他指标引用）
             const m_down = data.used_by_metrics || [];
-            if (m_down.length > 0) {
-                tabs.push({ id: 'impact_metrics', label: `影响指标 (${m_down.length})`, icon: FunctionSquare });
-            }
+            tabs.push({ id: 'impact_metrics', label: `影响指标 (${m_down.length})`, icon: FunctionSquare });
 
-            // 关联视图 - 只有被视图引用时才显示
+            // 关联视图 - 始终显示
             const v_down = data.used_in_views || data.usedInViews || [];
-            if (v_down.length > 0) {
-                tabs.push({ id: 'views', label: `关联视图 (${v_down.length})`, icon: Layout });
-            }
+            tabs.push({ id: 'views', label: `关联视图 (${v_down.length})`, icon: Layout });
 
-            // 引用工作簿 - 只有被工作簿引用时才显示
-            const wb_down = data.usedInWorkbooks || [];
-            if (wb_down.length > 0) {
-                tabs.push({ id: 'workbooks', label: `引用工作簿 (${wb_down.length})`, icon: BookOpen });
-            }
+            // 引用工作簿 - 始终显示
+            const wb_down = data.usedInWorkbooks || data.used_in_workbooks || [];
+            tabs.push({ id: 'workbooks', label: `引用工作簿 (${wb_down.length})`, icon: BookOpen });
         }
 
         if (type === 'datasources') {
@@ -340,6 +329,11 @@ export default function DetailDrawer() {
             }
             // 访问统计 tab - 始终显示
             tabs.push({ id: 'usage', label: '访问统计', icon: BarChart3 });
+
+            // 包含的视图 (Dashboard only)
+            if (data.contained_views && data.contained_views.length > 0) {
+                tabs.push({ id: 'contained_views', label: `包含视图 (${data.contained_views.length})`, icon: Layout });
+            }
         }
 
         if (type === 'projects' || type === 'users') {
@@ -386,7 +380,14 @@ export default function DetailDrawer() {
      * 通用的资产列表部分渲染函数（紧凑版）
      */
     const renderAssetSection = (title: string, icon: React.ElementType, items: any[], type: string, colorClass: string) => {
-        if (!items || items.length === 0) return null;
+        // 空数据时显示友好提示
+        if (!items || items.length === 0) {
+            return (
+                <div className="bg-gray-50 rounded-lg border border-gray-200 p-6 text-center">
+                    <div className="text-gray-400 text-sm">暂无{title}数据</div>
+                </div>
+            );
+        }
         const groupKey = `section-${title}`;
 
         return (
@@ -681,8 +682,8 @@ export default function DetailDrawer() {
 
     // ========== 关联数据源渲染（增强版） ==========
     const renderDatasourcesTab = () => {
-        // 优先使用 related_datasources，兜底使用 datasource_info
-        let items = data?.related_datasources || [];
+        // 优先使用 datasources (Tables)，其次 related_datasources (Fields)，兜底 datasource_info
+        let items = data?.datasources || data?.related_datasources || [];
 
         // 如果没有 related_datasources，从 datasource_info 构造单条记录
         if (items.length === 0 && data?.datasource_info) {
@@ -917,6 +918,7 @@ export default function DetailDrawer() {
             if (data.referenceCount !== undefined) return data.referenceCount;
             if (isProjectType) return (data.stats?.datasource_count || 0) + (data.stats?.workbook_count || 0);
             if (isUserType) return (data.datasources?.length || 0) + (data.workbooks?.length || 0);
+            if (type === 'tables') return data.stats?.workbook_count || data.workbooks?.length || 0;
             return data.views?.length || data.workbooks?.length || 0;
         };
 
@@ -932,26 +934,97 @@ export default function DetailDrawer() {
 
         return (
             <div className="space-y-6 animate-in slide-in-up">
-                {/* 项目类型特有的统计卡片 */}
-                {isProjectType && data.stats && (
-                    <div className="grid grid-cols-3 gap-3">
-                        <div className="bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-100 p-4 text-center">
-                            <div className="text-2xl font-bold text-blue-700">{data.stats.datasource_count || 0}</div>
-                            <div className="text-[10px] text-gray-500 mt-1">数据源</div>
-                        </div>
-                        <div className="bg-gradient-to-br from-purple-50 to-white rounded-lg border border-purple-100 p-4 text-center">
-                            <div className="text-2xl font-bold text-purple-700">{data.stats.workbook_count || 0}</div>
-                            <div className="text-[10px] text-gray-500 mt-1">工作簿</div>
-                        </div>
-                        <div className="bg-gradient-to-br from-green-50 to-white rounded-lg border border-green-100 p-4 text-center">
-                            <div className="text-2xl font-bold text-green-700">{data.stats.total_views || 0}</div>
-                            <div className="text-[10px] text-gray-500 mt-1">视图</div>
-                        </div>
+                {/* 统计指标卡片 (Grid) - 强制 4 列布局解决挤压展示不全问题 */}
+                {data.stats && (
+                    <div className="grid grid-cols-4 gap-3 bg-white/50 p-1 rounded-xl">
+                        {type === 'projects' && (
+                            <>
+                                <div className="bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-100 p-3 text-center">
+                                    <div className="text-xl font-bold text-blue-700">{data.stats.datasource_count || 0}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">数据源</div>
+                                </div>
+                                <div className="bg-gradient-to-br from-purple-50 to-white rounded-lg border border-purple-100 p-3 text-center">
+                                    <div className="text-xl font-bold text-purple-700">{data.stats.workbook_count || 0}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">工作簿</div>
+                                </div>
+                                <div className="bg-gradient-to-br from-green-50 to-white rounded-lg border border-green-100 p-3 text-center">
+                                    <div className="text-xl font-bold text-green-700">{data.stats.total_views || 0}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">视图</div>
+                                </div>
+                                <div className="bg-gradient-to-br from-indigo-50 to-white rounded-lg border border-indigo-100 p-3 text-center">
+                                    <div className="text-xl font-bold text-indigo-700">{data.stats.total_fields || 0}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">字段</div>
+                                </div>
+                            </>
+                        )}
+
+                        {type === 'tables' && (
+                            <>
+                                <div className="bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-100 p-3 text-center">
+                                    <div className="text-xl font-bold text-blue-700">{data.stats.column_count || 0}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">原始列</div>
+                                </div>
+                                <div className="bg-gradient-to-br from-indigo-50 to-white rounded-lg border border-indigo-100 p-3 text-center">
+                                    <div className="text-xl font-bold text-indigo-700">{data.stats.field_count || 0}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">包含字段</div>
+                                </div>
+                                <div className="bg-gradient-to-br from-purple-50 to-white rounded-lg border border-purple-100 p-3 text-center">
+                                    <div className="text-xl font-bold text-purple-700">{data.stats.datasource_count || 0}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">关联数据源</div>
+                                </div>
+                                <div className="bg-gradient-to-br from-red-50 to-white rounded-lg border border-red-100 p-3 text-center">
+                                    <div className="text-xl font-bold text-red-700">{data.stats.workbook_count || 0}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">引用工作簿</div>
+                                </div>
+                            </>
+                        )}
+
+                        {type === 'datasources' && (
+                            <>
+                                <div className="bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-100 p-3 text-center">
+                                    <div className="text-xl font-bold text-blue-700">{data.stats.table_count || 0}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">包含数据表</div>
+                                </div>
+                                <div className="bg-gradient-to-br from-indigo-50 to-white rounded-lg border border-indigo-100 p-3 text-center">
+                                    <div className="text-xl font-bold text-indigo-700">{data.stats.field_count || 0}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">字段数</div>
+                                </div>
+                                <div className="bg-gradient-to-br from-amber-50 to-white rounded-lg border border-amber-100 p-3 text-center">
+                                    <div className="text-xl font-bold text-amber-700">{data.stats.metric_count || 0}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">计算指标</div>
+                                </div>
+                                <div className="bg-gradient-to-br from-purple-50 to-white rounded-lg border border-purple-100 p-3 text-center">
+                                    <div className="text-xl font-bold text-purple-700">{data.stats.workbook_count || 0}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">关联工作簿</div>
+                                </div>
+                            </>
+                        )}
+
+                        {type === 'workbooks' && (
+                            <>
+                                <div className="bg-gradient-to-br from-green-50 to-white rounded-lg border border-green-100 p-3 text-center">
+                                    <div className="text-xl font-bold text-green-700">{data.stats.view_count || 0}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">包含视图</div>
+                                </div>
+                                <div className="bg-gradient-to-br from-indigo-50 to-white rounded-lg border border-indigo-100 p-3 text-center">
+                                    <div className="text-xl font-bold text-indigo-700">{data.stats.field_count || 0}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">使用字段</div>
+                                </div>
+                                <div className="bg-gradient-to-br from-amber-50 to-white rounded-lg border border-amber-100 p-3 text-center">
+                                    <div className="text-xl font-bold text-amber-700">{data.stats.metric_count || 0}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">使用指标</div>
+                                </div>
+                                <div className="bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-100 p-3 text-center">
+                                    <div className="text-xl font-bold text-blue-700">{data.stats.datasource_count || 0}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1">上游数据源</div>
+                                </div>
+                            </>
+                        )}
                     </div>
                 )}
 
-                {/* 用户类型特有的统计卡片 */}
-                {isUserType && (
+                {/* 用户类型特有的统计卡片 (兜底) */}
+                {isUserType && !data.stats && (
                     <div className="grid grid-cols-2 gap-3">
                         <div className="bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-100 p-4 text-center">
                             <div className="text-2xl font-bold text-blue-700">{data.datasources?.length || 0}</div>
@@ -1269,8 +1342,10 @@ export default function DetailDrawer() {
                     subtitle: v.workbook_name || v.workbookName || v.view_type
                 }));
                 return renderAssetSection('关联视图/仪表板', Layout, viewItems, 'views', 'green');
+            case 'contained_views':
+                return renderAssetSection('包含的工作表', Layout, data.contained_views || [], 'views', 'indigo');
             case 'workbooks':
-                const wbItems = (data.usedInWorkbooks || data.workbooks || []).map((wb: any) => ({
+                const wbItems = (data.usedInWorkbooks || data.used_in_workbooks || data.workbooks || []).map((wb: any) => ({
                     ...wb,
                     subtitle: wb.owner ? `Owner: ${wb.owner}` : (wb.projectName || undefined)
                 }));

@@ -37,6 +37,7 @@ interface TableItem {
 }
 
 interface UnusedTablesAnalysisProps {
+    onCountUpdate?: (count: number) => void;
     onSortUpdate?: (config: {
         options: SortConfig[];
         state: SortState;
@@ -44,7 +45,7 @@ interface UnusedTablesAnalysisProps {
     }) => void;
 }
 
-export default function UnusedTablesAnalysis({ onSortUpdate }: UnusedTablesAnalysisProps) {
+export default function UnusedTablesAnalysis({ onCountUpdate, onSortUpdate }: UnusedTablesAnalysisProps) {
     const [allData, setAllData] = useState<TableItem[]>([]);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
@@ -94,6 +95,12 @@ export default function UnusedTablesAnalysis({ onSortUpdate }: UnusedTablesAnaly
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sortState]);
+
+    // 同步统计数量给父组件
+    useEffect(() => {
+        onCountUpdate?.(paginationState.total);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [paginationState.total]); // 不包含 onCountUpdate，避免匿名回调引起无限循环
 
     if (loading) {
         return (

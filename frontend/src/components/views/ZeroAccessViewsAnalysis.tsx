@@ -38,6 +38,7 @@ interface ViewItem {
 }
 
 interface ZeroAccessViewsAnalysisProps {
+    onCountUpdate?: (count: number) => void;
     onSortUpdate?: (config: {
         options: SortConfig[];
         state: SortState;
@@ -45,7 +46,7 @@ interface ZeroAccessViewsAnalysisProps {
     }) => void;
 }
 
-export default function ZeroAccessViewsAnalysis({ onSortUpdate }: ZeroAccessViewsAnalysisProps) {
+export default function ZeroAccessViewsAnalysis({ onCountUpdate, onSortUpdate }: ZeroAccessViewsAnalysisProps) {
     const [allData, setAllData] = useState<ViewItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [expandedWorkbooks, setExpandedWorkbooks] = useState<Record<string, boolean>>({});
@@ -101,6 +102,12 @@ export default function ZeroAccessViewsAnalysis({ onSortUpdate }: ZeroAccessView
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sortState]);
+
+    // 同步统计数量给父组件
+    useEffect(() => {
+        onCountUpdate?.(paginationState.total);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [paginationState.total]); // 不包含 onCountUpdate，避免匿名回调引起无限循环
 
     const toggleWorkbook = (name: string) => {
         setExpandedWorkbooks(prev => ({

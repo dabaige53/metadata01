@@ -60,6 +60,17 @@ function TablesContent() {
         }
     };
 
+    // 各 Tab 统计数量
+    const [tabCounts, setTabCounts] = useState<{ [key: string]: number }>({
+        list: 0,
+        analysis: 0
+    });
+
+    // 处理子组件回传的统计数量
+    const handleTabCountUpdate = useCallback((tab: string, count: number) => {
+        setTabCounts(prev => ({ ...prev, [tab]: count }));
+    }, []);
+
     // 治理 Tab 的排序配置与状态
     const [govSortConfig, setGovSortConfig] = useState<{
         options: SortConfig[];
@@ -88,7 +99,8 @@ function TablesContent() {
         handlePageChange,
         handlePageSizeChange,
         searchTerm,
-        setSearchTerm
+        setSearchTerm,
+        handleSearch
     } = useDataTable({
         moduleName: 'tables',
         data: data,
@@ -103,11 +115,32 @@ function TablesContent() {
         },
     });
 
+    // 搜索框回车处理
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            handleSearch();
+        }
+    };
+
+    // 同步列表页数量
+    useEffect(() => {
+        if (activeTab === 'list') {
+            handleTabCountUpdate('list', paginationState.total);
+        }
+    }, [paginationState.total, activeTab, handleTabCountUpdate]);
+
     // 排序选项
     const sortOptions = [
         { key: 'field_count', label: '字段数' },
         { key: 'name', label: '名称' },
     ];
+
+    // 获取当前 Tab 的统计信息
+    const stats = {
+        label: activeTab === 'list' ? '数据表' : '表治理分析',
+        total: total,
+        count: tabCounts[activeTab] || 0
+    };
 
     if (loading) {
         return (
@@ -153,10 +186,10 @@ function TablesContent() {
             <div className="flex items-center justify-between">
                 <div className="text-sm text-gray-600">
                     <span className="inline-flex items-center gap-1">
-                        <span>数据表</span>
-                        <span className="font-semibold text-gray-800">{total.toLocaleString()}</span>
+                        <span>{stats.label}</span>
+                        <span className="font-semibold text-gray-800">{stats.total.toLocaleString()}</span>
                         <span>项 中的</span>
-                        <span className="font-bold text-indigo-600">{paginationState.total.toLocaleString()}</span>
+                        <span className="font-bold text-indigo-600">{stats.count.toLocaleString()}</span>
                     </span>
                 </div>
 
@@ -195,6 +228,7 @@ function TablesContent() {
                             placeholder="搜索表名..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
+                            onKeyDown={handleKeyDown}
                             className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
                         />
                     </div>
@@ -236,7 +270,10 @@ function TablesContent() {
                     )}
                 </>
             ) : (
-                <UnusedTablesAnalysis onSortUpdate={handleGovSortUpdate} />
+                <UnusedTablesAnalysis
+                    onSortUpdate={handleGovSortUpdate}
+                    onCountUpdate={(count) => handleTabCountUpdate('analysis', count)}
+                />
             )}
         </div>
     );

@@ -40,6 +40,7 @@ interface DatasourceItem {
 }
 
 interface OrphanDatasourcesAnalysisProps {
+    onCountUpdate?: (count: number) => void;
     onSortUpdate?: (config: {
         options: SortConfig[];
         state: SortState;
@@ -47,7 +48,7 @@ interface OrphanDatasourcesAnalysisProps {
     }) => void;
 }
 
-export default function OrphanDatasourcesAnalysis({ onSortUpdate }: OrphanDatasourcesAnalysisProps) {
+export default function OrphanDatasourcesAnalysis({ onCountUpdate, onSortUpdate }: OrphanDatasourcesAnalysisProps) {
     const [allData, setAllData] = useState<DatasourceItem[]>([]);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
@@ -93,7 +94,13 @@ export default function OrphanDatasourcesAnalysis({ onSortUpdate }: OrphanDataso
             onChange: handleSortChange
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sortState, onSortUpdate, handleSortChange]);
+    }, [sortState]);
+
+    // 同步统计数量给父组件
+    useEffect(() => {
+        onCountUpdate?.(paginationState.total);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [paginationState.total]); // 不包含 onCountUpdate，避免匿名回调引起无限循环
 
     if (loading) {
         return (
