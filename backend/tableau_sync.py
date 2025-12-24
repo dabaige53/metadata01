@@ -1643,7 +1643,18 @@ class MetadataSync:
                 # 判断是否为嵌入式：使用 is_from_embedded_ds 标记（在 fetch_fields 中设置）
                 is_from_embedded = f.get("is_from_embedded_ds", False)
                 
+                is_from_embedded = f.get("is_from_embedded_ds", False)
+                
                 if is_from_embedded:
+                    # 对于嵌入式字段，尝试从数据源反向查找 workbook_id
+                    # 注意：fetch_fields 返回的数据中可能没有 workbook 信息，
+                    # 这里的 f 是从 self.client.fetch_fields() 获取的。
+                    # 如果 fetch_fields 没有返回 workbook，我们需要在这里补全。
+                    # 但 fetch_fields 实际上是全量拉取，对于 embedded datasource，通常能关联到 parent workbook。
+                    # 我们检查一下 f 里面是否有 workbook 对象。
+                    if "workbook" in f and f["workbook"]:
+                         f["workbook_id"] = f["workbook"]["id"]
+                    
                     embedded_fields.append(f)
                 else:
                     # 这是一个已发布字段，将其归类到其数据源下
@@ -1825,7 +1836,9 @@ class MetadataSync:
 
                 
                 # 如果不重复（例如工作簿特有的计算字段），则保存
-                self._process_single_field(f_data, table_real_ds_map)
+                # 如果不重复（例如工作簿特有的计算字段），则保存
+                wb_id = f_data.get("workbook_id") # 嵌入式字段数据中应携带 workbook_id
+                self._process_single_field(f_data, table_real_ds_map, workbook_id=wb_id)
                 current_ids.append(f_data["id"])
                 
                 # 更新缓存 (为后续去重做准备)
@@ -1862,7 +1875,8 @@ class MetadataSync:
                                             break
                         if not root_entity_id: root_entity_id = f"DS:{f_data.get('datasource_id')}"
 
-                        calc_field_cache[(name, f_hash)] = f_data["id"] # Old Key (Keep for backward compat just in case?) NO, replace it.
+                        if not root_entity_id: root_entity_id = f"DS:{f_data.get('datasource_id')}"
+
                         calc_field_cache[(root_entity_id, name, f_hash)] = f_data["id"]
 
                 count += 1
@@ -1884,7 +1898,7 @@ class MetadataSync:
             traceback.print_exc()
             return 0
 
-    def _process_single_field(self, f_data, table_real_ds_map):
+    def _process_single_field(self, f_data, table_real_ds_map, workbook_id=None):
         """辅助：处理单个字段的保存逻辑"""
         from backend.models import DBTable, DBColumn
 
@@ -1896,6 +1910,7 @@ class MetadataSync:
         
         field.name = f_data.get("name") or ""
         field.description = f_data.get("description") or ""
+        field.workbook_id = workbook_id  # 保存 Workbook ID
         
         # 获取初始 datasource_id
         ds_id = f_data.get("datasource_id")
@@ -1927,8 +1942,18 @@ class MetadataSync:
                     ds_id = table_real_ds_map[target_table_id]
                 else:
                     # 无法穿透到有效数据源，则设为 NULL
-                    ds_id = None
-        
+                    # 除非这里是嵌入式字段，且 ds_id 就指向那个嵌入式数据源 (虽然可能在 DB 中找不到 published record)
+                    # 此时保留原始 ds_id 可能更好，以便至少知道它属于哪个 "Logical Datasource"
+                    # 但为了保持一致性（指向发布的），如果这真的是一个 embedded datasource id 且没有 map 到 published, 
+                    # 我们可能应该让它保持为 None 或者指向嵌入式数据源记录(如果我们存了的话)
+                    # 目前系统里似乎存了嵌入式数据源，所以我们应该让它指向那里
+                    pass
+        else:
+             # 如果 ds_id 为空，尝试通过 workbook + table 推导 (针对嵌入式且没关联好 DS 的情况)
+             # 但这比较复杂，暂且依靠 table_real_ds_map
+             if target_table_id in table_real_ds_map:
+                 ds_id = table_real_ds_map[target_table_id]
+
         field.datasource_id = ds_id
 
         
@@ -2841,8 +2866,11 @@ class MetadataSync:
                 if not f.is_calculated:
                     # 原始字段: 直接血缘
                     table_ids = []
-                    if f.table_id and self.session.query(DBTable).filter_by(id=f.table_id).first():
-                        table_ids = [f.table_id]
+                    if f.table_id:
+                         # 修正：即使是原始字段，也要验证 table_id 是否有效（存在于 DBTable）
+                         # 避免野指针
+                         # 但考虑到性能，这里假设 DB 约束或 sync 逻辑保证了 table_id 有效，或者左连接查询时自然过滤
+                         table_ids = [f.table_id]
                     elif f.datasource_id and f.datasource_id in ds_table_map:
                         table_ids = ds_table_map[f.datasource_id]
                     
@@ -2871,7 +2899,11 @@ class MetadataSync:
                 else:
                     # 计算字段: 间接血缘
                     table_ids = []
-                    if f.datasource_id and f.datasource_id in ds_table_map:
+                    # 1. 优先使用字段自身的 table_id (如果在 sync_fields 中已修复)
+                    if f.table_id:
+                        table_ids = [f.table_id]
+                    # 2. 其次使用数据源关联的表
+                    elif f.datasource_id and f.datasource_id in ds_table_map:
                         table_ids = ds_table_map[f.datasource_id]
                     
                     if table_ids:

@@ -19,8 +19,11 @@ import sqlite3
 import json
 import os
 import sys
+import urllib.request
+import urllib.error
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 # 数据库路径
 DB_PATH = "metadata.db"
@@ -38,6 +41,24 @@ class RefactorVerifier:
         self.db_path = db_path
         self.conn = sqlite3.connect(db_path)
         self.conn.row_factory = sqlite3.Row
+        self.api_base = os.environ.get("API_BASE", "http://localhost:8101/api")
+
+    # ========= 辅助函数 =========
+    def run_scalar(self, sql: str, params: tuple = ()) -> int:
+        cur = self.conn.execute(sql, params)
+        row = cur.fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
+
+    def fetch_api_json(self, path: str) -> Dict[str, Any]:
+        """调用本地 API（默认 http://localhost:8101/api），返回 JSON。失败时返回 {'error': msg}。"""
+        url = f"{self.api_base.rstrip('/')}/{path.lstrip('/')}"
+        try:
+            with urllib.request.urlopen(url, timeout=5) as resp:
+                charset = resp.headers.get_content_charset() or "utf-8"
+                data = resp.read().decode(charset)
+                return json.loads(data)
+        except Exception as e:
+            return {"error": str(e), "url": url}
     
     def close(self):
         self.conn.close()
@@ -451,6 +472,275 @@ class RefactorVerifier:
             result['dashboard_to_sheet_count'] = -1
         
         return result
+
+    # ==================== 血缘覆盖交叉验证（51项） ====================
+    def verify_cross_coverage(self) -> List[Dict[str, Any]]:
+        """
+        依据 docs/重构方案/重构验证方案.md 的 51 项交叉验证，输出 main/cross/passed。
+        主口径使用 analyze_lineage.CHECKLIST 的 linked 值；交叉口径使用本函数定义的 cross_sql。
+        """
+        import importlib.util
+
+        # 加载 analyze_lineage.CHECKLIST 获取主口径 SQL
+        checklist: List[Any] = []
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "analyze_lineage", os.path.join("docs", "重构方案", "analyze_lineage.py")
+            )
+            module = importlib.util.module_from_spec(spec)
+            assert spec and spec.loader
+            spec.loader.exec_module(module)  # type: ignore
+            checklist = getattr(module, "CHECKLIST", [])
+        except Exception as e:
+            # 回退：无法加载则跳过
+            return [{"error": f"加载 analyze_lineage 失败: {e}"}]
+
+        # 预计算常用总数
+        totals = {
+            "databases": self.run_scalar("SELECT COUNT(*) FROM databases"),
+            "tables": self.run_scalar("SELECT COUNT(*) FROM tables"),
+            "phys_tables": self.run_scalar("SELECT COUNT(*) FROM tables WHERE is_embedded=0"),
+            "embed_tables": self.run_scalar("SELECT COUNT(*) FROM tables WHERE is_embedded=1"),
+            "db_columns": self.run_scalar("SELECT COUNT(*) FROM db_columns"),
+            "datasources": self.run_scalar("SELECT COUNT(*) FROM datasources"),
+            "publish_ds": self.run_scalar("SELECT COUNT(*) FROM datasources WHERE is_embedded=0"),
+            "embed_ds": self.run_scalar("SELECT COUNT(*) FROM datasources WHERE is_embedded=1"),
+            "embed_ds_penetrating": self.run_scalar("SELECT COUNT(*) FROM datasources WHERE is_embedded=1 AND source_published_datasource_id IS NOT NULL"),
+            "embed_ds_independent": self.run_scalar("SELECT COUNT(*) FROM datasources WHERE is_embedded=1 AND source_published_datasource_id IS NULL"),
+            "workbooks": self.run_scalar("SELECT COUNT(*) FROM workbooks"),
+            "views": self.run_scalar("SELECT COUNT(*) FROM views"),
+            "fields": self.run_scalar("SELECT COUNT(*) FROM fields"),
+            "calc_fields": self.run_scalar("SELECT COUNT(*) FROM fields WHERE is_calculated=1"),
+        }
+
+        # cross_rules 顺序与 CHECKLIST 一致
+        rules: List[Dict[str, Any]] = [
+            # 1 数据库→物理表
+            {"rule": "eq_total", "cross_sql": "SELECT COUNT(*) FROM databases d WHERE EXISTS (SELECT 1 FROM tables t WHERE t.database_id=d.id AND t.is_embedded=0)", "expect_key": "databases"},
+            # 2 物理表→数据库
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(*) FROM tables t WHERE t.is_embedded=0 AND t.database_id IS NOT NULL"},
+            # 3 物理表→数据列
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT t.id) FROM tables t WHERE t.is_embedded=0 AND EXISTS (SELECT 1 FROM db_columns c WHERE c.table_id=t.id)"},
+            # 4 物理表→发布源
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT t.id) FROM tables t WHERE t.is_embedded=0 AND EXISTS (SELECT 1 FROM table_to_datasource td JOIN datasources ds ON td.datasource_id=ds.id AND ds.is_embedded=0 WHERE td.table_id=t.id)"},
+            # 5 物理表→嵌入源(独立)
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT t.id) FROM tables t WHERE t.is_embedded=0 AND EXISTS (SELECT 1 FROM table_to_datasource td JOIN datasources ds ON td.datasource_id=ds.id AND ds.is_embedded=1 AND ds.source_published_datasource_id IS NULL WHERE td.table_id=t.id)"},
+            # 6 物理表→字段
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT t.id) FROM tables t WHERE t.is_embedded=0 AND EXISTS (SELECT 1 FROM fields f WHERE f.table_id=t.id)"},
+            # 7 嵌入表→物理表
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(*) FROM tables t WHERE t.is_embedded=1 AND t.database_id IS NOT NULL"},
+            # 8 嵌入表→数据列
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT t.id) FROM tables t WHERE t.is_embedded=1 AND EXISTS (SELECT 1 FROM db_columns c WHERE c.table_id=t.id)"},
+            # 9 嵌入表→嵌入源(独立)
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT t.id) FROM tables t WHERE t.is_embedded=1 AND EXISTS (SELECT 1 FROM table_to_datasource td JOIN datasources ds ON td.datasource_id=ds.id AND ds.is_embedded=1 AND ds.source_published_datasource_id IS NULL WHERE td.table_id=t.id)"},
+            # 10 嵌入表→字段
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT t.id) FROM tables t WHERE t.is_embedded=1 AND EXISTS (SELECT 1 FROM fields f WHERE f.table_id=t.id)"},
+            # 11 数据列→物理表
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(*) FROM db_columns c WHERE c.table_id IN (SELECT id FROM tables WHERE is_embedded=0)"},
+            # 12 数据列→嵌入表
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(*) FROM db_columns c WHERE c.table_id IN (SELECT id FROM tables WHERE is_embedded=1)"},
+            # 13 数据列→字段
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT c.id) FROM db_columns c WHERE EXISTS (SELECT 1 FROM fields f WHERE f.upstream_column_id=c.id)"},
+            # 14 发布源→物理表
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT ds.id) FROM datasources ds WHERE ds.is_embedded=0 AND EXISTS (SELECT 1 FROM table_to_datasource td JOIN tables t ON td.table_id=t.id AND t.is_embedded=0 WHERE td.datasource_id=ds.id)"},
+            # 15 发布源→嵌入源(穿透)
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(*) FROM datasources p WHERE p.is_embedded=0 AND EXISTS (SELECT 1 FROM datasources e WHERE e.is_embedded=1 AND e.source_published_datasource_id=p.id)"},
+            # 16 发布源→工作簿
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT ds.id) FROM datasources ds WHERE ds.is_embedded=0 AND EXISTS (SELECT 1 FROM datasource_to_workbook dw WHERE dw.datasource_id=ds.id)"},
+            # 17 发布源→字段
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT ds.id) FROM datasources ds WHERE ds.is_embedded=0 AND EXISTS (SELECT 1 FROM fields f WHERE f.datasource_id=ds.id)"},
+            # 18 嵌入源(穿透)→发布源
+            {"rule": "eq_total", "cross_sql": "SELECT COUNT(*) FROM datasources e WHERE e.is_embedded=1 AND e.source_published_datasource_id IN (SELECT id FROM datasources WHERE is_embedded=0)", "expect_key": "embed_ds_penetrating"},
+            # 19 嵌入源(穿透)→工作簿
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT e.id) FROM datasources e WHERE e.is_embedded=1 AND e.source_published_datasource_id IS NOT NULL AND EXISTS (SELECT 1 FROM datasource_to_workbook dw WHERE dw.datasource_id=e.id)"},
+            # 20 独立嵌入源→物理表
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT ds.id) FROM datasources ds WHERE ds.is_embedded=1 AND ds.source_published_datasource_id IS NULL AND EXISTS (SELECT 1 FROM table_to_datasource td JOIN tables t ON td.table_id=t.id AND t.is_embedded=0 WHERE td.datasource_id=ds.id)"},
+            # 21 独立嵌入源→嵌入表
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT ds.id) FROM datasources ds WHERE ds.is_embedded=1 AND ds.source_published_datasource_id IS NULL AND EXISTS (SELECT 1 FROM table_to_datasource td JOIN tables t ON td.table_id=t.id AND t.is_embedded=1 WHERE td.datasource_id=ds.id)"},
+            # 22 独立嵌入源→工作簿
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT ds.id) FROM datasources ds WHERE ds.is_embedded=1 AND ds.source_published_datasource_id IS NULL AND EXISTS (SELECT 1 FROM datasource_to_workbook dw WHERE dw.datasource_id=ds.id)"},
+            # 23 独立嵌入源→字段
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT ds.id) FROM datasources ds WHERE ds.is_embedded=1 AND ds.source_published_datasource_id IS NULL AND EXISTS (SELECT 1 FROM fields f WHERE f.datasource_id=ds.id)"},
+            # 24 工作簿→数据库
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT dw.workbook_id) FROM datasource_to_workbook dw JOIN table_to_datasource td ON dw.datasource_id=td.datasource_id JOIN tables t ON td.table_id=t.id WHERE t.database_id IS NOT NULL"},
+            # 25 工作簿→物理表
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT dw.workbook_id) FROM datasource_to_workbook dw JOIN table_to_datasource td ON dw.datasource_id=td.datasource_id JOIN tables t ON td.table_id=t.id WHERE t.is_embedded=0"},
+            # 26 工作簿→嵌入表
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT dw.workbook_id) FROM datasource_to_workbook dw JOIN table_to_datasource td ON dw.datasource_id=td.datasource_id JOIN tables t ON td.table_id=t.id WHERE t.is_embedded=1"},
+            # 27 工作簿→发布源
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT wb.id) FROM workbooks wb WHERE EXISTS (SELECT 1 FROM datasource_to_workbook dw JOIN datasources ds ON dw.datasource_id=ds.id AND ds.is_embedded=0 WHERE dw.workbook_id=wb.id)"},
+            # 28 工作簿→嵌入源(穿透)
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT wb.id) FROM workbooks wb WHERE EXISTS (SELECT 1 FROM datasource_to_workbook dw JOIN datasources ds ON dw.datasource_id=ds.id AND ds.is_embedded=1 AND ds.source_published_datasource_id IS NOT NULL WHERE dw.workbook_id=wb.id)"},
+            # 29 工作簿→嵌入源(独立)
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT wb.id) FROM workbooks wb WHERE EXISTS (SELECT 1 FROM datasource_to_workbook dw JOIN datasources ds ON dw.datasource_id=ds.id AND ds.is_embedded=1 AND ds.source_published_datasource_id IS NULL WHERE dw.workbook_id=wb.id)"},
+            # 30 工作簿→视图
+            {"rule": "eq_total", "cross_sql": "SELECT COUNT(DISTINCT workbook_id) FROM views WHERE workbook_id IS NOT NULL", "expect_key": "workbooks"},
+            # 31 工作簿→字段
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT wb.id) FROM workbooks wb WHERE EXISTS (SELECT 1 FROM fields f WHERE f.workbook_id=wb.id)"},
+            # 32 视图→数据库
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT fv.view_id) FROM field_to_view fv JOIN field_full_lineage fl ON fv.field_id=fl.field_id WHERE fl.database_id IS NOT NULL"},
+            # 33 视图→物理表
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT fv.view_id) FROM field_to_view fv JOIN field_full_lineage fl ON fv.field_id=fl.field_id WHERE fl.table_id IN (SELECT id FROM tables WHERE is_embedded=0)"},
+            # 34 视图→工作簿
+            {"rule": "eq_total", "cross_sql": "SELECT COUNT(*) FROM views WHERE workbook_id IS NOT NULL", "expect_key": "views"},
+            # 35 视图→字段
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT v.id) FROM views v WHERE EXISTS (SELECT 1 FROM field_to_view fv WHERE fv.view_id=v.id)"},
+            # 36 字段→数据库
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT field_id) FROM field_full_lineage WHERE database_id IS NOT NULL"},
+            # 37 字段→物理表
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT field_id) FROM field_full_lineage WHERE table_id IN (SELECT id FROM tables WHERE is_embedded=0)"},
+            # 38 字段→嵌入表
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT field_id) FROM field_full_lineage WHERE table_id IN (SELECT id FROM tables WHERE is_embedded=1)"},
+            # 39 字段→数据列
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT f.id) FROM fields f WHERE f.is_calculated=0 AND EXISTS (SELECT 1 FROM db_columns c WHERE c.id=f.upstream_column_id)"},
+            # 40 字段→发布源
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT f.id) FROM fields f WHERE EXISTS (SELECT 1 FROM datasources ds WHERE ds.id=f.datasource_id AND ds.is_embedded=0)"},
+            # 41 字段→嵌入源(穿透) = 0
+            {"rule": "eq_zero", "cross_sql": "SELECT COUNT(*) FROM fields f JOIN datasources ds ON f.datasource_id=ds.id WHERE ds.is_embedded=1 AND ds.source_published_datasource_id IS NOT NULL"},
+            # 42 字段→嵌入源(独立)
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT f.id) FROM fields f JOIN datasources ds ON f.datasource_id=ds.id WHERE ds.is_embedded=1 AND ds.source_published_datasource_id IS NULL"},
+            # 43 字段→工作簿
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT field_id) FROM field_full_lineage WHERE workbook_id IS NOT NULL"},
+            # 44 字段→视图
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT f.id) FROM fields f WHERE EXISTS (SELECT 1 FROM field_to_view fv WHERE fv.field_id=f.id)"},
+            # 45 字段→计算字段
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT fd.dependency_field_id) FROM field_dependencies fd"},
+            # 46 计算字段→物理表
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT field_id) FROM field_full_lineage WHERE table_id IN (SELECT id FROM tables WHERE is_embedded=0) AND field_id IN (SELECT id FROM fields WHERE is_calculated=1)"},
+            # 47 计算字段→字段(依赖)
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT fd.source_field_id) FROM field_dependencies fd"},
+            # 48 计算字段→发布源
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT f.id) FROM fields f WHERE f.is_calculated=1 AND EXISTS (SELECT 1 FROM datasources ds WHERE ds.id=f.datasource_id AND ds.is_embedded=0)"},
+            # 49 计算字段→嵌入源(独立)
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT f.id) FROM fields f WHERE f.is_calculated=1 AND EXISTS (SELECT 1 FROM datasources ds WHERE ds.id=f.datasource_id AND ds.is_embedded=1 AND ds.source_published_datasource_id IS NULL)"},
+            # 50 计算字段→工作簿
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT field_id) FROM field_full_lineage WHERE workbook_id IS NOT NULL AND field_id IN (SELECT id FROM fields WHERE is_calculated=1)"},
+            # 51 计算字段→视图
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT fv.field_id) FROM field_to_view fv WHERE fv.field_id IN (SELECT id FROM fields WHERE is_calculated=1)"},
+        ]
+
+        results: List[Dict[str, Any]] = []
+
+        for idx, item in enumerate(checklist):
+            # 主口径
+            main = 0
+            try:
+                _, _, _, sql_main, _paths = item
+                cur = self.conn.execute(sql_main)
+                row = cur.fetchone()
+                main = int(row['linked']) if row and 'linked' in row.keys() else int(row[1]) if row else 0
+            except Exception as e:
+                results.append({"id": idx + 1, "name": f"{item[1]}→{item[2]}", "error": f"主口径执行失败: {e}"})
+                continue
+
+            rule_def = rules[idx] if idx < len(rules) else {"rule": "ge_main", "cross_sql": None}
+            cross_sql = rule_def.get("cross_sql")
+            cross = None
+            error = None
+            try:
+                if cross_sql:
+                    cross = self.run_scalar(cross_sql)
+            except Exception as e:
+                error = str(e)
+
+            rule = rule_def.get("rule", "ge_main")
+            passed = False
+            expected = None
+            if error:
+                passed = False
+            else:
+                if rule == "eq_total":
+                    expect_key = rule_def.get("expect_key")
+                    expected = totals.get(expect_key) if expect_key else None
+                    passed = (cross == expected)
+                elif rule == "eq_zero":
+                    expected = 0
+                    passed = (cross == 0)
+                elif rule == "eq_main":
+                    expected = main
+                    passed = (cross == main)
+                else:  # ge_main
+                    expected = f">= {main}"
+                    passed = (cross is not None and cross >= main)
+
+            results.append({
+                "id": idx + 1,
+                "name": f"{item[1]}→{item[2]}",
+                "main_count": main,
+                "cross_count": cross,
+                "rule": rule,
+                "expected": expected,
+                "passed": passed,
+                "error": error
+            })
+        return results
+
+    # ==================== 前端 API vs 数据库 抽样对比 ====================
+    def verify_api_vs_db(self, sample_size: int = 10) -> Dict[str, Any]:
+        """
+        随机抽样对比本地 API 与数据库数据，每个实体至少 sample_size 条。
+        对比字段：name/description（若存在）。
+        """
+        entities = [
+            {
+                "name": "fields",
+                "db_sql": "SELECT id, name, COALESCE(description,'') AS description FROM fields ORDER BY RANDOM() LIMIT ?",
+                "api_path": "fields/{id}",
+                "keys": ["name", "description"]
+            },
+            {
+                "name": "tables",
+                "db_sql": "SELECT id, name FROM tables ORDER BY RANDOM() LIMIT ?",
+                "api_path": "tables/{id}",
+                "keys": ["name"]
+            },
+            {
+                "name": "datasources",
+                "db_sql": "SELECT id, name FROM datasources ORDER BY RANDOM() LIMIT ?",
+                "api_path": "datasources/{id}",
+                "keys": ["name"]
+            },
+            {
+                "name": "workbooks",
+                "db_sql": "SELECT id, name FROM workbooks ORDER BY RANDOM() LIMIT ?",
+                "api_path": "workbooks/{id}",
+                "keys": ["name"]
+            },
+            {
+                "name": "views",
+                "db_sql": "SELECT id, name FROM views ORDER BY RANDOM() LIMIT ?",
+                "api_path": "views/{id}",
+                "keys": ["name"]
+            },
+        ]
+
+        report: Dict[str, Any] = {"api_base": self.api_base, "entities": []}
+
+        for ent in entities:
+            rows = self.conn.execute(ent["db_sql"], (sample_size,)).fetchall()
+            mismatches: List[Dict[str, Any]] = []
+            for r in rows:
+                item_id = r["id"]
+                api_path = ent["api_path"].format(id=item_id)
+                api_data = self.fetch_api_json(api_path)
+                if "error" in api_data:
+                    mismatches.append({"id": item_id, "error": api_data["error"], "url": api_data.get("url")})
+                    continue
+                diff_keys = []
+                for k in ent["keys"]:
+                    db_val = r[k] if k in r.keys() else None
+                    api_val = api_data.get(k)
+                    if api_val != db_val:
+                        diff_keys.append({"key": k, "db": db_val, "api": api_val})
+                if diff_keys:
+                    mismatches.append({"id": item_id, "diff": diff_keys})
+            report["entities"].append({
+                "entity": ent["name"],
+                "sampled": len(rows),
+                "mismatches": mismatches,
+                "mismatch_count": len(mismatches)
+            })
+        return report
     
     # ==================== 血缘正确性验证（完整矩阵） ====================
     
@@ -1142,6 +1432,8 @@ class RefactorVerifier:
             'calculated_fields': self.verify_calculated_fields(),
             'lineage_integrity': self.verify_lineage_integrity(),
             'relation_tables': self.verify_relation_tables(),
+            'cross_validation': self.verify_cross_coverage(),
+            'api_vs_db_samples': self.verify_api_vs_db(),
             
             # ========== 完整血缘验证矩阵 ==========
             
