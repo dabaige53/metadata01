@@ -1442,13 +1442,26 @@ def get_workbook_detail(wb_id):
     data['used_fields'] = list(fields_set.values())
     data['used_metrics'] = list(metrics_set.values())
     
+    # 统计直接关联的所有字段 (fields.workbook_id = wb.id)
+    from sqlalchemy import func
+    total_field_count = session.query(func.count(Field.id)).filter(
+        Field.workbook_id == wb.id, 
+        Field.is_calculated == 0
+    ).scalar() or 0
+    total_metric_count = session.query(func.count(Field.id)).filter(
+        Field.workbook_id == wb.id, 
+        Field.is_calculated == 1
+    ).scalar() or 0
+    
     # 统计信息
     data['stats'] = {
         'view_count': len(views_data),
         'datasource_count': len(datasources_data),
         'table_count': len(tables_data),
-        'field_count': len(fields_set),
-        'metric_count': len(metrics_set)
+        'field_count': len(fields_set),  # 被视图使用的字段
+        'metric_count': len(metrics_set),  # 被视图使用的指标
+        'total_field_count': total_field_count,  # 直接关联的所有字段
+        'total_metric_count': total_metric_count  # 直接关联的所有指标
     }
     
     # 构建 Tableau Server 在线查看链接
@@ -2869,7 +2882,23 @@ def get_field_detail(field_id):
     data['related_datasources'] = related_datasources
     data['stats']['related_datasource_count'] = len(related_datasources)
 
+    # 为字段构建 tableau_url：因字段无独立 Tableau 页面，指向其所属数据源或工作簿
+    if field.datasource and field.datasource.vizportal_url_id:
+        data['tableau_url'] = build_tableau_url('datasource', vizportal_url_id=field.datasource.vizportal_url_id)
+    elif field.datasource and field.datasource.uri:
+        data['tableau_url'] = build_tableau_url('datasource', uri=field.datasource.uri, luid=field.datasource.luid)
+    elif field.workbook:
+        # 尝试获取工作簿第一个视图的路径
+        first_view = session.query(View).filter(View.workbook_id == field.workbook_id).first()
+        if first_view and first_view.path:
+            data['tableau_url'] = build_tableau_url('workbook', path=first_view.path)
+        else:
+            data['tableau_url'] = None
+    else:
+        data['tableau_url'] = None
+
     return jsonify(data)
+
 
 
 @api_bp.route('/fields/<field_id>', methods=['PUT'])
@@ -3694,67 +3723,81 @@ def get_metric_detail(metric_id):
 
 
 
-    # 4. 获取被引用情况（视图和工作簿）- 使用预计算血缘表
+    # 4. 聚合所有同名指标的血缘 (核心：跨工作簿聚合)
+    metric_name = field.name
+    
+    # 4.1 聚合物理表血缘 (derived_tables)
+    table_lineage_result = session.execute(text("""
+        SELECT DISTINCT fl.table_id, t.name, t.schema, db.name as db_name, t.database_id
+        FROM fields f
+        JOIN field_full_lineage fl ON f.id = fl.field_id
+        JOIN tables t ON fl.table_id = t.id
+        LEFT JOIN databases db ON t.database_id = db.id
+        WHERE f.name = :name AND f.is_calculated = 1 AND fl.table_id IS NOT NULL AND t.id IS NOT NULL
+    """), {'name': metric_name}).fetchall()
+    
+    derived_tables = [{
+        'id': row[0],
+        'name': row[1],
+        'schema': row[2],
+        'database_name': row[3],
+        'database_id': row[4]
+    } for row in table_lineage_result]
+
+    # 4.2 聚合数据源血缘 (all_datasources)
+    ds_lineage_result = session.execute(text("""
+        SELECT DISTINCT fl.datasource_id, d.name, d.project_name, d.owner, d.is_certified
+        FROM fields f
+        JOIN field_full_lineage fl ON f.id = fl.field_id
+        LEFT JOIN datasources d ON fl.datasource_id = d.id
+        WHERE f.name = :name AND f.is_calculated = 1 AND fl.datasource_id IS NOT NULL AND d.id IS NOT NULL
+    """), {'name': metric_name}).fetchall()
+    
+    all_datasources = [{
+        'id': row[0],
+        'name': row[1],
+        'project_name': row[2],
+        'owner': row[3],
+        'is_certified': bool(row[4]) if row[4] is not None else False
+    } for row in ds_lineage_result]
+
+    # 4.3 聚合工作簿血缘 (all_workbooks)
+    wb_lineage_result = session.execute(text("""
+        SELECT DISTINCT fl.workbook_id, w.name, w.project_name, w.owner
+        FROM fields f
+        JOIN field_full_lineage fl ON f.id = fl.field_id
+        LEFT JOIN workbooks w ON fl.workbook_id = w.id
+        WHERE f.name = :name AND f.is_calculated = 1 AND fl.workbook_id IS NOT NULL AND w.id IS NOT NULL
+    """), {'name': metric_name}).fetchall()
+    
+    all_workbooks = [{
+        'id': row[0],
+        'name': row[1],
+        'project_name': row[2],
+        'owner': row[3]
+    } for row in wb_lineage_result]
+
+    # 4.4 聚合视图血缘 (used_in_views)
     views_result = session.execute(text("""
-        SELECT fv.view_id, v.name, v.view_type, v.workbook_id, w.name as wb_name, w.project_name, w.owner
-        FROM field_to_view fv
+        SELECT DISTINCT fv.view_id, v.name, v.view_type, v.workbook_id, w.name as wb_name, w.project_name, w.owner
+        FROM fields f
+        JOIN field_to_view fv ON f.id = fv.field_id
         JOIN views v ON fv.view_id = v.id
         LEFT JOIN workbooks w ON v.workbook_id = w.id
-        WHERE fv.field_id = :field_id
-    """), {'field_id': metric_id}).fetchall()
+        WHERE f.name = :name AND f.is_calculated = 1
+    """), {'name': metric_name}).fetchall()
     
-    views_data = []
-    workbooks_set = {}
-    for row in views_result:
-        views_data.append({
-            'id': row[0],
-            'name': row[1],
-            'view_type': row[2],
-            'workbook_id': row[3],
-            'workbook_name': row[4] or 'Unknown'
-        })
-        if row[3] and row[3] not in workbooks_set:
-            workbooks_set[row[3]] = {
-                'id': row[3],
-                'name': row[4],
-                'project_name': row[5],
-                'owner': row[6]
-            }
+    views_data = [{
+        'id': row[0],
+        'name': row[1],
+        'view_type': row[2],
+        'workbook_id': row[3],
+        'workbook_name': row[4] or 'Unknown'
+    } for row in views_result]
 
-    # 5. 聚合相关数据源 (当前指标 + 相似指标)
-    related_datasources = []
-    ds_ids = set()
-    
-    # 当前指标数据源
-    if field.datasource and field.datasource.id not in ds_ids:
-        ds_ids.add(field.datasource.id)
-        related_datasources.append({
-            'id': field.datasource.id,
-            'name': field.datasource.name,
-            'project_name': field.datasource.project_name,
-            'is_certified': field.datasource.is_certified,
-            'field_id': field.id,
-            'field_name': field.name,
-            'match_type': 'current'
-        })
-        
-    # 相似指标数据源
-    for sim in similar:
-        if sim['datasourceId'] and sim['datasourceId'] not in ds_ids:
-            ds_ids.add(sim['datasourceId'])
-            related_datasources.append({
-                'id': sim['datasourceId'],
-                'name': sim['datasourceName'],
-                'project_name': '-', # sim 中暂无 project_name，可后续扩展
-                'is_certified': False, 
-                'field_id': sim['id'],
-                'field_name': sim['name'],
-                'match_type': 'similar'
-            })
-            
-    # 聚合总引用数
-    total_view_count = len(views_data) + sum(len(sim['usedInViews']) for sim in similar)
-    total_workbook_count = len(workbooks_set) + sum(len(sim['usedInWorkbooks']) for sim in similar)
+    # 聚合总计数
+    total_view_count = len(views_data)
+    total_workbook_count = len(all_workbooks)
 
     metric_data = {
         'id': field.id,
@@ -3764,23 +3807,28 @@ def get_metric_detail(metric_id):
         'role': field.role,
         'dataType': field.data_type,
         'complexity': calc_field.complexity_score or 0,
-        'referenceCount': total_view_count, # 使用聚合后的总数
+        'referenceCount': total_view_count,
         'datasourceName': datasource_info['name'] if datasource_info else '-',
         'datasourceId': field.datasource_id,
         'datasource_info': datasource_info,
-        'upstream_tables': upstream_tables,
+        'table_info': derived_tables[0] if derived_tables else None, # 用于激活前端“所属数据表”Tab
+        'derived_tables': derived_tables, # 对齐前端期望
+        'derivedTables': derived_tables, # 驼峰兜底
+        'all_datasources': all_datasources, # 对齐前端期望
+        'all_workbooks': all_workbooks, # 对齐前端期望
+        'used_in_views': views_data, # 对齐前端期望
+        'usedInViews': views_data, # 驼峰兜底
         'similarMetrics': similar,
         'dependencyFields': dependencies,
-        'usedInViews': views_data,
-        'usedInWorkbooks': list(workbooks_set.values()),
         'hasDuplicate': len(similar) > 0,
-        'related_datasources': related_datasources, # 全新的聚合字段
+        'related_datasources': all_datasources, # 使用全量聚合
         'stats': {
             'view_count': total_view_count,
             'workbook_count': total_workbook_count,
             'dependency_count': len(dependencies),
             'duplicate_count': len(similar),
-            'related_datasource_count': len(related_datasources)
+            'related_datasource_count': len(all_datasources),
+            'table_count': len(derived_tables)
         }
     }
 

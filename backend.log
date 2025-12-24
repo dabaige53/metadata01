@@ -15,7 +15,5 @@
  * Running on http://127.0.0.1:8101
  * Running on http://198.18.0.1:8101
 [33mPress CTRL+C to quit[0m
-127.0.0.1 - - [23/Dec/2025 15:57:11] "GET /api/workbooks/155a0deb-5506-2f41-59a9-df2832dadf8e HTTP/1.1" 200 -
-127.0.0.1 - - [23/Dec/2025 15:57:42] "GET /api/workbooks/42fec810-afd8-2db6-ab9c-e87af3927a8f HTTP/1.1" 200 -
-/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/multiprocessing/resource_tracker.py:216: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
-  warnings.warn('resource_tracker: There appear to be %d '
+127.0.0.1 - - [24/Dec/2025 19:44:00] "GET /api/metrics/de67f0cf-fb0b-66d3-c1a5-970330bfdc18 HTTP/1.1" 200 -
+127.0.0.1 - - [24/Dec/2025 19:44:11] "GET /api/metrics/de67f0cf-fb0b-66d3-c1a5-970330bfdc18 HTTP/1.1" 200 -
