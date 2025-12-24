@@ -1,0 +1,154 @@
+{
+    "标准指标(去重后)": {
+        "任务描述": "验证去重后标准指标表的核心指标及关联完整性",
+        "显示名称": "标准指标(去重后)",
+        "模块定义": {
+            "数据库表": "unique_calculated_fields",
+            "说明": "去重后的标准指标表，按 (穿透后的datasource_id, name, formula_hash) 去重",
+            "主键": "id",
+            "实例表": "calculated_fields",
+            "去重策略": "V5穿透继承 + formula_hash"
+        },
+        "核心属性验证": {
+            "任务描述": "验证标准指标的基础属性统计",
+            "标准指标总数": {
+                "任务描述": "统计去重后的标准指标数",
+                "API路径": "/api/stats",
+                "API取值键": "uniqueMetrics",
+                "API实际结果": "",
+                "SQL查询": "SELECT COUNT(*) FROM unique_calculated_fields",
+                "SQL实际结果": ""
+            },
+            "实例指标总数": {
+                "任务描述": "统计对应的实例指标数",
+                "SQL查询": "SELECT COUNT(*) FROM calculated_fields",
+                "SQL实际结果": ""
+            },
+            "去重率": {
+                "任务描述": "计算去重效果 (1 - 标准数/实例数)",
+                "SQL查询": "SELECT ROUND(1.0 - CAST((SELECT COUNT(*) FROM unique_calculated_fields) AS REAL) / (SELECT COUNT(*) FROM calculated_fields), 4)",
+                "期望值": "约0.50",
+                "SQL实际结果": ""
+            },
+            "角色分布 (枚举)": {
+                "任务描述": "验证标准指标按角色的分布 (measure=业务指标, dimension=技术计算)",
+                "SQL查询": "SELECT role || ':' || COUNT(*) FROM unique_calculated_fields GROUP BY role",
+                "SQL实际分布": ""
+            },
+            "平均实例数": {
+                "任务描述": "每个标准指标平均对应多少实例",
+                "SQL查询": "SELECT ROUND(CAST((SELECT COUNT(*) FROM calculated_fields) AS REAL) / (SELECT COUNT(*) FROM unique_calculated_fields), 2)",
+                "SQL实际结果": ""
+            },
+            "公式复杂度分布": {
+                "任务描述": "标准指标的复杂度分布",
+                "SQL查询": "SELECT CASE WHEN complexity_score < 1 THEN '简单(<1)' WHEN complexity_score < 3 THEN '中等(1-3)' ELSE '复杂(>=3)' END || ':' || COUNT(*) FROM unique_calculated_fields GROUP BY 1",
+                "SQL实际分布": ""
+            }
+        },
+        "血缘质量检测": {
+            "任务描述": "检测标准指标的关联完整性和去重质量",
+            "关键字段空值检测": [
+                {
+                    "字段名": "name",
+                    "任务描述": "标准指标名称不能为空",
+                    "SQL查询": "SELECT COUNT(*) FROM unique_calculated_fields WHERE name IS NULL OR name = ''",
+                    "期望值": "0",
+                    "SQL实际结果": ""
+                },
+                {
+                    "字段名": "formula",
+                    "任务描述": "公式不能为空",
+                    "SQL查询": "SELECT COUNT(*) FROM unique_calculated_fields WHERE formula IS NULL OR formula = ''",
+                    "期望值": "0",
+                    "SQL实际结果": ""
+                },
+                {
+                    "字段名": "formula_hash",
+                    "任务描述": "公式哈希不能为空（用于去重）",
+                    "SQL查询": "SELECT COUNT(*) FROM unique_calculated_fields WHERE formula_hash IS NULL OR formula_hash = ''",
+                    "期望值": "0",
+                    "SQL实际结果": ""
+                }
+            ],
+            "残留重复检测": {
+                "任务描述": "检测是否存在遗漏的重复（同数据源同名同公式但不同unique_id）",
+                "SQL查询": "SELECT COUNT(*) FROM (SELECT datasource_id, name, formula FROM calculated_fields GROUP BY datasource_id, name, formula HAVING COUNT(DISTINCT unique_id) > 1)",
+                "期望值": "0",
+                "SQL实际结果": ""
+            },
+            "孤儿标准指标检测": {
+                "任务描述": "检测没有任何实例关联的标准指标",
+                "SQL查询": "SELECT COUNT(*) FROM unique_calculated_fields ucf WHERE NOT EXISTS (SELECT 1 FROM calculated_fields cf WHERE cf.unique_id = ucf.id)",
+                "期望值": "0",
+                "SQL实际结果": ""
+            },
+            "formula_hash一致性检测": {
+                "任务描述": "检测同formula_hash的指标公式是否一致（应完全相同）",
+                "SQL查询": "SELECT COUNT(*) FROM (SELECT formula_hash FROM unique_calculated_fields GROUP BY formula_hash HAVING COUNT(DISTINCT formula) > 1)",
+                "期望值": "0",
+                "SQL实际结果": ""
+            }
+        },
+        "关联元素": [
+            {
+                "目标模块": "实例指标",
+                "任务描述": "验证标准指标与实例指标的 1:N 关系",
+                "关联方式": "unique_calculated_fields.id < calculated_fields.unique_id",
+                "关联验证": {
+                    "正向SQL (标准>实例)": "SELECT COUNT(DISTINCT ucf.id) || ':' || COUNT(DISTINCT cf.id) FROM unique_calculated_fields ucf JOIN calculated_fields cf ON ucf.id = cf.unique_id",
+                    "正向SQL结果": "",
+                    "反向SQL (实例>标准)": "SELECT COUNT(DISTINCT cf.id) || ':' || COUNT(DISTINCT cf.unique_id) FROM calculated_fields cf WHERE cf.unique_id IS NOT NULL",
+                    "反向SQL结果": ""
+                }
+            },
+            {
+                "目标模块": "实例分布分析",
+                "任务描述": "分析每个标准指标的实例分布",
+                "关联验证": {
+                    "典型实例数分布SQL": "SELECT CASE WHEN cnt = 1 THEN '1个实例' WHEN cnt <= 3 THEN '2-3个实例' WHEN cnt <= 10 THEN '4-10个实例' ELSE '>10个实例' END || ':' || COUNT(*) FROM (SELECT unique_id, COUNT(*) as cnt FROM calculated_fields GROUP BY unique_id) GROUP BY 1",
+                    "SQL实际分布": ""
+                }
+            },
+            {
+                "目标模块": "公式复用分析",
+                "任务描述": "分析同一公式被多少个标准指标使用（跨数据源复用）",
+                "关联验证": {
+                    "公式复用分布SQL": "SELECT CASE WHEN cnt = 1 THEN '唯一公式' WHEN cnt <= 3 THEN '2-3次复用' ELSE '>3次复用' END || ':' || COUNT(*) FROM (SELECT formula_hash, COUNT(*) as cnt FROM unique_calculated_fields GROUP BY formula_hash) GROUP BY 1",
+                    "SQL实际分布": ""
+                }
+            }
+        ],
+        "前端元素对齐": {
+            "任务描述": "标准指标目前不直接展示在前端，仅通过 uniqueId 字段关联实例",
+            "关联说明": "前端 /api/metrics 返回的 uniqueId 字段指向 unique_calculated_fields.id"
+        },
+        "逻辑闭环验证": {
+            "任务描述": "验证标准指标与实例的完整映射",
+            "比对项列表": [
+                {
+                    "比对名称": "实例全覆盖闭环",
+                    "前端数据源": "核心属性验证.实例指标总数.SQL实际结果",
+                    "血缘数据源": "关联元素[目标模块='实例指标'].关联验证.正向SQL结果(提取实例数)",
+                    "比对逻辑": "数值相等",
+                    "差异容忍度": 0
+                },
+                {
+                    "比对名称": "标准指标无孤儿闭环",
+                    "描述": "每个标准指标至少有1个实例",
+                    "前端数据源": "核心属性验证.标准指标总数.SQL实际结果",
+                    "血缘数据源": "关联元素[目标模块='实例指标'].关联验证.正向SQL结果(提取标准数)",
+                    "比对逻辑": "数值相等",
+                    "差异容忍度": 0
+                },
+                {
+                    "比对名称": "去重无残留闭环",
+                    "描述": "确认没有遗漏的重复",
+                    "前端数据源": "血缘质量检测.残留重复检测.SQL实际结果",
+                    "期望值": "0",
+                    "比对逻辑": "数值相等"
+                }
+            ]
+        }
+    }
+}

@@ -1,33 +1,47 @@
 {
-    "原始字段": {
-        "任务描述": "验证原始字段模块的核心指标、血缘关联及数据质量",
-        "显示名称": "原始字段",
+    "原始字段(实例)": {
+        "任务描述": "验证原始字段实例表的核心指标、血缘关联及数据质量",
+        "显示名称": "原始字段(实例)",
         "模块定义": {
-            "数据库表": "fields",
-            "过滤条件": "is_calculated = 0 OR is_calculated IS NULL",
-            "主键": "id"
+            "数据库表": "regular_fields",
+            "说明": "字段实例表，每条记录代表一个字段在特定数据源/工作簿中的定义",
+            "主键": "id",
+            "唯一标识表": "unique_regular_fields"
         },
         "核心属性验证": {
-            "任务描述": "验证原始字段的基础属性统计",
-            "资产总数": {
-                "任务描述": "统计原始字段总记录数",
+            "任务描述": "验证原始字段实例的基础属性统计",
+            "实例总数": {
+                "任务描述": "统计原始字段实例总记录数",
                 "API路径": "/api/stats",
-                "API取值键": "fields (减去 metrics)",
+                "API取值键": "fields",
                 "API实际结果": "",
-                "SQL查询": "SELECT COUNT(*) FROM fields WHERE is_calculated = 0 OR is_calculated IS NULL",
+                "SQL查询": "SELECT COUNT(*) FROM regular_fields",
+                "SQL实际结果": ""
+            },
+            "去重后标准字段数": {
+                "任务描述": "统计去重后的标准字段数",
+                "API路径": "/api/stats",
+                "API取值键": "uniqueFields",
+                "API实际结果": "",
+                "SQL查询": "SELECT COUNT(*) FROM unique_regular_fields",
                 "SQL实际结果": ""
             },
             "角色分布 (枚举)": {
                 "任务描述": "验证原始字段按角色的分布 (度量/维度)",
                 "字段名": "role",
-                "SQL查询": "SELECT role || ':' || COUNT(*) FROM fields WHERE is_calculated = 0 OR is_calculated IS NULL GROUP BY role",
+                "SQL查询": "SELECT role || ':' || COUNT(*) FROM regular_fields GROUP BY role",
                 "SQL实际分布": ""
             },
             "数据类型分布 (枚举)": {
                 "任务描述": "验证原始字段按数据类型的分布",
                 "字段名": "data_type",
-                "SQL查询": "SELECT data_type || ':' || COUNT(*) FROM fields WHERE is_calculated = 0 OR is_calculated IS NULL GROUP BY data_type",
+                "SQL查询": "SELECT COALESCE(data_type, 'unknown') || ':' || COUNT(*) FROM regular_fields GROUP BY data_type",
                 "SQL实际分布": ""
+            },
+            "有描述比例": {
+                "任务描述": "统计有描述的字段比例",
+                "SQL查询": "SELECT ROUND(100.0 * SUM(CASE WHEN description IS NOT NULL AND description != '' THEN 1 ELSE 0 END) / COUNT(*), 2) || '%' FROM regular_fields",
+                "SQL实际结果": ""
             }
         },
         "血缘质量检测": {
@@ -36,40 +50,67 @@
                 {
                     "字段名": "table_id",
                     "任务描述": "检测没有关联物理表的原始字段数量（断链字段）",
-                    "SQL查询": "SELECT COUNT(*) FROM fields WHERE (is_calculated = 0 OR is_calculated IS NULL) AND table_id IS NULL",
+                    "SQL查询": "SELECT COUNT(*) FROM regular_fields WHERE table_id IS NULL",
                     "SQL实际结果": ""
                 },
                 {
                     "字段名": "datasource_id",
                     "任务描述": "检测没有关联数据源的原始字段数量",
-                    "SQL查询": "SELECT COUNT(*) FROM fields WHERE (is_calculated = 0 OR is_calculated IS NULL) AND datasource_id IS NULL",
+                    "SQL查询": "SELECT COUNT(*) FROM regular_fields WHERE datasource_id IS NULL",
                     "SQL实际结果": ""
                 },
                 {
                     "字段名": "upstream_column_id",
-                    "任务描述": "检测原始字段的上游数据列关联情况",
-                    "SQL查询": "SELECT COUNT(*) FROM fields WHERE (is_calculated = 0 OR is_calculated IS NULL) AND upstream_column_id IS NULL",
+                    "任务描述": "检测没有上游数据列的原始字段数量",
+                    "SQL查询": "SELECT COUNT(*) FROM regular_fields WHERE upstream_column_id IS NULL",
+                    "SQL实际结果": ""
+                },
+                {
+                    "字段名": "unique_id",
+                    "任务描述": "检测字段与标准字段的关联完整性（必须全覆盖）",
+                    "SQL查询": "SELECT COUNT(*) FROM regular_fields WHERE unique_id IS NULL",
+                    "期望值": "0",
                     "SQL实际结果": ""
                 }
             ],
             "未匹配血缘检测": [
                 {
                     "关联方向": "字段->视图",
-                    "任务描述": "检测没有被任何视图引用的原始字段数量（未使用字段）",
-                    "SQL查询": "SELECT COUNT(*) FROM fields f WHERE (f.is_calculated = 0 OR f.is_calculated IS NULL) AND NOT EXISTS (SELECT 1 FROM field_to_view fv WHERE fv.field_id = f.id)",
+                    "任务描述": "检测没有被任何视图引用的原始字段数量",
+                    "SQL查询": "SELECT COUNT(*) FROM regular_fields rf WHERE NOT EXISTS (SELECT 1 FROM regular_field_to_view rfv WHERE rfv.field_id = rf.id)",
+                    "SQL实际结果": ""
+                },
+                {
+                    "关联方向": "字段->血缘表",
+                    "任务描述": "检测没有血缘记录的字段数量",
+                    "SQL查询": "SELECT COUNT(*) FROM regular_fields rf WHERE NOT EXISTS (SELECT 1 FROM regular_field_full_lineage rfl WHERE rfl.field_id = rf.id)",
                     "SQL实际结果": ""
                 }
             ]
         },
         "关联元素": [
             {
+                "目标模块": "标准字段(去重)",
+                "任务描述": "验证实例字段与标准字段的 N:1 关系",
+                "关联方式": "regular_fields.unique_id > unique_regular_fields.id",
+                "关联验证": {
+                    "正向SQL (实例>标准)": "SELECT COUNT(DISTINCT rf.id) || ':' || COUNT(DISTINCT rf.unique_id) FROM regular_fields rf",
+                    "正向SQL结果": "",
+                    "反向SQL (标准>实例)": "SELECT COUNT(DISTINCT urf.id) || ':' || COUNT(DISTINCT rf.id) FROM unique_regular_fields urf JOIN regular_fields rf ON urf.id = rf.unique_id",
+                    "反向SQL结果": "",
+                    "API路径": "/api/fields/{id}",
+                    "API取值键": "uniqueId",
+                    "API实际结果": ""
+                }
+            },
+            {
                 "目标模块": "物理表",
                 "任务描述": "验证原始字段与物理表的 N:1 来源关系",
-                "关联方式": "原始字段 > 物理表 (来源表)",
+                "关联方式": "原始字段 > tables (来源表)",
                 "关联验证": {
-                    "正向SQL (字段>物理表)": "SELECT COUNT(DISTINCT f.id) || ':' || COUNT(DISTINCT f.table_id) FROM fields f JOIN tables t ON f.table_id = t.id WHERE (f.is_calculated = 0 OR f.is_calculated IS NULL) AND t.is_embedded = 0",
+                    "正向SQL (字段>物理表)": "SELECT COUNT(DISTINCT rf.id) || ':' || COUNT(DISTINCT rf.table_id) FROM regular_fields rf JOIN tables t ON rf.table_id = t.id WHERE t.is_embedded = 0",
                     "正向SQL结果": "",
-                    "反向SQL (物理表>字段)": "SELECT COUNT(DISTINCT t.id) || ':' || COUNT(DISTINCT f.id) FROM tables t JOIN fields f ON t.id = f.table_id WHERE t.is_embedded = 0 AND (f.is_calculated = 0 OR f.is_calculated IS NULL)",
+                    "反向SQL (物理表>字段)": "SELECT COUNT(DISTINCT t.id) || ':' || COUNT(DISTINCT rf.id) FROM tables t JOIN regular_fields rf ON t.id = rf.table_id WHERE t.is_embedded = 0",
                     "反向SQL结果": "",
                     "API路径": "/api/fields/{id}",
                     "API取值键": "table_info",
@@ -77,13 +118,34 @@
                 }
             },
             {
-                "目标模块": "数据源",
-                "任务描述": "验证原始字段与数据源的 N:M 所属关系 (同名字段可能存在于多个数据源)",
-                "关联方式": "原始字段 > 数据源 (所属数据源)",
+                "目标模块": "嵌入表",
+                "任务描述": "验证原始字段与嵌入表的 N:1 关系",
+                "关联方式": "原始字段 > tables (嵌入表)",
                 "关联验证": {
-                    "正向SQL (字段>数据源)": "SELECT COUNT(DISTINCT f.id) || ':' || COUNT(DISTINCT f.datasource_id) FROM fields f WHERE (f.is_calculated = 0 OR f.is_calculated IS NULL) AND f.datasource_id IS NOT NULL",
+                    "正向SQL (字段>嵌入表)": "SELECT COUNT(DISTINCT rf.id) || ':' || COUNT(DISTINCT rf.table_id) FROM regular_fields rf JOIN tables t ON rf.table_id = t.id WHERE t.is_embedded = 1",
                     "正向SQL结果": "",
-                    "反向SQL (数据源>字段)": "SELECT COUNT(DISTINCT ds.id) || ':' || COUNT(DISTINCT f.id) FROM datasources ds JOIN fields f ON ds.id = f.datasource_id WHERE f.is_calculated = 0 OR f.is_calculated IS NULL",
+                    "反向SQL结果": ""
+                }
+            },
+            {
+                "目标模块": "数据列",
+                "任务描述": "验证原始字段与上游数据列的 N:1 关系",
+                "关联方式": "原始字段.upstream_column_id > db_columns.id",
+                "关联验证": {
+                    "正向SQL (字段>数据列)": "SELECT COUNT(DISTINCT rf.id) || ':' || COUNT(DISTINCT rf.upstream_column_id) FROM regular_fields rf WHERE rf.upstream_column_id IS NOT NULL",
+                    "正向SQL结果": "",
+                    "反向SQL (数据列>字段)": "SELECT COUNT(DISTINCT c.id) || ':' || COUNT(DISTINCT rf.id) FROM db_columns c JOIN regular_fields rf ON c.id = rf.upstream_column_id",
+                    "反向SQL结果": ""
+                }
+            },
+            {
+                "目标模块": "数据源",
+                "任务描述": "验证原始字段与数据源的 N:M 所属关系",
+                "关联方式": "原始字段 > 血缘表 > 数据源 (同名字段聚合)",
+                "关联验证": {
+                    "正向SQL (字段>数据源)": "SELECT COUNT(DISTINCT rf.id) || ':' || COUNT(DISTINCT rf.datasource_id) FROM regular_fields rf WHERE rf.datasource_id IS NOT NULL",
+                    "正向SQL结果": "",
+                    "反向SQL (数据源>字段)": "SELECT COUNT(DISTINCT ds.id) || ':' || COUNT(DISTINCT rf.id) FROM datasources ds JOIN regular_fields rf ON ds.id = rf.datasource_id",
                     "反向SQL结果": "",
                     "API路径": "/api/fields/{id}",
                     "API取值键": "all_datasources",
@@ -94,26 +156,26 @@
             {
                 "目标模块": "视图",
                 "任务描述": "验证原始字段被视图引用的 M:N 关系",
-                "关联方式": "原始字段 > 中间表(field_to_view) > 视图 (展示于)",
+                "关联方式": "原始字段 > regular_field_to_view > views",
                 "关联验证": {
-                    "正向SQL (字段>视图)": "SELECT COUNT(DISTINCT f.id) || ':' || COUNT(DISTINCT fv.view_id) FROM fields f JOIN field_to_view fv ON f.id = fv.field_id WHERE f.is_calculated = 0 OR f.is_calculated IS NULL",
+                    "正向SQL (字段>视图)": "SELECT COUNT(DISTINCT rfv.field_id) || ':' || COUNT(DISTINCT rfv.view_id) FROM regular_field_to_view rfv",
                     "正向SQL结果": "",
-                    "反向SQL (视图>字段)": "SELECT COUNT(DISTINCT v.id) || ':' || COUNT(DISTINCT fv.field_id) FROM views v JOIN field_to_view fv ON v.id = fv.view_id JOIN fields f ON fv.field_id = f.id WHERE f.is_calculated = 0 OR f.is_calculated IS NULL",
+                    "反向SQL (视图>字段)": "SELECT COUNT(DISTINCT v.id) || ':' || COUNT(DISTINCT rfv.field_id) FROM views v JOIN regular_field_to_view rfv ON v.id = rfv.view_id",
                     "反向SQL结果": "",
                     "API路径": "/api/fields/{id}",
-                    "API取值键": "used_in_views",
-                    "API统计逻辑": "返回 used_in_views 数组长度",
+                    "API取值键": "usedInViews",
+                    "API统计逻辑": "返回 usedInViews 数组长度",
                     "API实际结果": ""
                 }
             },
             {
                 "目标模块": "工作簿",
-                "任务描述": "验证原始字段与工作簿的关联关系 (通过 all_workbooks 聚合)",
-                "关联方式": "原始字段 > 工作簿 (引用工作簿)",
+                "任务描述": "验证原始字段与工作簿的关联关系 (通过血缘表聚合)",
+                "关联方式": "原始字段 > regular_field_full_lineage > workbooks",
                 "关联验证": {
-                    "正向SQL (字段>工作簿)": "SELECT COUNT(DISTINCT f.id) || ':' || COUNT(DISTINCT f.workbook_id) FROM fields f WHERE f.workbook_id IS NOT NULL AND (f.is_calculated = 0 OR f.is_calculated IS NULL)",
+                    "正向SQL (字段>工作簿)": "SELECT COUNT(DISTINCT rfl.field_id) || ':' || COUNT(DISTINCT rfl.workbook_id) FROM regular_field_full_lineage rfl WHERE rfl.workbook_id IS NOT NULL",
                     "正向SQL结果": "",
-                    "反向SQL (工作簿>字段)": "SELECT COUNT(DISTINCT w.id) || ':' || COUNT(DISTINCT f.id) FROM workbooks w JOIN fields f ON w.id = f.workbook_id WHERE f.is_calculated = 0 OR f.is_calculated IS NULL",
+                    "反向SQL (工作簿>字段)": "SELECT COUNT(DISTINCT w.id) || ':' || COUNT(DISTINCT rfl.field_id) FROM workbooks w JOIN regular_field_full_lineage rfl ON w.id = rfl.workbook_id",
                     "反向SQL结果": "",
                     "API路径": "/api/fields/{id}",
                     "API取值键": "all_workbooks",
@@ -122,13 +184,13 @@
                 }
             },
             {
-                "目标模块": "指标",
-                "任务描述": "验证原始字段被指标依赖的关系",
-                "关联方式": "原始字段 > 中间表(field_dependencies) > 指标 (被依赖)",
+                "目标模块": "计算字段(指标)",
+                "任务描述": "验证原始字段被计算字段依赖的关系",
+                "关联方式": "原始字段 > calc_field_dependencies > calculated_fields",
                 "关联验证": {
-                    "正向SQL (原始字段>指标)": "SELECT COUNT(DISTINCT fd.dependency_field_id) || ':' || COUNT(DISTINCT fd.source_field_id) FROM field_dependencies fd JOIN fields f ON fd.dependency_field_id = f.id WHERE f.is_calculated = 0 OR f.is_calculated IS NULL",
+                    "正向SQL (原始字段>指标)": "SELECT COUNT(DISTINCT cfd.dependency_regular_field_id) || ':' || COUNT(DISTINCT cfd.source_field_id) FROM calc_field_dependencies cfd WHERE cfd.dependency_regular_field_id IS NOT NULL",
                     "正向SQL结果": "",
-                    "反向SQL (指标>原始字段)": "SELECT COUNT(DISTINCT fd.source_field_id) || ':' || COUNT(DISTINCT fd.dependency_field_id) FROM field_dependencies fd JOIN fields f ON fd.dependency_field_id = f.id WHERE f.is_calculated = 0 OR f.is_calculated IS NULL",
+                    "反向SQL (指标>原始字段)": "SELECT COUNT(DISTINCT cfd.source_field_id) || ':' || COUNT(DISTINCT cfd.dependency_regular_field_id) FROM calc_field_dependencies cfd WHERE cfd.dependency_regular_field_id IS NOT NULL",
                     "反向SQL结果": "",
                     "API路径": "/api/fields/{id}",
                     "API取值键": "used_by_metrics",
@@ -141,35 +203,66 @@
             "任务描述": "验证前端卡片和详情页数据与后端逻辑的一致性 (参考 frontend_element_spec.md)",
             "列表卡片 (FieldCard.tsx)": {
                 "任务描述": "验证列表页关键指标显示",
-                "字段:usage_count": {
-                    "任务描述": "验证字段卡片上的热度统计汇总",
-                    "API键": "usage_count / usageCount",
-                    "SQL查询": "SELECT SUM(usage_count) FROM (SELECT COUNT(*) as usage_count FROM field_to_view fv JOIN fields f ON fv.field_id = f.id WHERE f.is_calculated = 0 OR f.is_calculated IS NULL GROUP BY f.id)",
-                    "API汇总结果": "",
-                    "SQL汇总结果": ""
-                },
-                "字段:datasource_name": {
-                    "任务描述": "验证字段卡片显示的数据源名称",
-                    "API键": "datasource_name",
-                    "说明": "来自 fields.datasource_id 关联的 datasources.name",
+                "字段:name": {
+                    "任务描述": "字段名（别名优先）",
+                    "API键": "name",
                     "验证类型": "存在性校验"
                 },
                 "字段:role": {
                     "任务描述": "验证字段角色分布 (度量/维度)",
                     "API键": "role",
-                    "SQL查询": "SELECT role || ':' || COUNT(*) FROM fields WHERE is_calculated = 0 OR is_calculated IS NULL GROUP BY role",
+                    "SQL查询": "SELECT role || ':' || COUNT(*) FROM regular_fields GROUP BY role",
                     "API实际分布": "",
+                    "SQL实际分布": ""
+                },
+                "字段:data_type": {
+                    "任务描述": "验证数据类型分布",
+                    "API键": "dataType",
+                    "SQL查询": "SELECT COALESCE(data_type, 'unknown') || ':' || COUNT(*) FROM regular_fields GROUP BY data_type",
+                    "SQL实际分布": ""
+                },
+                "字段:datasource_name": {
+                    "任务描述": "验证字段卡片显示的数据源名称",
+                    "API键": "datasourceName",
+                    "说明": "来自 regular_fields.datasource_id 关联的 datasources.name",
+                    "验证类型": "存在性校验"
+                },
+                "字段:usage_count": {
+                    "任务描述": "验证字段卡片上的热度统计汇总",
+                    "API键": "usageCount",
+                    "SQL查询": "SELECT SUM(usage_count) FROM regular_fields",
+                    "API汇总结果": "",
+                    "SQL汇总结果": ""
+                },
+                "字段:isCalculated": {
+                    "任务描述": "regular_fields 表应全部为 false",
+                    "API键": "isCalculated",
+                    "期望值": "false",
+                    "验证类型": "固定值"
+                },
+                "字段:description": {
+                    "任务描述": "验证描述字段覆盖率",
+                    "API键": "description / hasDescription",
+                    "SQL查询": "SELECT SUM(CASE WHEN description IS NOT NULL AND description != '' THEN 1 ELSE 0 END) || ':' || COUNT(*) FROM regular_fields",
                     "SQL实际分布": ""
                 }
             },
             "详情页 (DetailDrawer L245-L277)": {
                 "任务描述": "验证详情页各 Tab 页签的数据准确性",
+                "Tab:概览": {
+                    "任务描述": "验证字段详情页概览信息",
+                    "API路径": "/api/fields/{id}",
+                    "显示条件": "始终显示",
+                    "验证内容": "id, name, role, dataType, description 非空"
+                },
                 "Tab:所属数据表": {
                     "任务描述": "验证字段详情页的'所属数据表'信息",
                     "API路径": "/api/fields/{id}",
                     "API取值键": "table_info",
                     "显示条件": "始终显示",
-                    "验证内容": "table_info.name, table_info.schema 非空"
+                    "验证内容": "table_info.name, table_info.schema 非空（如有表）",
+                    "SQL查询": "SELECT COUNT(*) FROM regular_fields rf JOIN tables t ON rf.table_id = t.id WHERE t.name IS NOT NULL",
+                    "SQL实际记录数": ""
                 },
                 "Tab:所属数据源 (N)": {
                     "任务描述": "验证字段详情页的'所属数据源' Tab",
@@ -177,7 +270,7 @@
                     "API取值键": "all_datasources",
                     "显示条件": "始终显示",
                     "API实际记录数": "",
-                    "SQL查询": "SELECT COUNT(DISTINCT datasource_id) FROM fields WHERE id = ?",
+                    "SQL查询": "SELECT COUNT(DISTINCT rfl.datasource_id) FROM regular_field_full_lineage rfl WHERE rfl.field_id = ? AND rfl.datasource_id IS NOT NULL",
                     "SQL实际记录数": ""
                 },
                 "Tab:影响指标 (N)": {
@@ -186,16 +279,16 @@
                     "API取值键": "used_by_metrics",
                     "显示条件": "始终显示",
                     "API实际记录数": "",
-                    "SQL查询": "SELECT COUNT(*) FROM field_dependencies WHERE dependency_field_id = ?",
+                    "SQL查询": "SELECT COUNT(*) FROM calc_field_dependencies WHERE dependency_regular_field_id = ?",
                     "SQL实际记录数": ""
                 },
                 "Tab:关联视图 (N)": {
                     "任务描述": "验证字段详情页的'关联视图' Tab",
                     "API路径": "/api/fields/{id}",
-                    "API取值键": "used_in_views / usedInViews",
+                    "API取值键": "usedInViews",
                     "显示条件": "始终显示",
                     "API实际记录数": "",
-                    "SQL查询": "SELECT COUNT(*) FROM field_to_view WHERE field_id = ?",
+                    "SQL查询": "SELECT COUNT(*) FROM regular_field_to_view WHERE field_id = ?",
                     "SQL实际记录数": ""
                 },
                 "Tab:引用工作簿 (N)": {
@@ -204,8 +297,14 @@
                     "API取值键": "all_workbooks",
                     "显示条件": "始终显示",
                     "API实际记录数": "",
-                    "SQL查询": "SELECT COUNT(DISTINCT workbook_id) FROM fields WHERE id = ? OR name = (SELECT name FROM fields WHERE id = ?)",
+                    "SQL查询": "SELECT COUNT(DISTINCT rfl.workbook_id) FROM regular_field_full_lineage rfl WHERE rfl.field_id = ? AND rfl.workbook_id IS NOT NULL",
                     "SQL实际记录数": ""
+                },
+                "Tab:血缘图": {
+                    "任务描述": "验证字段血缘图可用性",
+                    "API路径": "/api/lineage/graph/field/{id}",
+                    "显示条件": "始终显示",
+                    "验证内容": "返回有效的血缘节点"
                 }
             }
         },
@@ -230,6 +329,20 @@
                     "比对名称": "数据源关联数闭环",
                     "前端数据源": "前端元素对齐.详情页.Tab:所属数据源.API实际记录数 (聚合)",
                     "血缘数据源": "关联元素[目标模块='数据源'].关联验证.正向SQL结果(提取目标数)",
+                    "比对逻辑": "数值相等",
+                    "差异容忍度": 0
+                },
+                {
+                    "比对名称": "指标依赖数闭环",
+                    "前端数据源": "前端元素对齐.详情页.Tab:影响指标.API实际记录数 (聚合)",
+                    "血缘数据源": "关联元素[目标模块='计算字段(指标)'].关联验证.正向SQL结果(提取目标数)",
+                    "比对逻辑": "数值相等",
+                    "差异容忍度": 0
+                },
+                {
+                    "比对名称": "实例与标准字段对应闭环",
+                    "前端数据源": "核心属性验证.实例总数.SQL实际结果",
+                    "血缘数据源": "关联元素[目标模块='标准字段(去重)'].关联验证.正向SQL结果(提取实例数)",
                     "比对逻辑": "数值相等",
                     "差异容忍度": 0
                 }

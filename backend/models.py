@@ -38,6 +38,22 @@ field_to_view = Table(
     Column('used_in_formula', Boolean, default=False)
 )
 
+# ==================== 分表重构：新关联表 ====================
+
+regular_field_to_view = Table(
+    'regular_field_to_view',
+    Base.metadata,
+    Column('field_id', String(255), ForeignKey('regular_fields.id'), primary_key=True),
+    Column('view_id', String(255), ForeignKey('views.id'), primary_key=True)
+)
+
+calc_field_to_view = Table(
+    'calc_field_to_view',
+    Base.metadata,
+    Column('field_id', String(255), ForeignKey('calculated_fields.id'), primary_key=True),
+    Column('view_id', String(255), ForeignKey('views.id'), primary_key=True)
+)
+
 dashboard_to_sheet = Table(
     'dashboard_to_sheet',
     Base.metadata,
@@ -353,6 +369,235 @@ class FieldDependency(Base):
         }
 
 
+# ==================== 分表重构：四表架构（实例+去重）====================
+
+class UniqueRegularField(Base):
+    """原始字段去重表（标准字段）
+    
+    代表物理世界的一个“列”或“标准字段”。
+    去重逻辑：(table_id, upstream_column_id) 唯一
+    """
+    __tablename__ = 'unique_regular_fields'
+    
+    id = Column(String(255), primary_key=True)
+    name = Column(String(255)) 
+    upstream_column_id = Column(String(255), ForeignKey('db_columns.id'))
+    upstream_column_name = Column(String(255))
+    table_id = Column(String(255), ForeignKey('tables.id'))
+    remote_type = Column(String(100))
+    description = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # 关系
+    instances = relationship('RegularField', back_populates='unique_field')
+    table = relationship('DBTable', foreign_keys=[table_id])
+    upstream_column = relationship('DBColumn', foreign_keys=[upstream_column_id])
+
+
+class RegularField(Base):
+    """原始字段实例表
+    
+    存储所有扫描到的原始字段实例（Tableau 层的引用）。
+    """
+    __tablename__ = 'regular_fields'
+    
+    id = Column(String(255), primary_key=True)
+    unique_id = Column(String(255), ForeignKey('unique_regular_fields.id'))
+    
+    name = Column(String(255), nullable=False)
+    data_type = Column(String(100))
+    remote_type = Column(String(100))
+    description = Column(Text)
+    
+    # 核心关联
+    table_id = Column(String(255), ForeignKey('tables.id'))
+    upstream_column_id = Column(String(255), ForeignKey('db_columns.id'))
+    upstream_column_name = Column(String(255))
+    
+    # 来源关联
+    datasource_id = Column(String(255), ForeignKey('datasources.id'))
+    workbook_id = Column(String(255), ForeignKey('workbooks.id'))
+    
+    # 属性
+    role = Column(String(50))
+    aggregation = Column(String(50))
+    is_hidden = Column(Boolean, default=False)
+    folder_name = Column(String(255))
+    
+    # 名称层次
+    fully_qualified_name = Column(String(500))
+    caption = Column(String(255))
+    semantic_role = Column(String(100))
+    default_format = Column(String(100))
+    
+    # 嵌入式字段→已发布数据源字段关联
+    remote_field_id = Column(String(255), ForeignKey('regular_fields.id'), nullable=True)
+    remote_field_name = Column(String(255), nullable=True)
+    
+    # 统计
+    usage_count = Column(Integer, default=0)
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
+    
+    # 关系
+    unique_field = relationship('UniqueRegularField', back_populates='instances')
+    table = relationship('DBTable', foreign_keys=[table_id])
+    views = relationship('View', secondary='regular_field_to_view', backref='regular_fields')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'uniqueId': self.unique_id,
+            'name': self.name,
+            'caption': self.caption,
+            'description': self.description,
+            'tableId': self.table_id,
+            'table': self.table.name if self.table else None,
+            'datasourceId': self.datasource_id,
+            'workbookId': self.workbook_id,
+            'isCalculated': False,
+            'role': self.role,
+            'isHidden': self.is_hidden,
+            'createdAt': self.created_at.isoformat() if self.created_at else None
+        }
+
+
+class UniqueCalculatedField(Base):
+    """计算字段去重表（标准指标）
+    
+    代表逻辑上唯一的计算逻辑（指标）。
+    去重逻辑：formula_hash 唯一
+    """
+    __tablename__ = 'unique_calculated_fields'
+    
+    id = Column(String(255), primary_key=True)
+    name = Column(String(255))
+    formula = Column(Text)
+    formula_hash = Column(String(64), index=True)  # 移除 unique 约束
+    description = Column(Text)
+    complexity_score = Column(Float, default=0)
+    is_certified = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # 关系
+    instances = relationship('CalculatedField', back_populates='unique_field')
+
+
+class CalculatedField(Base):
+    """计算字段实例表
+    
+    分表重构：从 fields 表中拆分出计算字段实例。
+    注意：此表名 calculated_fields 覆盖了原有的详情表。
+    """
+    __tablename__ = 'calculated_fields'
+    
+    id = Column(String(255), primary_key=True)
+    unique_id = Column(String(255), ForeignKey('unique_calculated_fields.id'))
+    
+    name = Column(String(255), nullable=False)
+    data_type = Column(String(100))
+    description = Column(Text)
+    
+    # 计算字段特有
+    formula = Column(Text)
+    formula_hash = Column(String(64))
+    complexity_score = Column(Float, default=0)
+    
+    # 来源关联
+    datasource_id = Column(String(255), ForeignKey('datasources.id'))
+    workbook_id = Column(String(255), ForeignKey('workbooks.id'))
+    table_id = Column(String(255), ForeignKey('tables.id'), nullable=True)
+    
+    # 属性
+    role = Column(String(50))
+    is_hidden = Column(Boolean, default=False)
+    folder_name = Column(String(255))
+    fully_qualified_name = Column(String(500))
+    caption = Column(String(255))
+    
+    # 统计
+    dependency_count = Column(Integer, default=0)
+    usage_count = Column(Integer, default=0)
+    reference_count = Column(Integer, default=0)
+    has_duplicates = Column(Boolean, default=False)
+    duplicate_count = Column(Integer, default=0)
+    
+    # 时间戳
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
+    
+    # 关系
+    unique_field = relationship('UniqueCalculatedField', back_populates='instances')
+    views = relationship('View', secondary='calc_field_to_view', backref='calculated_fields')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'uniqueId': self.unique_id,
+            'name': self.name,
+            'caption': self.caption,
+            'description': self.description,
+            'datasourceId': self.datasource_id,
+            'workbookId': self.workbook_id,
+            'isCalculated': True,
+            'formula': self.formula,
+            'complexityScore': self.complexity_score,
+            'role': self.role,
+            'isHidden': self.is_hidden,
+            'createdAt': self.created_at.isoformat() if self.created_at else None
+        }
+
+
+class CalcFieldDependency(Base):
+    """计算字段依赖关系表（新版 DAG）"""
+    __tablename__ = 'calc_field_dependencies'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source_field_id = Column(String(255), ForeignKey('calculated_fields.id'), nullable=False)
+    dependency_regular_field_id = Column(String(255), ForeignKey('regular_fields.id'), nullable=True)
+    dependency_calc_field_id = Column(String(255), ForeignKey('calculated_fields.id'), nullable=True)
+    dependency_name = Column(String(255))
+    dependency_type = Column(String(50))
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'sourceFieldId': self.source_field_id,
+            'dependencyRegularFieldId': self.dependency_regular_field_id,
+            'dependencyCalcFieldId': self.dependency_calc_field_id,
+            'dependencyName': self.dependency_name,
+            'dependencyType': self.dependency_type
+        }
+
+
+# ==================== 分表重构：完整血缘表（新版）====================
+
+class RegularFieldFullLineage(Base):
+    """原始字段完整血缘链"""
+    __tablename__ = 'regular_field_full_lineage'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    field_id = Column(String(255), ForeignKey('regular_fields.id'), nullable=False, index=True)
+    table_id = Column(String(255), ForeignKey('tables.id'), nullable=True)
+    datasource_id = Column(String(255), ForeignKey('datasources.id'), nullable=True)
+    workbook_id = Column(String(255), ForeignKey('workbooks.id'), nullable=True)
+    lineage_type = Column(String(20), nullable=False)
+    lineage_path = Column(Text)
+
+
+class CalcFieldFullLineage(Base):
+    """计算字段完整血缘链"""
+    __tablename__ = 'calc_field_full_lineage'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    field_id = Column(String(255), ForeignKey('calculated_fields.id'), nullable=False, index=True)
+    table_id = Column(String(255), ForeignKey('tables.id'), nullable=True)
+    datasource_id = Column(String(255), ForeignKey('datasources.id'), nullable=True)
+    workbook_id = Column(String(255), ForeignKey('workbooks.id'), nullable=True)
+    lineage_type = Column(String(20), nullable=False)
+    lineage_path = Column(Text)
+
+
 class Datasource(Base):
     """数据源（增强版）"""
     __tablename__ = 'datasources'
@@ -524,35 +769,21 @@ class View(Base):
         }
 
 
-# ==================== 计算字段详情表 ====================
+# ==================== 遗留表（迁移用）====================
 
-class CalculatedField(Base):
-    """计算字段详情"""
-    __tablename__ = 'calculated_fields'
+class LegacyCalculatedField(Base):
+    """计算字段详情（遗留表，仅用于数据迁移）"""
+    __tablename__ = 'calculated_fields_legacy'
     
     field_id = Column(String(255), ForeignKey('fields.id'), primary_key=True)
     name = Column(String(255))
     formula = Column(Text)
     reference_count = Column(Integer, default=0)
     complexity_score = Column(Float, default=0)
-    
-    # ========== 新增预计算统计字段 (指标预计算优化) ==========
-    has_duplicates = Column(Boolean, default=False)  # 是否有重复
-    duplicate_count = Column(Integer, default=0)  # 重复数量
-    dependency_count = Column(Integer, default=0)  # 依赖字段数量
-    formula_hash = Column(String(64))  # 公式哈希(用于快速查重)
-    
-    def to_dict(self):
-        return {
-            'fieldId': self.field_id,
-            'name': self.name,
-            'formula': self.formula,
-            'referenceCount': self.reference_count,
-            'complexityScore': self.complexity_score,
-            'hasDuplicates': self.has_duplicates,
-            'duplicateCount': self.duplicate_count,
-            'dependencyCount': self.dependency_count
-        }
+    has_duplicates = Column(Boolean, default=False)
+    duplicate_count = Column(Integer, default=0)
+    dependency_count = Column(Integer, default=0)
+    formula_hash = Column(String(64))
 
 
 # ==================== 指标治理表 ====================

@@ -37,6 +37,8 @@ def get_stats():
         UNION ALL SELECT 'orphanedFields', COUNT(*) 
                   FROM fields f 
                   WHERE NOT EXISTS (SELECT 1 FROM field_to_view fv WHERE fv.field_id = f.id)
+        UNION ALL SELECT 'uniqueFields', COUNT(*) FROM unique_regular_fields
+        UNION ALL SELECT 'uniqueMetrics', COUNT(*) FROM unique_calculated_fields
     """)).fetchall()
     
     stats_map = {row[0]: row[1] for row in stats_rows}
@@ -45,11 +47,13 @@ def get_stats():
         'databases': stats_map.get('databases', 0),
         'tables': stats_map.get('tables', 0),
         'fields': stats_map.get('fields', 0),
+        'uniqueFields': stats_map.get('uniqueFields', 0),  # 去重后的标准字段数
         'calculatedFields': stats_map.get('metrics', 0), # 兼容旧版统计
         'datasources': stats_map.get('datasources', 0),
         'workbooks': stats_map.get('workbooks', 0),
         'views': stats_map.get('views', 0),
         'metrics': stats_map.get('metrics', 0),
+        'uniqueMetrics': stats_map.get('uniqueMetrics', 0),  # 去重后的标准指标数
         'duplicateMetrics': 0,
         'orphanedFields': stats_map.get('orphanedFields', 0),
         'projects': stats_map.get('projects', 0),
@@ -76,7 +80,7 @@ def get_field_usage_by_name(session, field_name):
     ).outerjoin(
         Workbook, Field.workbook_id == Workbook.id
     ).outerjoin(
-        CalculatedField, Field.id == CalculatedField.field_id
+        CalculatedField, Field.id == CalculatedField.id
     ).filter(FieldDependency.dependency_name == field_name).all()
     
     result = []
@@ -237,15 +241,15 @@ def get_dashboard_analysis():
     role_distribution = {(r or 'unknown'): c for r, c in role_results}
     
     # ===== 5. 重复公式统计 =====
-    # 5.1 获取 Top 10 用于展示
+    # 5.1 获取 Top 10 用于展示（使用独立的 calculated_fields 表，通过 id 计数）
     dupe_formulas = session.query(
-        CalculatedField.formula, func.count(CalculatedField.field_id).label('cnt')
+        CalculatedField.formula, func.count(CalculatedField.id).label('cnt')
     ).filter(
         CalculatedField.formula != None,
         CalculatedField.formula != ''
     ).group_by(CalculatedField.formula)\
-     .having(func.count(CalculatedField.field_id) > 1)\
-     .order_by(func.count(CalculatedField.field_id).desc())\
+     .having(func.count(CalculatedField.id) > 1)\
+     .order_by(func.count(CalculatedField.id).desc())\
      .limit(10).all()
     
     duplicate_formulas_top = [
@@ -273,7 +277,7 @@ def get_dashboard_analysis():
             (CalculatedField.complexity_score <= 7, 'medium'),
             else_='high'
         ).label('level'),
-        func.count(CalculatedField.field_id)
+        func.count(CalculatedField.id)
     ).group_by('level').all()
     complexity_distribution = {level: cnt for level, cnt in complexity_results}
     
@@ -416,7 +420,7 @@ def get_dashboard_analysis():
     
     # ===== 9. 热点资产 Top 10（基于计算字段被引用次数） =====
     top_metrics = session.query(Field, CalculatedField).join(
-        CalculatedField, Field.id == CalculatedField.field_id
+        CalculatedField, Field.id == CalculatedField.id
     ).order_by(CalculatedField.reference_count.desc()).limit(10).all()
     
     top_fields_data = [{
@@ -2413,7 +2417,7 @@ def get_fields_catalog_hot():
 
 @api_bp.route('/fields')
 def get_fields():
-    """获取字段列表，支持分页和深度使用情况"""
+    """获取字段列表 - 使用新的 regular_fields 表"""
     session = g.db_session
     role = request.args.get('role', '')
     data_type = request.args.get('data_type', '')
@@ -2428,7 +2432,6 @@ def get_fields():
     page_size = request.args.get('page_size', 50, type=int)
     page_size = min(page_size, 10000)
     
-    # ========== SQLAlchemy Core 直查 (跳过 ORM 对象实例化) ==========
     from sqlalchemy import text
     
     # 构建动态 WHERE 条件
@@ -2436,21 +2439,18 @@ def get_fields():
     params = {}
     
     if role:
-        conditions.append("f.role = :role")
+        conditions.append("rf.role = :role")
         params['role'] = role
     if data_type:
-        conditions.append("f.data_type = :data_type")
+        conditions.append("rf.data_type = :data_type")
         params['data_type'] = data_type
         if has_description.lower() == 'true':
-            conditions.append("f.description IS NOT NULL AND f.description != ''")
+            conditions.append("rf.description IS NOT NULL AND rf.description != ''")
         elif has_description.lower() == 'false':
-            conditions.append("(f.description IS NULL OR f.description = '')")
-    
-    # 默认只返回非计算字段 (计算字段属于指标模块)
-    conditions.append("(f.is_calculated = 0 OR f.is_calculated IS NULL)")
+            conditions.append("(rf.description IS NULL OR rf.description = '')")
 
     if search:
-        conditions.append("(f.name LIKE :search OR f.description LIKE :search)")
+        conditions.append("(rf.name LIKE :search OR rf.description LIKE :search)")
         params['search'] = f'%{search}%'
     
     where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
@@ -2459,8 +2459,8 @@ def get_fields():
     stats_sql = f"""
         SELECT 
             COUNT(*) as total,
-            SUM(CASE WHEN f.description IS NOT NULL AND f.description != '' THEN 1 ELSE 0 END) as has_desc
-        FROM fields f
+            SUM(CASE WHEN rf.description IS NOT NULL AND rf.description != '' THEN 1 ELSE 0 END) as has_desc
+        FROM regular_fields rf
         {where_clause}
     """
     stats = session.execute(text(stats_sql), params).first()
@@ -2470,25 +2470,24 @@ def get_fields():
     # 2. Facet 统计
     facets = {}
     
-    role_sql = f"SELECT f.role, COUNT(*) FROM fields f {where_clause} GROUP BY f.role"
+    role_sql = f"SELECT rf.role, COUNT(*) FROM regular_fields rf {where_clause} GROUP BY rf.role"
     role_counts = session.execute(text(role_sql), params).fetchall()
     facets['role'] = {str(r or 'unknown'): c for r, c in role_counts}
     
-    type_sql = f"SELECT f.data_type, COUNT(*) FROM fields f {where_clause} GROUP BY f.data_type"
+    type_sql = f"SELECT rf.data_type, COUNT(*) FROM regular_fields rf {where_clause} GROUP BY rf.data_type"
     type_counts = session.execute(text(type_sql), params).fetchall()
     facets['data_type'] = {str(t or 'unknown'): c for t, c in type_counts}
     
     facets['hasDescription'] = {'true': stats.has_desc or 0, 'false': total - (stats.has_desc or 0)}
     
-    # 3. 数据查询 (Core 直查, 跳过 ORM)
-    # 构建排序
-    order_clause = "ORDER BY f.name ASC"
+    # 3. 数据查询 (使用新表 regular_fields)
+    order_clause = "ORDER BY rf.name ASC"
     if sort == 'usageCount':
-        order_clause = f"ORDER BY f.usage_count {'DESC' if order == 'desc' else 'ASC'}"
+        order_clause = f"ORDER BY rf.usage_count {'DESC' if order == 'desc' else 'ASC'}"
     elif sort == 'name':
-        order_clause = f"ORDER BY f.name {'DESC' if order == 'desc' else 'ASC'}"
+        order_clause = f"ORDER BY rf.name {'DESC' if order == 'desc' else 'ASC'}"
     elif sort == 'data_type':
-        order_clause = f"ORDER BY f.data_type {'DESC' if order == 'desc' else 'ASC'}"
+        order_clause = f"ORDER BY rf.data_type {'DESC' if order == 'desc' else 'ASC'}"
     
     offset = (page - 1) * page_size
     params['limit'] = page_size
@@ -2496,23 +2495,23 @@ def get_fields():
     
     data_sql = f"""
         SELECT 
-            f.id, f.name, f.data_type, f.remote_type, f.description,
-            f.role, f.aggregation, f.is_calculated, f.is_hidden,
-            f.usage_count, f.metric_usage_count,
-            f.created_at, f.updated_at,
-            f.datasource_id, f.table_id, f.workbook_id,
+            rf.id, rf.name, rf.data_type, rf.remote_type, rf.description,
+            rf.role, rf.aggregation, rf.is_hidden,
+            rf.usage_count, rf.unique_id,
+            rf.created_at, rf.updated_at,
+            rf.datasource_id, rf.table_id, rf.workbook_id,
             d.name as datasource_name,
             t.name as table_name
-        FROM fields f
-        LEFT JOIN datasources d ON f.datasource_id = d.id
-        LEFT JOIN tables t ON f.table_id = t.id
+        FROM regular_fields rf
+        LEFT JOIN datasources d ON rf.datasource_id = d.id
+        LEFT JOIN tables t ON rf.table_id = t.id
         {where_clause}
         {order_clause}
         LIMIT :limit OFFSET :offset
     """
     rows = session.execute(text(data_sql), params).fetchall()
     
-    # 4. 构建结果 (直接字典, 无 ORM 对象)
+    # 4. 构建结果
     results = []
     for row in rows:
         results.append({
@@ -2523,12 +2522,10 @@ def get_fields():
             'description': row.description or '',
             'role': row.role,
             'aggregation': row.aggregation,
-            'isCalculated': row.is_calculated or False,
+            'isCalculated': False,  # regular_fields 都是非计算字段
             'isHidden': row.is_hidden or False,
             'usageCount': row.usage_count or 0,
-            'used_by_metrics_count': row.metric_usage_count or 0,
-            'used_by_metrics': [],
-            'used_in_views': [],
+            'uniqueId': row.unique_id,  # 新增：关联的标准字段ID
             'hasDescription': bool(row.description and row.description.strip()),
             'datasourceId': row.datasource_id,
             'datasourceName': row.datasource_name or '-',
@@ -2551,53 +2548,68 @@ def get_fields():
 
 @api_bp.route('/fields/<field_id>')
 def get_field_detail(field_id):
-    """获取单个字段详情 - 性能优化版（使用预加载）"""
+    """获取单个字段详情 - 使用新的 regular_fields 表"""
     session = g.db_session
-    from sqlalchemy.orm import selectinload
-    
-    # 使用 eager loading 一次性获取所有关联数据，避免 N+1 查询
-    # 包含了视图、工作簿、数据源、表、上游列等所有深层关系
-    field = session.query(Field).options(
-        selectinload(Field.views).selectinload(View.workbook),
-        selectinload(Field.table),
-        selectinload(Field.datasource).selectinload(Datasource.tables), # 预加载数据源及其上游表
-        selectinload(Field.workbook),
-        selectinload(Field.upstream_column).selectinload(DBColumn.table)
-    ).filter(Field.id == field_id).first()
-
-    if not field:
-        return jsonify({'error': 'Not found'}), 404
-
-    data = field.to_dict()
-    
-    # ========== 上游列信息 ==========
-    if field.upstream_column:
-        data['upstream_column_info'] = {
-            'id': field.upstream_column.id,
-            'name': field.upstream_column.name,
-            'remote_type': field.upstream_column.remote_type,
-            'description': field.upstream_column.description,
-            'is_certified': field.upstream_column.is_certified,
-            'table_id': field.upstream_column.table_id,
-            'table_name': field.upstream_column.table.name if field.upstream_column.table else None
-        }
-
-    # ============ 聚合所有同名字段的血缘 (跨数据源/工作簿) ============
     from sqlalchemy import text
-    field_name = field.name
     
-    # 1. 聚合所有同名字段的物理表血缘
-    # 注意：添加 t.id IS NOT NULL 条件，过滤掉 field_full_lineage 中引用了不存在的 table_id 的记录
+    # 查询字段基本信息
+    field_sql = """
+        SELECT 
+            rf.id, rf.name, rf.data_type, rf.remote_type, rf.description,
+            rf.role, rf.aggregation, rf.is_hidden, rf.usage_count,
+            rf.upstream_column_id, rf.table_id, rf.datasource_id, rf.workbook_id,
+            rf.unique_id, rf.created_at, rf.updated_at,
+            d.name as datasource_name, d.project_name as ds_project_name, d.owner as ds_owner, 
+            d.is_certified as ds_certified, d.vizportal_url_id,
+            t.name as table_name, t.schema as table_schema,
+            w.name as workbook_name, w.project_name as wb_project_name, w.owner as wb_owner
+        FROM regular_fields rf
+        LEFT JOIN datasources d ON rf.datasource_id = d.id
+        LEFT JOIN tables t ON rf.table_id = t.id
+        LEFT JOIN workbooks w ON rf.workbook_id = w.id
+        WHERE rf.id = :field_id
+    """
+    field_row = session.execute(text(field_sql), {'field_id': field_id}).first()
+    
+    if not field_row:
+        return jsonify({'error': 'Not found'}), 404
+    
+    data = {
+        'id': field_row.id,
+        'name': field_row.name,
+        'data_type': field_row.data_type,
+        'remoteType': field_row.remote_type,
+        'description': field_row.description or '',
+        'role': field_row.role,
+        'aggregation': field_row.aggregation,
+        'isCalculated': False,
+        'isHidden': field_row.is_hidden or False,
+        'usageCount': field_row.usage_count or 0,
+        'uniqueId': field_row.unique_id,
+        'tableId': field_row.table_id,
+        'tableName': field_row.table_name or '-',
+        'tableSchema': field_row.table_schema,
+        'datasourceId': field_row.datasource_id,
+        'datasourceName': field_row.datasource_name or '-',
+        'workbookId': field_row.workbook_id,
+        'workbookName': field_row.workbook_name,
+        'hasDescription': bool(field_row.description and field_row.description.strip()),
+        'createdAt': field_row.created_at.isoformat() if field_row.created_at else None,
+        'updatedAt': field_row.updated_at.isoformat() if field_row.updated_at else None
+    }
+    
+    field_name = field_row.name
+    
+    # 1. 聚合所有同名字段的物理表血缘 (使用新的 regular_field_full_lineage 表)
     table_lineage_result = session.execute(text("""
         SELECT DISTINCT fl.table_id, t.name, t.schema, db.name as db_name, t.database_id
-        FROM fields f
-        JOIN field_full_lineage fl ON f.id = fl.field_id
+        FROM regular_fields rf
+        JOIN regular_field_full_lineage fl ON rf.id = fl.field_id
         JOIN tables t ON fl.table_id = t.id
         LEFT JOIN databases db ON t.database_id = db.id
-        WHERE f.name = :field_name AND fl.table_id IS NOT NULL AND t.id IS NOT NULL
+        WHERE rf.name = :field_name AND fl.table_id IS NOT NULL AND t.id IS NOT NULL
     """), {'field_name': field_name}).fetchall()
     
-    # 设置 table_info (取第一个作为主表) 和完整表列表
     if table_lineage_result:
         first_table = table_lineage_result[0]
         data['table_info'] = {
@@ -2608,11 +2620,8 @@ def get_field_detail(field_id):
             'database_id': first_table[4]
         }
         data['derived_tables'] = [{
-            'id': row[0],
-            'name': row[1],
-            'schema': row[2],
-            'database_name': row[3],
-            'database_id': row[4]
+            'id': row[0], 'name': row[1], 'schema': row[2],
+            'database_name': row[3], 'database_id': row[4]
         } for row in table_lineage_result]
         data['derivedTables'] = data['derived_tables']
     else:
@@ -2623,280 +2632,109 @@ def get_field_detail(field_id):
     # 2. 聚合所有同名字段的数据源血缘
     ds_lineage_result = session.execute(text("""
         SELECT DISTINCT fl.datasource_id, d.name, d.project_name, d.owner, d.is_certified
-        FROM fields f
-        JOIN field_full_lineage fl ON f.id = fl.field_id
+        FROM regular_fields rf
+        JOIN regular_field_full_lineage fl ON rf.id = fl.field_id
         LEFT JOIN datasources d ON fl.datasource_id = d.id
-        WHERE f.name = :field_name AND fl.datasource_id IS NOT NULL AND d.id IS NOT NULL
+        WHERE rf.name = :field_name AND fl.datasource_id IS NOT NULL AND d.id IS NOT NULL
     """), {'field_name': field_name}).fetchall()
     
     data['all_datasources'] = [{
-        'id': row[0],
-        'name': row[1],
-        'project_name': row[2],
-        'owner': row[3],
-        'is_certified': bool(row[4]) if row[4] is not None else False
+        'id': row[0], 'name': row[1], 'project_name': row[2],
+        'owner': row[3], 'is_certified': bool(row[4]) if row[4] is not None else False
     } for row in ds_lineage_result]
     
     # 3. 聚合所有同名字段的工作簿血缘
     wb_lineage_result = session.execute(text("""
         SELECT DISTINCT fl.workbook_id, w.name, w.project_name, w.owner
-        FROM fields f
-        JOIN field_full_lineage fl ON f.id = fl.field_id
+        FROM regular_fields rf
+        JOIN regular_field_full_lineage fl ON rf.id = fl.field_id
         LEFT JOIN workbooks w ON fl.workbook_id = w.id
-        WHERE f.name = :field_name AND fl.workbook_id IS NOT NULL AND w.id IS NOT NULL
+        WHERE rf.name = :field_name AND fl.workbook_id IS NOT NULL AND w.id IS NOT NULL
     """), {'field_name': field_name}).fetchall()
     
     data['all_workbooks'] = [{
-        'id': row[0],
-        'name': row[1],
-        'project_name': row[2],
-        'owner': row[3]
+        'id': row[0], 'name': row[1], 'project_name': row[2], 'owner': row[3]
     } for row in wb_lineage_result]
-
+    
     # 所属数据源信息
-    if field.datasource:
+    if field_row.datasource_id:
         data['datasource_info'] = {
-            'id': field.datasource.id,
-            'name': field.datasource.name,
-            'project_name': field.datasource.project_name,
-            'owner': field.datasource.owner,
-            'is_certified': field.datasource.is_certified
+            'id': field_row.datasource_id,
+            'name': field_row.datasource_name,
+            'project_name': field_row.ds_project_name,
+            'owner': field_row.ds_owner,
+            'is_certified': field_row.ds_certified
         }
-    elif field.workbook:
-        # 兜底显示：如果数据源缺失（通常是嵌入式），则显示其所属工作簿作为来源
+    elif field_row.workbook_id:
         data['datasource_info'] = {
-            'id': f"embedded-{field.workbook.id}",
-            'name': f"{field.workbook.name} (内部连接)",
-            'project_name': field.workbook.project_name,
-            'owner': field.workbook.owner,
+            'id': f"embedded-{field_row.workbook_id}",
+            'name': f"{field_row.workbook_name} (内部连接)",
+            'project_name': field_row.wb_project_name,
+            'owner': field_row.wb_owner,
             'is_certified': False,
             'is_embedded_fallback': True
         }
-
-    # 获取使用该字段的指标（通过 FieldDependency 反向查询，无 N+1）
-    metric_deps = session.query(FieldDependency).filter(
-        FieldDependency.dependency_name == field.name
-    ).limit(100).all()  # 限制返回数量，避免过大响应
+    else:
+        data['datasource_info'] = None
     
-    used_by_metrics = []
-    for dep in metric_deps:
-        if dep.source_field:
-            calc_field = session.query(CalculatedField).filter(
-                CalculatedField.field_id == dep.source_field_id
-            ).first()
-            used_by_metrics.append({
-                'id': dep.source_field.id,
-                'name': dep.source_field.name,
-                'datasourceId': dep.source_field.datasource_id,
-                'datasourceName': dep.source_field.datasource.name if dep.source_field.datasource else None,
-                'workbookId': dep.source_field.workbook_id,
-                'workbookName': dep.source_field.workbook.name if dep.source_field.workbook else None,
-                'description': dep.source_field.description,
-                'formula': calc_field.formula if calc_field else None,
-                'role': dep.source_field.role,
-                'dataType': dep.source_field.data_type
-            })
-    
-    data['used_by_metrics'] = used_by_metrics
-
-    # 使用该字段的视图（使用预计算血缘表 field_to_view）
+    # 使用该字段的视图 (使用新的 regular_field_to_view 表)
     views_result = session.execute(text("""
-        SELECT fv.view_id, v.name, v.view_type, v.workbook_id, w.name as wb_name, w.project_name, w.owner
-        FROM field_to_view fv
-        JOIN views v ON fv.view_id = v.id
+        SELECT rfv.view_id, v.name, v.view_type, v.workbook_id, w.name as wb_name, w.project_name, w.owner
+        FROM regular_field_to_view rfv
+        JOIN views v ON rfv.view_id = v.id
         LEFT JOIN workbooks w ON v.workbook_id = w.id
-        WHERE fv.field_id = :field_id
+        WHERE rfv.field_id = :field_id
     """), {'field_id': field_id}).fetchall()
     
     views_data = []
     workbooks_set = {}
     for row in views_result:
         views_data.append({
-            'id': row[0],
-            'name': row[1],
-            'view_type': row[2],
-            'workbook_id': row[3],
-            'workbook_name': row[4]
+            'id': row[0], 'name': row[1], 'view_type': row[2],
+            'workbook_id': row[3], 'workbook_name': row[4]
         })
-        # 收集工作簿
         if row[3] and row[3] not in workbooks_set:
             workbooks_set[row[3]] = {
-                'id': row[3],
-                'name': row[4],
-                'project_name': row[5],
-                'owner': row[6]
+                'id': row[3], 'name': row[4], 'project_name': row[5], 'owner': row[6]
             }
+    
     data['used_in_views'] = views_data
-    
-    # 如果字段直接定义于某个工作簿（workbook_id 非空），也要加入 workbooks_set
-    # 这样即使字段未被任何视图使用，也能展示它的"定义工作簿"
-    if field.workbook_id and field.workbook_id not in workbooks_set:
-        wb = session.query(Workbook).filter(Workbook.id == field.workbook_id).first()
-        if wb:
-            workbooks_set[field.workbook_id] = {
-                'id': wb.id,
-                'name': wb.name,
-                'project_name': wb.project_name,
-                'owner': wb.owner,
-                'is_defining_workbook': True  # 标记为定义工作簿
-            }
-    
     data['used_in_workbooks'] = list(workbooks_set.values())
-    
-    # 兼容性字段：提供驼峰式命名给前端
     data['usedInViews'] = data['used_in_views']
     data['usedInWorkbooks'] = data['used_in_workbooks']
-
-    # 计算字段额外信息
-    calc_field = session.query(CalculatedField).filter(
-        CalculatedField.field_id == field_id
-    ).first()
-    if calc_field:
-        data['calculated_field_info'] = {
-            'formula': calc_field.formula,
-            'complexity_score': calc_field.complexity_score,
-            'reference_count': calc_field.reference_count
-        }
-        # 解析公式中引用的字段
-        if calc_field.formula and isinstance(calc_field.formula, str):
-            refs = re.findall(r'\[(.*?)\]', calc_field.formula)
-            unique_refs = list(set(refs))
-            ref_fields = []
-            for ref_name in unique_refs:
-                ref_field = session.query(Field).filter(Field.name == ref_name).first()
-                if ref_field:
-                    ref_fields.append({
-                        'id': ref_field.id,
-                        'name': ref_field.name,
-                        'data_type': ref_field.data_type,
-                        'role': ref_field.role,
-                        'is_calculated': ref_field.is_calculated
-                    })
-                else:
-                    ref_fields.append({'name': ref_name, 'id': None})
-            data['formula_references'] = ref_fields
-
+    
+    # 获取使用该字段的指标 (通过 calc_field_dependencies)
+    metric_deps = session.execute(text("""
+        SELECT DISTINCT cf.id, cf.name, cf.formula, cf.role, cf.data_type,
+               cf.datasource_id, d.name as ds_name, cf.workbook_id, w.name as wb_name
+        FROM calc_field_dependencies cfd
+        JOIN calculated_fields cf ON cfd.source_field_id = cf.id
+        LEFT JOIN datasources d ON cf.datasource_id = d.id
+        LEFT JOIN workbooks w ON cf.workbook_id = w.id
+        WHERE cfd.dependency_regular_field_id = :field_id
+        LIMIT 100
+    """), {'field_id': field_id}).fetchall()
+    
+    data['used_by_metrics'] = [{
+        'id': row[0], 'name': row[1], 'formula': row[2], 'role': row[3], 'dataType': row[4],
+        'datasourceId': row[5], 'datasourceName': row[6],
+        'workbookId': row[7], 'workbookName': row[8]
+    } for row in metric_deps]
+    
     # 统计信息
     data['stats'] = {
         'view_count': len(views_data),
         'workbook_count': len(workbooks_set),
-        'metric_count': len(data.get('used_by_metrics', [])),
-        'related_datasource_count': 0
+        'metric_count': len(data['used_by_metrics']),
+        'datasource_count': len(data['all_datasources'])
     }
-
-    # 获取关联数据源 (相同表 + 相同规范名称)
-    # 规范名称 = upstream_column_name OR name
-    canonical_name = field.upstream_column.name if field.upstream_column else field.name
     
-    siblings = []
-    if field.table_id:
-        # 有物理表关联：精确匹配物理列
-        siblings = session.query(Field).filter(
-            Field.table_id == field.table_id,
-            case(
-                (Field.upstream_column_id != None, Field.upstream_column.has(name=canonical_name)),
-                else_=Field.name == canonical_name
-            )
-        ).options(selectinload(Field.datasource)).all()
-    else:
-        # 无物理表（如内置字段、计算字段）：按名称松散聚合
-        # 查找所有同名字段 (限制 100 个防止性能问题)
-        siblings = session.query(Field).filter(
-            Field.name == field.name,
-            Field.table_id == None
-        ).options(selectinload(Field.datasource)).limit(100).all()
-
-    related_datasources = []
-    ds_ids = set()
-    
-    # 聚合所有兄弟字段的信息
-    total_view_count = 0
-    total_workbook_count = 0
-    
-    # 先处理当前字段的数据源
-    if field.datasource and field.datasource.id not in ds_ids:
-        ds_ids.add(field.datasource.id)
-        related_datasources.append({
-            'id': field.datasource.id,
-            'name': field.datasource.name,
-            'project_name': field.datasource.project_name,
-            'is_certified': field.datasource.is_certified,
-            'field_id': field.id,
-            'field_name': field.name,
-            'field_name': field.name,
-            'is_current': True,
-            'description': field.datasource.description,
-            'certification_note': field.datasource.certification_note
-        })
-    elif field.workbook and f"wb-{field.workbook.id}" not in ds_ids:
-        # 兜底：数据源不存在时，显示工作簿作为归属
-        ds_ids.add(f"wb-{field.workbook.id}")
-        related_datasources.append({
-            'id': f"embedded-{field.workbook.id}",
-            'name': f"{field.workbook.name} (内部连接)",
-            'project_name': field.workbook.project_name,
-            'is_certified': False,
-            'field_id': field.id,
-            'field_name': field.name,
-            'is_current': True,
-            'is_embedded_fallback': True
-        })
-
-    for sib in siblings:
-        if sib.id == field_id:
-            continue # 跳过自己 (已处理)
-            
-        # 累加统计数据 (简单的累加可能不准确，因为可能同一视图引用了多个 sibling，但对于概览来说足够了)
-        # 注意：这里我们无法直接获取每个 sibling 的 view_count，除非也预加载了
-        # 为了性能，这里暂时不累加 siblings 的详细 view/workbook 计数，只聚合数据源
-        
-        if sib.datasource and sib.datasource.id not in ds_ids:
-            ds_ids.add(sib.datasource.id)
-            related_datasources.append({
-                'id': sib.datasource.id,
-                'name': sib.datasource.name,
-                'project_name': sib.datasource.project_name,
-                'is_certified': sib.datasource.is_certified,
-                'field_id': sib.id, 
-                'field_name': sib.name,
-                'field_name': sib.name,
-                'is_current': False,
-                'description': sib.datasource.description,
-                'certification_note': sib.datasource.certification_note
-            })
-        elif sib.workbook and f"wb-{sib.workbook.id}" not in ds_ids:
-            # 兜底：sibling 的数据源不存在时，显示其工作簿作为归属
-            ds_ids.add(f"wb-{sib.workbook.id}")
-            related_datasources.append({
-                'id': f"embedded-{sib.workbook.id}",
-                'name': f"{sib.workbook.name} (内部连接)",
-                'project_name': sib.workbook.project_name,
-                'is_certified': False,
-                'field_id': sib.id, 
-                'field_name': sib.name,
-                'is_current': False,
-                'is_embedded_fallback': True
-            })
-
-    
-    data['related_datasources'] = related_datasources
-    data['stats']['related_datasource_count'] = len(related_datasources)
-
-    # 为字段构建 tableau_url：因字段无独立 Tableau 页面，指向其所属数据源或工作簿
-    if field.datasource and field.datasource.vizportal_url_id:
-        data['tableau_url'] = build_tableau_url('datasource', vizportal_url_id=field.datasource.vizportal_url_id)
-    elif field.datasource and field.datasource.uri:
-        data['tableau_url'] = build_tableau_url('datasource', uri=field.datasource.uri, luid=field.datasource.luid)
-    elif field.workbook:
-        # 尝试获取工作簿第一个视图的路径
-        first_view = session.query(View).filter(View.workbook_id == field.workbook_id).first()
-        if first_view and first_view.path:
-            data['tableau_url'] = build_tableau_url('workbook', path=first_view.path)
-        else:
-            data['tableau_url'] = None
+    # 构建 Tableau URL
+    if field_row.vizportal_url_id:
+        data['tableau_url'] = build_tableau_url('datasource', vizportal_url_id=field_row.vizportal_url_id)
     else:
         data['tableau_url'] = None
-
+    
     return jsonify(data)
 
 
@@ -2919,16 +2757,16 @@ def get_metrics_unused():
     session = g.db_session
     from sqlalchemy import text
     
+    # 直接从 calculated_fields 表查询（新的四表架构）
     sql = """
         SELECT 
-            f.id, f.name, f.datasource_id, d.name as datasource_name,
+            cf.id, cf.name, cf.datasource_id, d.name as datasource_name,
             cf.formula, cf.reference_count
-        FROM fields f
-        JOIN calculated_fields cf ON f.id = cf.field_id
-        LEFT JOIN datasources d ON f.datasource_id = d.id
+        FROM calculated_fields cf
+        LEFT JOIN datasources d ON cf.datasource_id = d.id
         WHERE (cf.reference_count IS NULL OR cf.reference_count = 0)
-          AND (f.usage_count IS NULL OR f.usage_count = 0)
-        ORDER BY d.name, f.name
+          AND (cf.usage_count IS NULL OR cf.usage_count = 0)
+        ORDER BY d.name, cf.name
     """
     rows = session.execute(text(sql)).fetchall()
     
@@ -2968,13 +2806,13 @@ def get_metrics_complex():
     session = g.db_session
     from sqlalchemy import text
     
+    # 直接从 calculated_fields 表查询（新的四表架构）
     sql = """
         SELECT 
-            f.id, f.name, f.datasource_id, d.name as datasource_name,
+            cf.id, cf.name, cf.datasource_id, d.name as datasource_name,
             cf.formula, cf.complexity_score, cf.reference_count
-        FROM fields f
-        JOIN calculated_fields cf ON f.id = cf.field_id
-        LEFT JOIN datasources d ON f.datasource_id = d.id
+        FROM calculated_fields cf
+        LEFT JOIN datasources d ON cf.datasource_id = d.id
         WHERE LENGTH(cf.formula) > 200 OR cf.complexity_score > 5
         ORDER BY LENGTH(cf.formula) DESC
     """
@@ -3019,7 +2857,7 @@ def get_metrics_complex():
 @api_bp.route('/metrics/catalog')
 def get_metrics_catalog():
     """
-    获取指标目录 - 按公式哈希聚合去重
+    获取指标目录 - 按公式哈希聚合去重（使用新的四表架构）
     
     聚合规则：按 (name + formula_hash) 分组
     返回：name, formula, role, instance_count, total_references, complexity, datasources, workbooks
@@ -3038,43 +2876,40 @@ def get_metrics_catalog():
     sort = request.args.get('sort', 'total_references')
     order = request.args.get('order', 'desc')
     
-    # 构建动态条件
-    conditions = ["f.is_calculated = 1"]
+    # 构建动态条件（直接使用 calculated_fields 表）
+    conditions = []
     params = {}
     
     if search:
-        conditions.append("(f.name LIKE :search OR cf.formula LIKE :search)")
+        conditions.append("(cf.name LIKE :search OR cf.formula LIKE :search)")
         params['search'] = f'%{search}%'
     
     if role_filter:
-        conditions.append("f.role = :role")
+        conditions.append("cf.role = :role")
         params['role'] = role_filter
     
-    where_clause = "WHERE " + " AND ".join(conditions)
+    where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
     
-    # 聚合查询
-    # 按 (name + formula_hash) 分组
-    # 修复：instance_count 使用唯一位置（数据源 OR 工作簿）计数
+    # 聚合查询 - 直接从 calculated_fields 表
     base_sql = f"""
         SELECT 
-            MIN(f.id) as representative_id,
-            f.name,
+            MIN(cf.id) as representative_id,
+            cf.name,
             cf.formula,
             cf.formula_hash,
-            MAX(f.role) as role,
-            MAX(f.data_type) as data_type,
-            MAX(f.description) as description,
-            COUNT(DISTINCT COALESCE(f.datasource_id, f.workbook_id)) as instance_count,
+            MAX(cf.role) as role,
+            MAX(cf.data_type) as data_type,
+            MAX(cf.description) as description,
+            COUNT(DISTINCT COALESCE(cf.datasource_id, cf.workbook_id)) as instance_count,
             MAX(cf.complexity_score) as complexity,
             COALESCE(SUM(cf.reference_count), 0) as total_references,
-            GROUP_CONCAT(DISTINCT CASE WHEN f.datasource_id IS NOT NULL THEN f.datasource_id || '|' || COALESCE(d.name, 'Unknown') END) as datasource_info,
-            GROUP_CONCAT(DISTINCT CASE WHEN f.workbook_id IS NOT NULL THEN f.workbook_id || '|' || COALESCE(w.name, 'Unknown') END) as workbook_info
-        FROM fields f
-        INNER JOIN calculated_fields cf ON f.id = cf.field_id
-        LEFT JOIN datasources d ON f.datasource_id = d.id
-        LEFT JOIN workbooks w ON f.workbook_id = w.id
+            GROUP_CONCAT(DISTINCT CASE WHEN cf.datasource_id IS NOT NULL THEN cf.datasource_id || '|' || COALESCE(d.name, 'Unknown') END) as datasource_info,
+            GROUP_CONCAT(DISTINCT CASE WHEN cf.workbook_id IS NOT NULL THEN cf.workbook_id || '|' || COALESCE(w.name, 'Unknown') END) as workbook_info
+        FROM calculated_fields cf
+        LEFT JOIN datasources d ON cf.datasource_id = d.id
+        LEFT JOIN workbooks w ON cf.workbook_id = w.id
         {where_clause}
-        GROUP BY f.name, cf.formula_hash
+        GROUP BY cf.name, cf.formula_hash
     """
 
     
@@ -3107,23 +2942,21 @@ def get_metrics_catalog():
     # 构建结果
     items = []
     for row in rows:
-        # 解析数据源列表（新格式：id|name,id|name,...）
+        # 解析数据源列表（id|name,id|name,...）
         datasources = []
         if row.datasource_info:
             for ds_pair in row.datasource_info.split(','):
                 if '|' in ds_pair:
                     ds_id, ds_name = ds_pair.split('|', 1)
-                    # 过滤掉空的 datasource_id（None|Unknown 格式）
                     if ds_id and ds_id != 'None':
                         datasources.append({'id': ds_id, 'name': ds_name})
         
-        # 解析工作簿列表（新格式：id|name,id|name,...）
+        # 解析工作簿列表（id|name,id|name,...）
         workbooks = []
         if row.workbook_info:
             for wb_pair in row.workbook_info.split(','):
                 if '|' in wb_pair:
                     wb_id, wb_name = wb_pair.split('|', 1)
-                    # 过滤掉空的 workbook_id（None|Unknown 格式）
                     if wb_id and wb_id != 'None':
                         workbooks.append({'id': wb_id, 'name': wb_name})
 
@@ -3162,11 +2995,10 @@ def get_metrics_catalog():
     facets = {}
     role_sql = f"""
         SELECT sub.role, COUNT(*) FROM (
-            SELECT MAX(f.role) as role
-            FROM fields f
-            INNER JOIN calculated_fields cf ON f.id = cf.field_id
+            SELECT MAX(cf.role) as role
+            FROM calculated_fields cf
             {where_clause}
-            GROUP BY f.name, cf.formula_hash
+            GROUP BY cf.name, cf.formula_hash
         ) sub GROUP BY sub.role
     """
     role_counts = session.execute(text(role_sql), params).fetchall()
@@ -3195,30 +3027,29 @@ def get_metrics_catalog_duplicate():
     session = g.db_session
     from sqlalchemy import text
     
+    # 直接从 calculated_fields 表查询（新的四表架构）
     sql = """
         SELECT 
-            MIN(f.id) as representative_id,
-            f.name,
+            MIN(cf.id) as representative_id,
+            cf.name,
             cf.formula,
             cf.formula_hash,
-            MAX(f.role) as role,
-            MAX(f.data_type) as data_type,
-            MAX(f.description) as description,
+            MAX(cf.role) as role,
+            MAX(cf.data_type) as data_type,
+            MAX(cf.description) as description,
             COUNT(*) as instance_count,
             MAX(cf.complexity_score) as complexity,
             COALESCE(SUM(cf.reference_count), 0) as total_references,
-            GROUP_CONCAT(DISTINCT f.datasource_id) as datasource_ids,
+            GROUP_CONCAT(DISTINCT cf.datasource_id) as datasource_ids,
             GROUP_CONCAT(DISTINCT d.name) as datasource_names,
-            GROUP_CONCAT(DISTINCT f.workbook_id) as workbook_ids,
+            GROUP_CONCAT(DISTINCT cf.workbook_id) as workbook_ids,
             GROUP_CONCAT(DISTINCT w.name) as workbook_names
-        FROM fields f
-        INNER JOIN calculated_fields cf ON f.id = cf.field_id
-        LEFT JOIN datasources d ON f.datasource_id = d.id
-        LEFT JOIN workbooks w ON f.workbook_id = w.id
-        WHERE f.is_calculated = 1
-        GROUP BY f.name, cf.formula_hash
+        FROM calculated_fields cf
+        LEFT JOIN datasources d ON cf.datasource_id = d.id
+        LEFT JOIN workbooks w ON cf.workbook_id = w.id
+        GROUP BY cf.name, cf.formula_hash
         HAVING COUNT(*) > 1
-        ORDER BY instance_count DESC, f.name
+        ORDER BY instance_count DESC, cf.name
     """
     rows = session.execute(text(sql)).fetchall()
     
@@ -3268,30 +3099,30 @@ def get_metrics_catalog_complex():
     session = g.db_session
     from sqlalchemy import text
     
+    # 直接从 calculated_fields 表查询（新的四表架构）
     sql = """
         SELECT 
-            MIN(f.id) as representative_id,
-            f.name,
+            MIN(cf.id) as representative_id,
+            cf.name,
             cf.formula,
             cf.formula_hash,
-            MAX(f.role) as role,
-            MAX(f.data_type) as data_type,
-            MAX(f.description) as description,
+            MAX(cf.role) as role,
+            MAX(cf.data_type) as data_type,
+            MAX(cf.description) as description,
             COUNT(*) as instance_count,
             MAX(cf.complexity_score) as complexity,
             LENGTH(cf.formula) as formula_length,
             COALESCE(SUM(cf.reference_count), 0) as total_references,
-            GROUP_CONCAT(DISTINCT f.datasource_id) as datasource_ids,
+            GROUP_CONCAT(DISTINCT cf.datasource_id) as datasource_ids,
             GROUP_CONCAT(DISTINCT d.name) as datasource_names,
-            GROUP_CONCAT(DISTINCT f.workbook_id) as workbook_ids,
+            GROUP_CONCAT(DISTINCT cf.workbook_id) as workbook_ids,
             GROUP_CONCAT(DISTINCT w.name) as workbook_names
-        FROM fields f
-        INNER JOIN calculated_fields cf ON f.id = cf.field_id
-        LEFT JOIN datasources d ON f.datasource_id = d.id
-        LEFT JOIN workbooks w ON f.workbook_id = w.id
-        WHERE f.is_calculated = 1 AND LENGTH(cf.formula) > 100
-        GROUP BY f.name, cf.formula_hash
-        ORDER BY formula_length DESC, f.name
+        FROM calculated_fields cf
+        LEFT JOIN datasources d ON cf.datasource_id = d.id
+        LEFT JOIN workbooks w ON cf.workbook_id = w.id
+        WHERE LENGTH(cf.formula) > 100
+        GROUP BY cf.name, cf.formula_hash
+        ORDER BY formula_length DESC, cf.name
     """
     rows = session.execute(text(sql)).fetchall()
     
@@ -3354,31 +3185,30 @@ def get_metrics_catalog_unused():
     session = g.db_session
     from sqlalchemy import text
     
+    # 直接从 calculated_fields 表查询（新的四表架构）
     sql = """
         SELECT 
-            MIN(f.id) as representative_id,
-            f.name,
+            MIN(cf.id) as representative_id,
+            cf.name,
             cf.formula,
             cf.formula_hash,
-            MAX(f.role) as role,
-            MAX(f.data_type) as data_type,
-            MAX(f.description) as description,
+            MAX(cf.role) as role,
+            MAX(cf.data_type) as data_type,
+            MAX(cf.description) as description,
             COUNT(*) as instance_count,
             MAX(cf.complexity_score) as complexity,
             COALESCE(SUM(cf.reference_count), 0) as total_references,
-            GROUP_CONCAT(DISTINCT f.datasource_id) as datasource_ids,
+            GROUP_CONCAT(DISTINCT cf.datasource_id) as datasource_ids,
             GROUP_CONCAT(DISTINCT d.name) as datasource_names,
-            GROUP_CONCAT(DISTINCT f.workbook_id) as workbook_ids,
+            GROUP_CONCAT(DISTINCT cf.workbook_id) as workbook_ids,
             GROUP_CONCAT(DISTINCT w.name) as workbook_names
-        FROM fields f
-        INNER JOIN calculated_fields cf ON f.id = cf.field_id
-        LEFT JOIN datasources d ON f.datasource_id = d.id
-        LEFT JOIN workbooks w ON f.workbook_id = w.id
-        WHERE f.is_calculated = 1
-        GROUP BY f.name, cf.formula_hash
+        FROM calculated_fields cf
+        LEFT JOIN datasources d ON cf.datasource_id = d.id
+        LEFT JOIN workbooks w ON cf.workbook_id = w.id
+        GROUP BY cf.name, cf.formula_hash
         HAVING COALESCE(SUM(cf.reference_count), 0) = 0
-           AND COALESCE(SUM(f.usage_count), 0) = 0
-        ORDER BY instance_count DESC, f.name
+           AND COALESCE(SUM(cf.usage_count), 0) = 0
+        ORDER BY instance_count DESC, cf.name
     """
     rows = session.execute(text(sql)).fetchall()
     
@@ -3422,9 +3252,9 @@ def get_metrics_catalog_unused():
 @api_bp.route('/metrics')
 def get_metrics():
     """
-    获取指标列表 - SQLAlchemy Core 直查版 (极致性能)
+    获取指标列表 - 使用新的 calculated_fields 表
     
-    指标定义：计算字段 (is_calculated=True) 
+    指标定义：计算字段实例
     - 业务指标：role='measure' 的计算字段
     - 技术计算：role='dimension' 的计算字段
     """
@@ -3434,14 +3264,12 @@ def get_metrics():
     order = request.args.get('order', 'desc')
     metric_type = request.args.get('metric_type', 'all')
     role_filter = request.args.get('role', '')
-    has_duplicate = request.args.get('hasDuplicate', '')
     
     # 分页参数
     page = request.args.get('page', 1, type=int)
     page_size = request.args.get('page_size', 50, type=int)
     page_size = min(page_size, 10000)
     
-    # ========== SQLAlchemy Core 直查 ==========
     from sqlalchemy import text
     
     # 构建动态 WHERE 条件
@@ -3449,53 +3277,35 @@ def get_metrics():
     params = {}
     
     if metric_type == 'business':
-        conditions.append("f.role = 'measure'")
+        conditions.append("cf.role = 'measure'")
     elif metric_type == 'technical':
-        conditions.append("f.role = 'dimension'")
+        conditions.append("cf.role = 'dimension'")
     
     if role_filter:
-        conditions.append("f.role = :role_filter")
+        conditions.append("cf.role = :role_filter")
         params['role_filter'] = role_filter
     
-    if has_duplicate:
-        if has_duplicate.lower() == 'true':
-            conditions.append("cf.has_duplicates = 1")
-        elif has_duplicate.lower() == 'false':
-            conditions.append("(cf.has_duplicates = 0 OR cf.has_duplicates IS NULL)")
-    
     if search:
-        conditions.append("(f.name LIKE :search OR cf.formula LIKE :search)")
+        conditions.append("(cf.name LIKE :search OR cf.formula LIKE :search)")
         params['search'] = f'%{search}%'
     
     where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
     
     # Facets 统计
-    # Facets 统计 (仅统计唯一指标定义)
-    # 使用子查询先分组，再统计
     facets_sql = f"""
         SELECT 
             'metricType' as facet_key,
-            CASE WHEN sub.role = 'measure' THEN 'business' ELSE 'technical' END as facet_value,
+            CASE WHEN cf.role = 'measure' THEN 'business' ELSE 'technical' END as facet_value,
             COUNT(*) as cnt
-        FROM (
-            SELECT MAX(f.role) as role
-            FROM fields f
-            INNER JOIN calculated_fields cf ON f.id = cf.field_id
-            {where_clause}
-            GROUP BY f.name, cf.formula
-        ) sub
+        FROM calculated_fields cf
+        {where_clause}
         GROUP BY facet_value
         UNION ALL
-        SELECT 'role', sub.role, COUNT(*)
-        FROM (
-            SELECT MAX(f.role) as role
-            FROM fields f
-            INNER JOIN calculated_fields cf ON f.id = cf.field_id
-            {where_clause}
-            GROUP BY f.name, cf.formula
-        ) sub
-        WHERE sub.role IS NOT NULL
-        GROUP BY sub.role
+        SELECT 'role', cf.role, COUNT(*)
+        FROM calculated_fields cf
+        {where_clause}
+        WHERE cf.role IS NOT NULL
+        GROUP BY cf.role
     """
     facets_rows = session.execute(text(facets_sql), params).fetchall()
     facets = {}
@@ -3508,29 +3318,22 @@ def get_metrics():
     
     # 1. 统计查询
     stats_sql = f"""
-        SELECT COUNT(*) as total FROM (
-            SELECT 1
-            FROM fields f
-            INNER JOIN calculated_fields cf ON f.id = cf.field_id
-            {where_clause}
-            GROUP BY f.name, cf.formula
-        ) as sub
+        SELECT COUNT(*) as total FROM calculated_fields cf {where_clause}
     """
     stats = session.execute(text(stats_sql), params).first()
     total = stats.total or 0
     total_pages = (total + page_size - 1) // page_size if total > 0 else 0
     
     # 2. 构建排序
-    # 注意：排序字段必须使用聚合函数
-    order_clause = "ORDER BY f.name ASC"
+    order_clause = "ORDER BY cf.name ASC"
     if sort == 'complexity':
-        order_clause = f"ORDER BY MAX(cf.complexity_score) {'DESC' if order == 'desc' else 'ASC'}"
+        order_clause = f"ORDER BY cf.complexity_score {'DESC' if order == 'desc' else 'ASC'}"
     elif sort == 'referenceCount':
-        order_clause = f"ORDER BY SUM(cf.reference_count) {'DESC' if order == 'desc' else 'ASC'}"
+        order_clause = f"ORDER BY cf.reference_count {'DESC' if order == 'desc' else 'ASC'}"
     elif sort == 'name':
-        order_clause = f"ORDER BY f.name {'DESC' if order == 'desc' else 'ASC'}"
-    elif sort == 'usageCount': # 之前的 workbook_count 排序
-         order_clause = f"ORDER BY COUNT(DISTINCT f.workbook_id) {'DESC' if order == 'desc' else 'ASC'}"
+        order_clause = f"ORDER BY cf.name {'DESC' if order == 'desc' else 'ASC'}"
+    elif sort == 'usageCount':
+        order_clause = f"ORDER BY cf.usage_count {'DESC' if order == 'desc' else 'ASC'}"
     
     # 3. 数据查询
     offset = (page - 1) * page_size
@@ -3539,26 +3342,14 @@ def get_metrics():
     
     data_sql = f"""
         SELECT 
-            MIN(f.id) as id, 
-            f.name, 
-            MAX(f.description) as description, 
-            MAX(f.role) as role, 
-            MAX(f.data_type) as data_type, 
-            SUM(f.usage_count) as usage_count,
-            MAX(f.datasource_id) as datasource_id, 
-            MAX(d.name) as datasource_name,
-            MAX(f.created_at) as created_at, 
-            MAX(f.updated_at) as updated_at,
-            cf.formula, 
-            MAX(cf.complexity_score) as complexity_score, 
-            SUM(cf.reference_count) as reference_count,
-            COUNT(*) as instance_count,
-            MAX(cf.dependency_count) as dependency_count
-        FROM fields f
-        INNER JOIN calculated_fields cf ON f.id = cf.field_id
-        LEFT JOIN datasources d ON f.datasource_id = d.id
+            cf.id, cf.name, cf.description, cf.role, cf.data_type,
+            cf.formula, cf.formula_hash, cf.complexity_score, cf.reference_count,
+            cf.usage_count, cf.unique_id,
+            cf.datasource_id, cf.workbook_id, cf.created_at, cf.updated_at,
+            d.name as datasource_name
+        FROM calculated_fields cf
+        LEFT JOIN datasources d ON cf.datasource_id = d.id
         {where_clause}
-        GROUP BY f.name, cf.formula
         {order_clause}
         LIMIT :limit OFFSET :offset
     """
@@ -3572,18 +3363,18 @@ def get_metrics():
             'name': row.name,
             'description': row.description or '',
             'formula': row.formula or '',
+            'formulaHash': row.formula_hash,
             'role': row.role,
             'dataType': row.data_type,
             'complexity': row.complexity_score or 0,
             'referenceCount': row.reference_count or 0,
             'datasourceName': row.datasource_name or '-',
             'datasourceId': row.datasource_id,
-            'similarMetrics': [],
-            'dependencyFields': [],
-            'dependencyCount': row.dependency_count or 0,
-            'instanceCount': row.instance_count, # 相同name+formula的实例数量
+            'workbookId': row.workbook_id,
+            'uniqueId': row.unique_id,  # 关联的标准指标ID
             'usageCount': row.usage_count or 0,
-            'hasDuplicate': False # 聚合后不再显示重复标记
+            'createdAt': row.created_at.isoformat() if row.created_at else None,
+            'updatedAt': row.updated_at.isoformat() if row.updated_at else None
         })
     
     return jsonify({
@@ -3598,240 +3389,182 @@ def get_metrics():
 
 @api_bp.route('/metrics/<metric_id>')
 def get_metric_detail(metric_id):
-    """获取单条指标详情 - 高性能版（使用预计算字段和索引）"""
+    """获取单条指标详情 - 使用新的 calculated_fields 表"""
     session = g.db_session
-    from sqlalchemy.orm import joinedload, selectinload
-    # Ensure explicit import if needed, though usually top-level is fine
-    from ..models import FieldDependency
-
-    result = session.query(Field, CalculatedField).join(
-        CalculatedField, Field.id == CalculatedField.field_id
-    ).options(
-        joinedload(Field.datasource).selectinload(Datasource.tables).joinedload(DBTable.database),
-        selectinload(Field.views).joinedload(View.workbook)
-    ).filter(Field.id == metric_id).first()
-
-    if not result:
+    from sqlalchemy import text
+    
+    # 查询指标基本信息
+    metric_sql = """
+        SELECT 
+            cf.id, cf.name, cf.description, cf.role, cf.data_type,
+            cf.formula, cf.formula_hash, cf.complexity_score, cf.reference_count,
+            cf.usage_count, cf.unique_id,
+            cf.datasource_id, cf.workbook_id, cf.created_at, cf.updated_at,
+            d.name as datasource_name, d.project_name as ds_project_name, d.owner as ds_owner, 
+            d.is_certified as ds_certified, d.vizportal_url_id,
+            w.name as workbook_name, w.project_name as wb_project_name, w.owner as wb_owner
+        FROM calculated_fields cf
+        LEFT JOIN datasources d ON cf.datasource_id = d.id
+        LEFT JOIN workbooks w ON cf.workbook_id = w.id
+        WHERE cf.id = :metric_id
+    """
+    metric_row = session.execute(text(metric_sql), {'metric_id': metric_id}).first()
+    
+    if not metric_row:
         return jsonify({'error': 'Not found'}), 404
-
-    field, calc_field = result
+    
+    metric_name = metric_row.name
+    formula_hash = metric_row.formula_hash
     
     # 1. 查找相似指标 (使用 formula_hash 快速查重)
     similar = []
-    if calc_field.formula_hash:
-        similar_results = session.query(Field, CalculatedField).join(
-            CalculatedField, Field.id == CalculatedField.field_id
-        ).options(
-            selectinload(Field.datasource),
-            selectinload(Field.views).joinedload(View.workbook)
-        ).filter(
-            CalculatedField.formula_hash == calc_field.formula_hash,
-            Field.id != field.id
-        ).all()
+    if formula_hash:
+        similar_result = session.execute(text("""
+            SELECT cf.id, cf.name, cf.datasource_id, d.name as ds_name, cf.usage_count
+            FROM calculated_fields cf
+            LEFT JOIN datasources d ON cf.datasource_id = d.id
+            WHERE cf.formula_hash = :hash AND cf.id != :metric_id
+            LIMIT 50
+        """), {'hash': formula_hash, 'metric_id': metric_id}).fetchall()
         
-        for s_field, s_calc in similar_results:
-            # 使用预计算血缘表获取相似指标的视图和工作簿
-            from sqlalchemy import text as sql_text
-            sim_views_result = session.execute(sql_text("""
-                SELECT fv.view_id, v.name, v.view_type, v.workbook_id, w.name as wb_name, w.project_name, w.owner
-                FROM field_to_view fv
-                JOIN views v ON fv.view_id = v.id
-                LEFT JOIN workbooks w ON v.workbook_id = w.id
-                WHERE fv.field_id = :field_id
-            """), {'field_id': s_field.id}).fetchall()
-            
-            dup_views = []
-            dup_workbooks = {}
-            for row in sim_views_result:
-                dup_views.append({
-                    'id': row[0],
-                    'name': row[1],
-                    'view_type': row[2],
-                    'workbook_id': row[3],
-                    'workbook_name': row[4] or 'Unknown'
-                })
-                if row[3] and row[3] not in dup_workbooks:
-                    dup_workbooks[row[3]] = {
-                        'id': row[3],
-                        'name': row[4],
-                        'project_name': row[5],
-                        'owner': row[6]
-                    }
+        for row in similar_result:
             similar.append({
-                'id': s_field.id,
-                'name': s_field.name,
-                'datasourceName': s_field.datasource.name if s_field.datasource else 'Unknown',
-                'datasourceId': s_field.datasource_id,
-                'usageCount': s_field.usage_count or 0,
-                'usedInViews': dup_views,
-                'usedInWorkbooks': list(dup_workbooks.values())
+                'id': row[0], 'name': row[1], 'datasourceId': row[2],
+                'datasourceName': row[3] or 'Unknown', 'usageCount': row[4] or 0
             })
-
-    # 2. 获取依赖字段 (Lineage)
-    dependencies = []
-    # Explicitly using FieldDependency imported locally to avoid any NameError
-    try:
-        deps = session.query(FieldDependency).filter(FieldDependency.source_field_id == field.id).all()
-        for d in deps:
-            dependencies.append({
-                'name': d.dependency_name,
-                'id': d.dependency_field_id
-            })
-    except Exception as e:
-        print(f"Error fetching dependencies: {e}")
-        # Add a dummy dependency to see if it works
-        dependencies.append({'name': 'Error: ' + str(e), 'id': None})
-
-    # 3. 数据源及上游表信息 (使用预计算血缘表)
-    from sqlalchemy import text
-    datasource_info = None
-    upstream_tables = []
     
-    # 从预计算血缘表获取数据源和上游表
-    lineage_result = session.execute(text("""
-        SELECT DISTINCT 
-            fl.datasource_id, d.name as ds_name, d.project_name, d.owner, d.is_certified,
-            fl.table_id, t.name as table_name, t.schema, db.name as db_name
-        FROM field_full_lineage fl
-        LEFT JOIN datasources d ON fl.datasource_id = d.id
-        LEFT JOIN tables t ON fl.table_id = t.id
-        LEFT JOIN databases db ON t.database_id = db.id
-        WHERE fl.field_id = :field_id
-    """), {'field_id': metric_id}).fetchall()
+    # 2. 获取依赖字段 (通过 calc_field_dependencies)
+    dependencies = session.execute(text("""
+        SELECT cfd.dependency_name, cfd.dependency_regular_field_id, 
+               rf.name as field_name, rf.role, rf.data_type
+        FROM calc_field_dependencies cfd
+        LEFT JOIN regular_fields rf ON cfd.dependency_regular_field_id = rf.id
+        WHERE cfd.source_field_id = :metric_id
+    """), {'metric_id': metric_id}).fetchall()
     
-    # 解析结果
-    ds_set = {}
-    for row in lineage_result:
-        # 数据源信息（取第一个非空的）
-        if row[0] and not datasource_info:
-            datasource_info = {
-                'id': row[0],
-                'name': row[1],
-                'project_name': row[2],
-                'owner': row[3],
-                'is_certified': bool(row[4]) if row[4] is not None else False
-            }
-        # 上游表信息
-        if row[5] and row[5] not in ds_set:
-            ds_set[row[5]] = True
-            upstream_tables.append({
-                'id': row[5],
-                'name': row[6],
-                'schema': row[7],
-                'database_name': row[8]
-            })
-
-
-
-    # 4. 聚合所有同名指标的血缘 (核心：跨工作簿聚合)
-    metric_name = field.name
+    dependency_fields = [{
+        'name': row[0], 'id': row[1], 'fieldName': row[2],
+        'role': row[3], 'dataType': row[4]
+    } for row in dependencies]
     
-    # 4.1 聚合物理表血缘 (derived_tables)
+    # 3. 聚合所有同名指标的血缘 (使用 calc_field_full_lineage)
+    
+    # 3.1 聚合物理表血缘
     table_lineage_result = session.execute(text("""
         SELECT DISTINCT fl.table_id, t.name, t.schema, db.name as db_name, t.database_id
-        FROM fields f
-        JOIN field_full_lineage fl ON f.id = fl.field_id
+        FROM calculated_fields cf
+        JOIN calc_field_full_lineage fl ON cf.id = fl.field_id
         JOIN tables t ON fl.table_id = t.id
         LEFT JOIN databases db ON t.database_id = db.id
-        WHERE f.name = :name AND f.is_calculated = 1 AND fl.table_id IS NOT NULL AND t.id IS NOT NULL
+        WHERE cf.name = :name AND fl.table_id IS NOT NULL AND t.id IS NOT NULL
     """), {'name': metric_name}).fetchall()
     
     derived_tables = [{
-        'id': row[0],
-        'name': row[1],
-        'schema': row[2],
-        'database_name': row[3],
-        'database_id': row[4]
+        'id': row[0], 'name': row[1], 'schema': row[2],
+        'database_name': row[3], 'database_id': row[4]
     } for row in table_lineage_result]
-
-    # 4.2 聚合数据源血缘 (all_datasources)
+    
+    # 3.2 聚合数据源血缘
     ds_lineage_result = session.execute(text("""
         SELECT DISTINCT fl.datasource_id, d.name, d.project_name, d.owner, d.is_certified
-        FROM fields f
-        JOIN field_full_lineage fl ON f.id = fl.field_id
+        FROM calculated_fields cf
+        JOIN calc_field_full_lineage fl ON cf.id = fl.field_id
         LEFT JOIN datasources d ON fl.datasource_id = d.id
-        WHERE f.name = :name AND f.is_calculated = 1 AND fl.datasource_id IS NOT NULL AND d.id IS NOT NULL
+        WHERE cf.name = :name AND fl.datasource_id IS NOT NULL AND d.id IS NOT NULL
     """), {'name': metric_name}).fetchall()
     
     all_datasources = [{
-        'id': row[0],
-        'name': row[1],
-        'project_name': row[2],
-        'owner': row[3],
-        'is_certified': bool(row[4]) if row[4] is not None else False
+        'id': row[0], 'name': row[1], 'project_name': row[2],
+        'owner': row[3], 'is_certified': bool(row[4]) if row[4] is not None else False
     } for row in ds_lineage_result]
-
-    # 4.3 聚合工作簿血缘 (all_workbooks)
+    
+    # 3.3 聚合工作簿血缘
     wb_lineage_result = session.execute(text("""
         SELECT DISTINCT fl.workbook_id, w.name, w.project_name, w.owner
-        FROM fields f
-        JOIN field_full_lineage fl ON f.id = fl.field_id
+        FROM calculated_fields cf
+        JOIN calc_field_full_lineage fl ON cf.id = fl.field_id
         LEFT JOIN workbooks w ON fl.workbook_id = w.id
-        WHERE f.name = :name AND f.is_calculated = 1 AND fl.workbook_id IS NOT NULL AND w.id IS NOT NULL
+        WHERE cf.name = :name AND fl.workbook_id IS NOT NULL AND w.id IS NOT NULL
     """), {'name': metric_name}).fetchall()
     
     all_workbooks = [{
-        'id': row[0],
-        'name': row[1],
-        'project_name': row[2],
-        'owner': row[3]
+        'id': row[0], 'name': row[1], 'project_name': row[2], 'owner': row[3]
     } for row in wb_lineage_result]
-
-    # 4.4 聚合视图血缘 (used_in_views)
+    
+    # 3.4 聚合视图血缘 (通过 calc_field_to_view)
     views_result = session.execute(text("""
-        SELECT DISTINCT fv.view_id, v.name, v.view_type, v.workbook_id, w.name as wb_name, w.project_name, w.owner
-        FROM fields f
-        JOIN field_to_view fv ON f.id = fv.field_id
-        JOIN views v ON fv.view_id = v.id
+        SELECT DISTINCT cfv.view_id, v.name, v.view_type, v.workbook_id, w.name as wb_name
+        FROM calculated_fields cf
+        JOIN calc_field_to_view cfv ON cf.id = cfv.field_id
+        JOIN views v ON cfv.view_id = v.id
         LEFT JOIN workbooks w ON v.workbook_id = w.id
-        WHERE f.name = :name AND f.is_calculated = 1
+        WHERE cf.name = :name
     """), {'name': metric_name}).fetchall()
     
     views_data = [{
-        'id': row[0],
-        'name': row[1],
-        'view_type': row[2],
-        'workbook_id': row[3],
-        'workbook_name': row[4] or 'Unknown'
+        'id': row[0], 'name': row[1], 'view_type': row[2],
+        'workbook_id': row[3], 'workbook_name': row[4] or 'Unknown'
     } for row in views_result]
-
-    # 聚合总计数
-    total_view_count = len(views_data)
-    total_workbook_count = len(all_workbooks)
-
-    metric_data = {
-        'id': field.id,
-        'name': field.name,
-        'description': field.description or '',
-        'formula': calc_field.formula or '',
-        'role': field.role,
-        'dataType': field.data_type,
-        'complexity': calc_field.complexity_score or 0,
-        'referenceCount': total_view_count,
-        'datasourceName': datasource_info['name'] if datasource_info else '-',
-        'datasourceId': field.datasource_id,
-        'datasource_info': datasource_info,
-        'table_info': derived_tables[0] if derived_tables else None, # 用于激活前端“所属数据表”Tab
-        'derived_tables': derived_tables, # 对齐前端期望
-        'derivedTables': derived_tables, # 驼峰兜底
-        'all_datasources': all_datasources, # 对齐前端期望
-        'all_workbooks': all_workbooks, # 对齐前端期望
-        'used_in_views': views_data, # 对齐前端期望
-        'usedInViews': views_data, # 驼峰兜底
-        'similarMetrics': similar,
-        'dependencyFields': dependencies,
-        'hasDuplicate': len(similar) > 0,
-        'related_datasources': all_datasources, # 使用全量聚合
-        'stats': {
-            'view_count': total_view_count,
-            'workbook_count': total_workbook_count,
-            'dependency_count': len(dependencies),
-            'duplicate_count': len(similar),
-            'related_datasource_count': len(all_datasources),
-            'table_count': len(derived_tables)
+    
+    # 所属数据源信息
+    datasource_info = None
+    if metric_row.datasource_id:
+        datasource_info = {
+            'id': metric_row.datasource_id,
+            'name': metric_row.datasource_name,
+            'project_name': metric_row.ds_project_name,
+            'owner': metric_row.ds_owner,
+            'is_certified': metric_row.ds_certified
         }
+    
+    # 构建响应
+    metric_data = {
+        'id': metric_row.id,
+        'name': metric_row.name,
+        'description': metric_row.description or '',
+        'formula': metric_row.formula or '',
+        'formulaHash': metric_row.formula_hash,
+        'role': metric_row.role,
+        'dataType': metric_row.data_type,
+        'complexity': metric_row.complexity_score or 0,
+        'referenceCount': len(views_data),
+        'usageCount': metric_row.usage_count or 0,
+        'uniqueId': metric_row.unique_id,
+        'datasourceName': metric_row.datasource_name or '-',
+        'datasourceId': metric_row.datasource_id,
+        'workbookId': metric_row.workbook_id,
+        'workbookName': metric_row.workbook_name,
+        'datasource_info': datasource_info,
+        'table_info': derived_tables[0] if derived_tables else None,
+        'derived_tables': derived_tables,
+        'derivedTables': derived_tables,
+        'all_datasources': all_datasources,
+        'all_workbooks': all_workbooks,
+        'used_in_views': views_data,
+        'usedInViews': views_data,
+        'usedInWorkbooks': all_workbooks,
+        'similarMetrics': similar,
+        'dependencyFields': dependency_fields,
+        'hasDuplicate': len(similar) > 0,
+        'related_datasources': all_datasources,
+        'stats': {
+            'view_count': len(views_data),
+            'workbook_count': len(all_workbooks),
+            'dependency_count': len(dependency_fields),
+            'duplicate_count': len(similar),
+            'datasource_count': len(all_datasources),
+            'table_count': len(derived_tables)
+        },
+        'createdAt': metric_row.created_at.isoformat() if metric_row.created_at else None,
+        'updatedAt': metric_row.updated_at.isoformat() if metric_row.updated_at else None
     }
-
+    
+    # 构建 Tableau URL
+    if metric_row.vizportal_url_id:
+        metric_data['tableau_url'] = build_tableau_url('datasource', vizportal_url_id=metric_row.vizportal_url_id)
+    else:
+        metric_data['tableau_url'] = None
+    
     return jsonify(metric_data)
 
 
@@ -3981,7 +3714,7 @@ def global_search():
     
     # 搜索指标（计算字段）
     metrics = session.query(Field, CalculatedField).join(
-        CalculatedField, Field.id == CalculatedField.field_id
+        CalculatedField, Field.id == CalculatedField.id
     ).filter(
         (Field.name.ilike(search_pattern)) |
         (CalculatedField.formula.ilike(search_pattern))
@@ -4045,7 +3778,7 @@ def get_lineage_graph(item_type, item_id):
     
     elif item_type == 'metric':
         result = session.query(Field, CalculatedField).join(
-            CalculatedField, Field.id == CalculatedField.field_id
+            CalculatedField, Field.id == CalculatedField.id
         ).filter(Field.id == item_id).first()
         
         if result:
@@ -4581,7 +4314,7 @@ def get_duplicate_metrics():
     
     # 第一步：只查询公式和ID，避免加载全量 Field 对象
     # 这比查询所有对象要快得多，内存占用也小
-    raw_calcs = session.query(CalculatedField.field_id, CalculatedField.formula).all()
+    raw_calcs = session.query(CalculatedField.id, CalculatedField.formula).all()
     
     formula_groups = defaultdict(list)
     
