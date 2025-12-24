@@ -265,8 +265,14 @@ export default function DetailDrawer() {
             const v_down = data.used_in_views || data.usedInViews || [];
             tabs.push({ id: 'views', label: `关联视图 (${v_down.length})`, icon: Layout });
 
-            // 引用工作簿 - 使用聚合的所有同名字段工作簿
-            const allWb = data.all_workbooks || data.usedInWorkbooks || data.used_in_workbooks || [];
+            // 引用工作簿 - 合并所有工作簿来源（优先使用有数据的字段，空数组不算有效）
+            const allWbSources = [
+                data.all_workbooks,
+                data.usedInWorkbooks,
+                data.used_in_workbooks,
+                data.workbooks
+            ];
+            const allWb = allWbSources.find(arr => arr && arr.length > 0) || [];
             tabs.push({ id: 'workbooks', label: `引用工作簿 (${allWb.length})`, icon: BookOpen });
         }
 
@@ -447,7 +453,7 @@ export default function DetailDrawer() {
                                         </span>
                                     )}
                                     {/* 认证状态 */}
-                                    {asset.is_certified && (
+                                    {!!asset.is_certified && (
                                         <span className="flex items-center gap-0.5 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium flex-shrink-0">
                                             <ShieldCheck className="w-3 h-3" /> 认证
                                         </span>
@@ -711,12 +717,12 @@ export default function DetailDrawer() {
                                 <div className="flex items-center gap-2 min-w-0 flex-1">
                                     <Layers className="w-4 h-4 text-indigo-500 flex-shrink-0" />
                                     <span className="text-[13px] font-bold text-gray-900 truncate">{ds.name}</span>
-                                    {ds.is_certified && (
+                                    {!!ds.is_certified && (
                                         <span className="flex items-center gap-0.5 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium flex-shrink-0">
                                             <ShieldCheck className="w-3 h-3" /> 认证
                                         </span>
                                     )}
-                                    {ds.is_published && (
+                                    {!!ds.is_published && (
                                         <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium flex-shrink-0">
                                             已发布
                                         </span>
@@ -1354,7 +1360,15 @@ export default function DetailDrawer() {
             case 'contained_views':
                 return renderAssetSection('包含的工作表', Layout, data.contained_views || [], 'views', 'indigo');
             case 'workbooks':
-                const wbItems = (data.usedInWorkbooks || data.used_in_workbooks || data.workbooks || []).map((wb: any) => ({
+                // 统一工作簿来源优先级（与 Tab 标签保持一致）
+                const wbSources = [
+                    data.all_workbooks,
+                    data.usedInWorkbooks,
+                    data.used_in_workbooks,
+                    data.workbooks
+                ];
+                const wbData = wbSources.find(arr => arr && arr.length > 0) || [];
+                const wbItems = wbData.map((wb: any) => ({
                     ...wb,
                     subtitle: wb.is_defining_workbook
                         ? `✏️ 定义于此工作簿${wb.owner ? ` · ${wb.owner}` : ''}`

@@ -1730,7 +1730,7 @@ def get_view_detail(view_id):
                 'id': row[0],
                 'name': row[1],
                 'project_name': row[2],
-                'is_certified': row[3]
+                'is_certified': bool(row[3]) if row[3] is not None else False
             }
         if row[4] and row[4] not in upstream_tables:
             upstream_tables[row[4]] = {
@@ -2546,13 +2546,14 @@ def get_field_detail(field_id):
     field_name = field.name
     
     # 1. 聚合所有同名字段的物理表血缘
+    # 注意：添加 t.id IS NOT NULL 条件，过滤掉 field_full_lineage 中引用了不存在的 table_id 的记录
     table_lineage_result = session.execute(text("""
         SELECT DISTINCT fl.table_id, t.name, t.schema, db.name as db_name, t.database_id
         FROM fields f
         JOIN field_full_lineage fl ON f.id = fl.field_id
-        LEFT JOIN tables t ON fl.table_id = t.id
+        JOIN tables t ON fl.table_id = t.id
         LEFT JOIN databases db ON t.database_id = db.id
-        WHERE f.name = :field_name AND fl.table_id IS NOT NULL
+        WHERE f.name = :field_name AND fl.table_id IS NOT NULL AND t.id IS NOT NULL
     """), {'field_name': field_name}).fetchall()
     
     # 设置 table_info (取第一个作为主表) 和完整表列表
@@ -2592,7 +2593,7 @@ def get_field_detail(field_id):
         'name': row[1],
         'project_name': row[2],
         'owner': row[3],
-        'is_certified': row[4]
+        'is_certified': bool(row[4]) if row[4] is not None else False
     } for row in ds_lineage_result]
     
     # 3. 聚合所有同名字段的工作簿血缘
@@ -3651,7 +3652,7 @@ def get_metric_detail(metric_id):
                 'name': row[1],
                 'project_name': row[2],
                 'owner': row[3],
-                'is_certified': row[4]
+                'is_certified': bool(row[4]) if row[4] is not None else False
             }
         # 上游表信息
         if row[5] and row[5] not in ds_set:

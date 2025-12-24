@@ -586,6 +586,19 @@ class TableauMetadataClient:
                                 remoteType
                                 table {{
                                     id
+                                    __typename
+                                    ... on EmbeddedTable {{
+                                        upstreamTables {{
+                                            id
+                                            name
+                                        }}
+                                    }}
+                                    ... on CustomSQLTable {{
+                                        upstreamTables {{
+                                            id
+                                            name
+                                        }}
+                                    }}
                                 }}
                             }}
                         }}
@@ -607,6 +620,19 @@ class TableauMetadataClient:
                                         table {{
                                             id
                                             name
+                                            __typename
+                                            ... on EmbeddedTable {{
+                                                upstreamTables {{
+                                                    id
+                                                    name
+                                                }}
+                                            }}
+                                            ... on CustomSQLTable {{
+                                                upstreamTables {{
+                                                    id
+                                                    name
+                                                }}
+                                            }}
                                         }}
                                     }}
                                 }}
@@ -633,6 +659,19 @@ class TableauMetadataClient:
                                 table {{
                                     id
                                     name
+                                    __typename
+                                    ... on EmbeddedTable {{
+                                        upstreamTables {{
+                                            id
+                                            name
+                                        }}
+                                    }}
+                                    ... on CustomSQLTable {{
+                                        upstreamTables {{
+                                            id
+                                            name
+                                        }}
+                                    }}
                                 }}
                             }}
                         }}
@@ -1703,7 +1742,7 @@ class MetadataSync:
                     field.upstream_column_name = first_col.get("name")
                     table_info = first_col.get("table")
                     if table_info:
-                        target_table_id = table_info.get("id")
+                        target_table_id = self._get_physical_table_id(table_info)
                         field.table_id = target_table_id
 
         # 血缘补齐：如果当前 datasource_id 指向的不是发布式（或不存在），尝试通过 table_id 找发布式
@@ -1749,7 +1788,7 @@ class MetadataSync:
                     if upstream_cols and not field.table_id:
                         for col in upstream_cols:
                             if col and col.get("table"):
-                                field.table_id = col["table"].get("id")
+                                field.table_id = self._get_physical_table_id(col["table"])
                                 break
                     
                     # 2. 尝试获取发布式数据源
@@ -1783,7 +1822,7 @@ class MetadataSync:
                     
                     table_info = first_col.get("table")
                     if table_info:
-                        field.table_id = table_info.get("id")
+                        field.table_id = self._get_physical_table_id(table_info)
         elif typename == "DatasourceField":
             # 处理 DatasourceField（通常是嵌入式数据源中引用已发布数据源的字段）
             field.data_type = f_data.get("dataType") or ""
@@ -1820,7 +1859,7 @@ class MetadataSync:
                     field.upstream_column_name = first_col.get("name")
                     table_info = first_col.get("table")
                     if table_info:
-                        field.table_id = table_info.get("id")
+                        field.table_id = self._get_physical_table_id(table_info)
         
         # 处理计算字段详情
         if f_data.get("isCalculated"):
@@ -1833,6 +1872,27 @@ class MetadataSync:
             
             calc_field.name = f_data.get("name") or ""
             calc_field.formula = f_data.get("formula") or ""
+
+    def _get_physical_table_id(self, table_info):
+        """尝试从 Table 对象（可能是 EmbeddedTable 或 CustomSQLTable）中提取物理 Table ID"""
+        if not table_info:
+            return None
+            
+        typename = table_info.get("__typename")
+        table_id = table_info.get("id")
+        
+        # 如果是 DatabaseTable，直接返回其 ID
+        if typename == "DatabaseTable":
+            return table_id
+            
+        # 如果是 EmbeddedTable 或 CustomSQLTable，尝试穿透到 upstreamTables
+        upstream_tables = table_info.get("upstreamTables") or []
+        if upstream_tables and len(upstream_tables) > 0:
+            # 返回第一个上游物理表的 ID (通常是 DatabaseTable)
+            # 注意：upstreamTables 可能返回多个，通常取第一个
+            return upstream_tables[0].get("id")
+            
+        return table_id
 
     
     def sync_calculated_fields(self) -> int:
@@ -2526,7 +2586,7 @@ class MetadataSync:
                     # 原始字段: 直接血缘
                     # 物理表来源: 优先用 field.table_id，否则用 datasource 反查
                     table_ids = []
-                    if f.table_id:
+                    if f.table_id and self.session.query(DBTable).filter_by(id=f.table_id).first():
                         table_ids = [f.table_id]
                     elif f.datasource_id and f.datasource_id in ds_table_map:
                         table_ids = ds_table_map[f.datasource_id]

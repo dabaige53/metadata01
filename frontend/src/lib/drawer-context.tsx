@@ -37,8 +37,15 @@ export function DrawerProvider({ children }: { children: ReactNode }) {
         try {
             const data = await api.getDetail(type, id);
             setCache(prev => ({ ...prev, [key]: data }));
-        } catch (e) {
-            console.error('Prefetch failed for', key, e);
+        } catch (e: any) {
+            // 静默处理 404 错误（孤立引用导致的数据不一致），仅开发模式下打印 warn
+            if (e?.message?.includes('404')) {
+                if (process.env.NODE_ENV === 'development') {
+                    console.warn(`[Prefetch] 资源不存在: ${key}`);
+                }
+            } else {
+                console.error('Prefetch failed for', key, e);
+            }
         }
     };
 
