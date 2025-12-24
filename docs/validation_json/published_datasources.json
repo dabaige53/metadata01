@@ -1,0 +1,239 @@
+{
+    "发布式数据源": {
+        "任务描述": "验证发布式数据源模块的核心指标、血缘关联及数据质量",
+        "显示名称": "发布式数据源",
+        "模块定义": {
+            "数据库表": "datasources",
+            "过滤条件": "is_embedded = 0",
+            "主键": "id"
+        },
+        "核心属性验证": {
+            "任务描述": "验证发布式数据源的基础属性统计",
+            "资产总数": {
+                "任务描述": "统计发布式数据源总记录数",
+                "API路径": "/api/stats",
+                "API取值键": "datasources (筛选 is_embedded=0)",
+                "API实际结果": "",
+                "SQL查询": "SELECT COUNT(*) FROM datasources WHERE is_embedded = 0",
+                "SQL实际结果": ""
+            },
+            "类型分布 (枚举)": {
+                "任务描述": "验证发布式数据源按类型的分布情况",
+                "字段名": "type",
+                "SQL查询": "SELECT type || ':' || COUNT(*) FROM datasources WHERE is_embedded = 0 GROUP BY type",
+                "SQL实际分布": ""
+            },
+            "认证状态分布 (枚举)": {
+                "任务描述": "验证发布式数据源的认证状态分布",
+                "字段名": "is_certified",
+                "SQL查询": "SELECT CASE WHEN is_certified = 1 THEN 'certified' ELSE 'uncertified' END || ':' || COUNT(*) FROM datasources WHERE is_embedded = 0 GROUP BY is_certified",
+                "SQL实际分布": ""
+            }
+        },
+        "血缘质量检测": {
+            "任务描述": "检测字段空值率及血缘未匹配情况",
+            "关键字段空值检测": [
+                {
+                    "字段名": "name",
+                    "任务描述": "检测名称为空的发布式数据源",
+                    "SQL查询": "SELECT COUNT(*) FROM datasources WHERE is_embedded = 0 AND (name IS NULL OR name = '')",
+                    "SQL实际结果": ""
+                }
+            ],
+            "未匹配血缘检测": [
+                {
+                    "关联方向": "发布源->物理表",
+                    "任务描述": "检测没有关联任何物理表的发布式数据源（可能为CustomSQL）",
+                    "SQL查询": "SELECT COUNT(*) FROM datasources ds WHERE ds.is_embedded = 0 AND NOT EXISTS (SELECT 1 FROM table_to_datasource td WHERE td.datasource_id = ds.id)",
+                    "SQL实际结果": ""
+                },
+                {
+                    "关联方向": "发布源->工作簿",
+                    "任务描述": "检测没有被任何工作簿引用的发布式数据源（孤儿源）",
+                    "SQL查询": "SELECT COUNT(*) FROM datasources ds WHERE ds.is_embedded = 0 AND NOT EXISTS (SELECT 1 FROM datasource_to_workbook dw WHERE dw.datasource_id = ds.id)",
+                    "SQL实际结果": ""
+                }
+            ]
+        },
+        "关联元素": [
+            {
+                "目标模块": "物理表",
+                "任务描述": "验证发布式数据源与物理表的 M:N 引用关系",
+                "关联方式": "发布式数据源 > 中间表(table_to_datasource) > 物理表 (引用的表)",
+                "关联验证": {
+                    "正向SQL (发布源>表)": "SELECT COUNT(DISTINCT ds.id) || ':' || COUNT(DISTINCT td.table_id) FROM datasources ds JOIN table_to_datasource td ON ds.id = td.datasource_id JOIN tables t ON td.table_id = t.id WHERE ds.is_embedded = 0 AND t.is_embedded = 0",
+                    "正向SQL结果": "",
+                    "反向SQL (表>发布源)": "SELECT COUNT(DISTINCT t.id) || ':' || COUNT(DISTINCT td.datasource_id) FROM tables t JOIN table_to_datasource td ON t.id = td.table_id JOIN datasources ds ON td.datasource_id = ds.id WHERE t.is_embedded = 0 AND ds.is_embedded = 0",
+                    "反向SQL结果": "",
+                    "API路径": "/api/datasources/{id}",
+                    "API取值键": "tables",
+                    "API实际结果": ""
+                }
+            },
+            {
+                "目标模块": "嵌入式数据源(穿透)",
+                "任务描述": "验证发布式数据源被穿透型嵌入源引用的 1:N 关系",
+                "关联方式": "发布式数据源 > 嵌入式数据源(穿透) (衍生的嵌入副本)",
+                "关联验证": {
+                    "正向SQL (发布源>穿透嵌入源)": "SELECT COUNT(DISTINCT published.id) || ':' || COUNT(DISTINCT embedded.id) FROM datasources published JOIN datasources embedded ON published.id = embedded.source_published_datasource_id WHERE published.is_embedded = 0 AND embedded.is_embedded = 1",
+                    "正向SQL结果": "",
+                    "反向SQL (穿透嵌入源>发布源)": "SELECT COUNT(DISTINCT embedded.id) || ':' || COUNT(DISTINCT embedded.source_published_datasource_id) FROM datasources embedded WHERE embedded.is_embedded = 1 AND embedded.source_published_datasource_id IS NOT NULL",
+                    "反向SQL结果": "",
+                    "API路径": "/api/datasources/{id}",
+                    "API取值键": "embedded_datasources",
+                    "API实际结果": ""
+                }
+            },
+            {
+                "目标模块": "工作簿",
+                "任务描述": "验证发布式数据源被工作簿引用的 M:N 关系",
+                "关联方式": "发布式数据源 > 中间表(datasource_to_workbook) > 工作簿 (被引用)",
+                "关联验证": {
+                    "正向SQL (发布源>工作簿)": "SELECT COUNT(DISTINCT ds.id) || ':' || COUNT(DISTINCT dw.workbook_id) FROM datasources ds JOIN datasource_to_workbook dw ON ds.id = dw.datasource_id WHERE ds.is_embedded = 0",
+                    "正向SQL结果": "",
+                    "反向SQL (工作簿>发布源)": "SELECT COUNT(DISTINCT w.id) || ':' || COUNT(DISTINCT dw.datasource_id) FROM workbooks w JOIN datasource_to_workbook dw ON w.id = dw.workbook_id JOIN datasources ds ON dw.datasource_id = ds.id WHERE ds.is_embedded = 0",
+                    "反向SQL结果": "",
+                    "API路径": "/api/datasources/{id}",
+                    "API取值键": "workbooks",
+                    "API实际结果": ""
+                }
+            },
+            {
+                "目标模块": "字段",
+                "任务描述": "验证发布式数据源包含的字段 1:N 关系",
+                "关联方式": "发布式数据源 > 字段 (包含的字段)",
+                "关联验证": {
+                    "正向SQL (发布源>字段)": "SELECT COUNT(DISTINCT ds.id) || ':' || COUNT(DISTINCT f.id) FROM datasources ds JOIN fields f ON ds.id = f.datasource_id WHERE ds.is_embedded = 0",
+                    "正向SQL结果": "",
+                    "反向SQL (字段>发布源)": "SELECT COUNT(DISTINCT f.id) || ':' || COUNT(DISTINCT f.datasource_id) FROM fields f JOIN datasources ds ON f.datasource_id = ds.id WHERE ds.is_embedded = 0",
+                    "反向SQL结果": "",
+                    "API路径": "/api/datasources/{id}",
+                    "API取值键": "full_fields",
+                    "API实际结果": ""
+                }
+            },
+            {
+                "目标模块": "指标",
+                "任务描述": "验证发布式数据源包含的指标 1:N 关系",
+                "关联方式": "发布式数据源 > 指标 (包含的指标)",
+                "关联验证": {
+                    "正向SQL (发布源>指标)": "SELECT COUNT(DISTINCT ds.id) || ':' || COUNT(DISTINCT f.id) FROM datasources ds JOIN fields f ON ds.id = f.datasource_id WHERE ds.is_embedded = 0 AND f.is_calculated = 1",
+                    "正向SQL结果": "",
+                    "反向SQL (指标>发布源)": "SELECT COUNT(DISTINCT f.id) || ':' || COUNT(DISTINCT f.datasource_id) FROM fields f JOIN datasources ds ON f.datasource_id = ds.id WHERE ds.is_embedded = 0 AND f.is_calculated = 1",
+                    "反向SQL结果": "",
+                    "API路径": "/api/datasources/{id}",
+                    "API取值键": "metrics",
+                    "API实际结果": ""
+                }
+            }
+        ],
+        "前端元素对齐": {
+            "任务描述": "验证前端卡片和详情页数据与后端逻辑的一致性 (参考 frontend_element_spec.md)",
+            "列表卡片 (DatasourceCard.tsx)": {
+                "任务描述": "验证列表页关键指标显示",
+                "字段:table_count": {
+                    "任务描述": "验证数据源卡片上的物理表计数汇总",
+                    "API键": "table_count / tableCount",
+                    "SQL查询": "SELECT SUM(table_count) FROM (SELECT COUNT(DISTINCT td.table_id) as table_count FROM table_to_datasource td JOIN datasources ds ON td.datasource_id = ds.id WHERE ds.is_embedded = 0 GROUP BY ds.id)",
+                    "API汇总结果": "",
+                    "SQL汇总结果": ""
+                },
+                "字段:field_count": {
+                    "任务描述": "验证数据源卡片上的字段计数汇总",
+                    "API键": "field_count / fieldCount",
+                    "SQL查询": "SELECT SUM(field_count) FROM (SELECT COUNT(*) as field_count FROM fields WHERE datasource_id IN (SELECT id FROM datasources WHERE is_embedded = 0) GROUP BY datasource_id)",
+                    "API汇总结果": "",
+                    "SQL汇总结果": ""
+                },
+                "字段:metric_count": {
+                    "任务描述": "验证数据源卡片上的指标计数汇总",
+                    "API键": "metric_count / metricCount",
+                    "SQL查询": "SELECT SUM(metric_count) FROM (SELECT COUNT(*) as metric_count FROM fields WHERE datasource_id IN (SELECT id FROM datasources WHERE is_embedded = 0) AND is_calculated = 1 GROUP BY datasource_id)",
+                    "API汇总结果": "",
+                    "SQL汇总结果": ""
+                },
+                "字段:workbook_count": {
+                    "任务描述": "验证数据源卡片上的工作簿计数汇总",
+                    "API键": "workbook_count / workbookCount",
+                    "SQL查询": "SELECT SUM(wb_count) FROM (SELECT COUNT(DISTINCT dw.workbook_id) as wb_count FROM datasource_to_workbook dw JOIN datasources ds ON dw.datasource_id = ds.id WHERE ds.is_embedded = 0 GROUP BY ds.id)",
+                    "API汇总结果": "",
+                    "SQL汇总结果": ""
+                }
+            },
+            "详情页 (DetailDrawer L279-L300)": {
+                "任务描述": "验证详情页各 Tab 页签的数据准确性",
+                "Tab:原始表 (N)": {
+                    "任务描述": "验证数据源详情页的'原始表' Tab",
+                    "API路径": "/api/datasources/{id}",
+                    "API取值键": "tables",
+                    "显示条件": "tables.length > 0",
+                    "API实际记录数": "",
+                    "SQL查询": "SELECT COUNT(DISTINCT table_id) FROM table_to_datasource WHERE datasource_id = ?",
+                    "SQL实际记录数": ""
+                },
+                "Tab:包含字段 (N)": {
+                    "任务描述": "验证数据源详情页的'包含字段' Tab",
+                    "API路径": "/api/datasources/{id}/fields",
+                    "API取值键": "full_fields",
+                    "显示条件": "full_fields.length > 0",
+                    "API实际记录数": "",
+                    "SQL查询": "SELECT COUNT(*) FROM fields WHERE datasource_id = ?",
+                    "SQL实际记录数": ""
+                },
+                "Tab:包含指标 (N)": {
+                    "任务描述": "验证数据源详情页的'包含指标' Tab",
+                    "API路径": "/api/datasources/{id}",
+                    "API取值键": "metrics",
+                    "显示条件": "metrics.length > 0",
+                    "API实际记录数": "",
+                    "SQL查询": "SELECT COUNT(*) FROM fields WHERE datasource_id = ? AND is_calculated = 1",
+                    "SQL实际记录数": ""
+                },
+                "Tab:关联工作簿 (N)": {
+                    "任务描述": "验证数据源详情页的'关联工作簿' Tab",
+                    "API路径": "/api/datasources/{id}/workbooks",
+                    "API取值键": "workbooks",
+                    "显示条件": "workbooks.length > 0",
+                    "API实际记录数": "",
+                    "SQL查询": "SELECT COUNT(DISTINCT workbook_id) FROM datasource_to_workbook WHERE datasource_id = ?",
+                    "SQL实际记录数": ""
+                },
+                "Tab:嵌入式副本 (N)": {
+                    "任务描述": "验证数据源详情页的'嵌入式副本' Tab",
+                    "API路径": "/api/datasources/{id}",
+                    "API取值键": "embedded_datasources",
+                    "显示条件": "embedded_datasources.length > 0",
+                    "API实际记录数": "",
+                    "SQL查询": "SELECT COUNT(*) FROM datasources WHERE source_published_datasource_id = ?",
+                    "SQL实际记录数": ""
+                }
+            }
+        },
+        "逻辑闭环验证": {
+            "任务描述": "跨层级比对：验证'前端展示值'与'底层血缘统计值'是否严丝合缝",
+            "比对项列表": [
+                {
+                    "比对名称": "物理表数量闭环",
+                    "前端数据源": "前端元素对齐.列表卡片.字段:table_count.API汇总结果",
+                    "血缘数据源": "关联元素[目标模块='物理表'].关联验证.正向SQL结果(提取目标数)",
+                    "比对逻辑": "数值相等",
+                    "差异容忍度": 0
+                },
+                {
+                    "比对名称": "工作簿数量闭环",
+                    "前端数据源": "前端元素对齐.列表卡片.字段:workbook_count.API汇总结果",
+                    "血缘数据源": "关联元素[目标模块='工作簿'].关联验证.正向SQL结果(提取目标数)",
+                    "比对逻辑": "数值相等",
+                    "差异容忍度": 0
+                },
+                {
+                    "比对名称": "字段数量闭环",
+                    "前端数据源": "前端元素对齐.列表卡片.字段:field_count.API汇总结果",
+                    "血缘数据源": "关联元素[目标模块='字段'].关联验证.正向SQL结果(提取目标数)",
+                    "比对逻辑": "数值相等",
+                    "差异容忍度": 0
+                }
+            ]
+        }
+    }
+}

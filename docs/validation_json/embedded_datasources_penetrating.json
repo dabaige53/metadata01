@@ -1,0 +1,119 @@
+{
+    "嵌入式数据源(穿透)": {
+        "任务描述": "验证穿透型嵌入式数据源模块的核心指标、血缘关联及数据质量",
+        "显示名称": "嵌入式数据源(穿透)",
+        "模块定义": {
+            "数据库表": "datasources",
+            "过滤条件": "is_embedded = 1 AND source_published_datasource_id IS NOT NULL",
+            "主键": "id",
+            "说明": "从发布式数据源衍生的嵌入副本"
+        },
+        "核心属性验证": {
+            "任务描述": "验证穿透型嵌入式数据源的基础属性统计",
+            "资产总数": {
+                "任务描述": "统计穿透型嵌入式数据源总记录数",
+                "SQL查询": "SELECT COUNT(*) FROM datasources WHERE is_embedded = 1 AND source_published_datasource_id IS NOT NULL",
+                "SQL实际结果": ""
+            }
+        },
+        "血缘质量检测": {
+            "任务描述": "根据血缘交叉表4.6(项18-19)检测穿透型嵌入源的血缘完整性",
+            "血缘交叉表对应项": [
+                "18.嵌入源(穿透)→发布源",
+                "19.嵌入源(穿透)→工作簿"
+            ],
+            "关键字段空值检测": [
+                {
+                    "字段名": "source_published_datasource_id",
+                    "任务描述": "验证穿透型嵌入源的上游发布源 ID 非空",
+                    "SQL查询": "SELECT COUNT(*) FROM datasources WHERE is_embedded = 1 AND source_published_datasource_id IS NULL",
+                    "SQL实际结果": "",
+                    "预期说明": "此结果为独立嵌入源数量，非本模块"
+                }
+            ],
+            "血缘覆盖检测": [
+                {
+                    "检测项": "18.嵌入源(穿透)→发布源",
+                    "主口径SQL": "SELECT COUNT(*) FROM datasources WHERE is_embedded = 1 AND source_published_datasource_id IS NOT NULL",
+                    "交叉验证SQL": "SELECT COUNT(DISTINCT embedded.id) FROM datasources embedded WHERE embedded.is_embedded = 1 AND embedded.source_published_datasource_id IS NOT NULL AND EXISTS (SELECT 1 FROM datasources pub WHERE pub.id = embedded.source_published_datasource_id AND pub.is_embedded = 0)",
+                    "主口径结果": "",
+                    "交叉结果": "",
+                    "预期规则": "cross = total (每个穿透源必须有上游发布源)"
+                },
+                {
+                    "检测项": "19.嵌入源(穿透)→工作簿",
+                    "主口径SQL": "SELECT COUNT(DISTINCT ds.id) FROM datasources ds WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NOT NULL",
+                    "交叉验证SQL": "SELECT COUNT(DISTINCT ds.id) FROM datasources ds WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NOT NULL AND EXISTS (SELECT 1 FROM datasource_to_workbook dw WHERE dw.datasource_id = ds.id)",
+                    "主口径结果": "",
+                    "交叉结果": "",
+                    "预期规则": "cross >= main"
+                }
+            ],
+            "未匹配血缘检测": [
+                {
+                    "关联方向": "穿透嵌入源->工作簿",
+                    "任务描述": "检测没有被任何工作簿引用的穿透嵌入源（孤儿源）",
+                    "SQL查询": "SELECT COUNT(*) FROM datasources ds WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM datasource_to_workbook dw WHERE dw.datasource_id = ds.id)",
+                    "SQL实际结果": ""
+                },
+                {
+                    "关联方向": "穿透嵌入源->发布源",
+                    "任务描述": "检测上游发布源不存在的穿透嵌入源（断链）",
+                    "SQL查询": "SELECT COUNT(*) FROM datasources embedded WHERE embedded.is_embedded = 1 AND embedded.source_published_datasource_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM datasources pub WHERE pub.id = embedded.source_published_datasource_id)",
+                    "SQL实际结果": "",
+                    "预期说明": "应为 0"
+                }
+            ]
+        },
+        "关联元素": [
+            {
+                "目标模块": "发布式数据源",
+                "任务描述": "验证穿透嵌入源与发布源的 N:1 上游关系",
+                "关联方式": "嵌入源(穿透) > 发布源 (上游源)",
+                "血缘交叉表项": "项18",
+                "关联验证": {
+                    "正向SQL (穿透嵌入源>发布源)": "SELECT COUNT(DISTINCT id) || ':' || COUNT(DISTINCT source_published_datasource_id) FROM datasources WHERE is_embedded = 1 AND source_published_datasource_id IS NOT NULL",
+                    "正向SQL结果": "",
+                    "反向SQL (发布源>穿透嵌入源)": "SELECT COUNT(DISTINCT pub.id) || ':' || COUNT(DISTINCT embedded.id) FROM datasources pub JOIN datasources embedded ON pub.id = embedded.source_published_datasource_id WHERE pub.is_embedded = 0 AND embedded.is_embedded = 1",
+                    "反向SQL结果": "",
+                    "API路径": "/api/datasources/{id}",
+                    "API取值键": "source_published_datasource_info",
+                    "API实际结果": ""
+                }
+            },
+            {
+                "目标模块": "工作簿",
+                "任务描述": "验证穿透嵌入源被工作簿引用的 M:N 关系",
+                "关联方式": "嵌入源(穿透) > 中间表(datasource_to_workbook) > 工作簿",
+                "血缘交叉表项": "项19",
+                "关联验证": {
+                    "正向SQL (穿透嵌入源>工作簿)": "SELECT COUNT(DISTINCT ds.id) || ':' || COUNT(DISTINCT dw.workbook_id) FROM datasources ds JOIN datasource_to_workbook dw ON ds.id = dw.datasource_id WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NOT NULL",
+                    "正向SQL结果": "",
+                    "反向SQL (工作簿>穿透嵌入源)": "SELECT COUNT(DISTINCT w.id) || ':' || COUNT(DISTINCT dw.datasource_id) FROM workbooks w JOIN datasource_to_workbook dw ON w.id = dw.workbook_id JOIN datasources ds ON dw.datasource_id = ds.id WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NOT NULL",
+                    "反向SQL结果": ""
+                }
+            }
+        ],
+        "前端元素对齐": {
+            "任务描述": "穿透嵌入源在数据源详情页的'嵌入式副本' Tab 展示",
+            "详情页引用": {
+                "父模块": "发布式数据源",
+                "Tab名称": "嵌入式副本 (N)",
+                "API路径": "/api/datasources/{id}",
+                "API取值键": "embedded_datasources"
+            }
+        },
+        "逻辑闭环验证": {
+            "任务描述": "验证血缘交叉表项18-19的一致性",
+            "比对项列表": [
+                {
+                    "比对名称": "上游发布源完整性",
+                    "前端数据源": "血缘质量检测.血缘覆盖检测[项18].主口径结果",
+                    "血缘数据源": "血缘质量检测.血缘覆盖检测[项18].交叉结果",
+                    "比对逻辑": "cross = main",
+                    "差异容忍度": 0
+                }
+            ]
+        }
+    }
+}

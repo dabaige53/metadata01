@@ -1,0 +1,155 @@
+{
+    "嵌入式数据源(独立)": {
+        "任务描述": "验证独立嵌入式数据源模块的核心指标、血缘关联及数据质量",
+        "显示名称": "嵌入式数据源(独立)",
+        "模块定义": {
+            "数据库表": "datasources",
+            "过滤条件": "is_embedded = 1 AND source_published_datasource_id IS NULL",
+            "主键": "id",
+            "说明": "直连数据库的嵌入数据源，无上游发布源"
+        },
+        "核心属性验证": {
+            "任务描述": "验证独立嵌入式数据源的基础属性统计",
+            "资产总数": {
+                "任务描述": "统计独立嵌入式数据源总记录数",
+                "SQL查询": "SELECT COUNT(*) FROM datasources WHERE is_embedded = 1 AND source_published_datasource_id IS NULL",
+                "SQL实际结果": ""
+            }
+        },
+        "血缘质量检测": {
+            "任务描述": "根据血缘交叉表4.7(项20-23)检测独立嵌入源的血缘完整性",
+            "血缘交叉表对应项": [
+                "20.独立嵌入源→物理表",
+                "21.独立嵌入源→嵌入表",
+                "22.独立嵌入源→工作簿",
+                "23.独立嵌入源→字段"
+            ],
+            "血缘覆盖检测": [
+                {
+                    "检测项": "20.独立嵌入源→物理表",
+                    "主口径SQL": "SELECT COUNT(DISTINCT ds.id) FROM datasources ds WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NULL",
+                    "交叉验证SQL": "SELECT COUNT(DISTINCT td.datasource_id) FROM table_to_datasource td JOIN datasources ds ON td.datasource_id = ds.id JOIN tables t ON td.table_id = t.id WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NULL AND t.is_embedded = 0",
+                    "主口径结果": "",
+                    "交叉结果": "",
+                    "预期规则": "cross >= main (独立嵌入源关联到物理表)"
+                },
+                {
+                    "检测项": "21.独立嵌入源→嵌入表",
+                    "主口径SQL": "SELECT COUNT(DISTINCT ds.id) FROM datasources ds WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NULL",
+                    "交叉验证SQL": "SELECT COUNT(DISTINCT td.datasource_id) FROM table_to_datasource td JOIN datasources ds ON td.datasource_id = ds.id JOIN tables t ON td.table_id = t.id WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NULL AND t.is_embedded = 1",
+                    "主口径结果": "",
+                    "交叉结果": "",
+                    "预期规则": "cross >= main (独立嵌入源关联到嵌入表)"
+                },
+                {
+                    "检测项": "22.独立嵌入源→工作簿",
+                    "主口径SQL": "SELECT COUNT(DISTINCT ds.id) FROM datasources ds WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NULL",
+                    "交叉验证SQL": "SELECT COUNT(DISTINCT ds.id) FROM datasources ds WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NULL AND EXISTS (SELECT 1 FROM datasource_to_workbook dw WHERE dw.datasource_id = ds.id)",
+                    "主口径结果": "",
+                    "交叉结果": "",
+                    "预期规则": "cross >= main"
+                },
+                {
+                    "检测项": "23.独立嵌入源→字段",
+                    "主口径SQL": "SELECT COUNT(DISTINCT ds.id) FROM datasources ds WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NULL",
+                    "交叉验证SQL": "SELECT COUNT(DISTINCT ds.id) FROM datasources ds WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NULL AND EXISTS (SELECT 1 FROM fields f WHERE f.datasource_id = ds.id)",
+                    "主口径结果": "",
+                    "交叉结果": "",
+                    "预期规则": "cross >= main"
+                }
+            ],
+            "未匹配血缘检测": [
+                {
+                    "关联方向": "独立嵌入源->表",
+                    "任务描述": "检测没有关联任何表的独立嵌入源",
+                    "SQL查询": "SELECT COUNT(*) FROM datasources ds WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NULL AND NOT EXISTS (SELECT 1 FROM table_to_datasource td WHERE td.datasource_id = ds.id)",
+                    "SQL实际结果": ""
+                },
+                {
+                    "关联方向": "独立嵌入源->工作簿",
+                    "任务描述": "检测没有被任何工作簿引用的独立嵌入源（孤儿源）",
+                    "SQL查询": "SELECT COUNT(*) FROM datasources ds WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NULL AND NOT EXISTS (SELECT 1 FROM datasource_to_workbook dw WHERE dw.datasource_id = ds.id)",
+                    "SQL实际结果": ""
+                },
+                {
+                    "关联方向": "独立嵌入源->字段",
+                    "任务描述": "检测没有任何字段的独立嵌入源",
+                    "SQL查询": "SELECT COUNT(*) FROM datasources ds WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NULL AND NOT EXISTS (SELECT 1 FROM fields f WHERE f.datasource_id = ds.id)",
+                    "SQL实际结果": ""
+                }
+            ]
+        },
+        "关联元素": [
+            {
+                "目标模块": "物理表",
+                "任务描述": "验证独立嵌入源与物理表的 M:N 引用关系",
+                "关联方式": "嵌入源(独立) > 中间表(table_to_datasource) > 物理表",
+                "血缘交叉表项": "项20",
+                "关联验证": {
+                    "正向SQL (独立嵌入源>物理表)": "SELECT COUNT(DISTINCT ds.id) || ':' || COUNT(DISTINCT td.table_id) FROM datasources ds JOIN table_to_datasource td ON ds.id = td.datasource_id JOIN tables t ON td.table_id = t.id WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NULL AND t.is_embedded = 0",
+                    "正向SQL结果": "",
+                    "反向SQL (物理表>独立嵌入源)": "SELECT COUNT(DISTINCT t.id) || ':' || COUNT(DISTINCT td.datasource_id) FROM tables t JOIN table_to_datasource td ON t.id = td.table_id JOIN datasources ds ON td.datasource_id = ds.id WHERE t.is_embedded = 0 AND ds.is_embedded = 1 AND ds.source_published_datasource_id IS NULL",
+                    "反向SQL结果": ""
+                }
+            },
+            {
+                "目标模块": "嵌入表",
+                "任务描述": "验证独立嵌入源与嵌入表的 M:N 引用关系",
+                "关联方式": "嵌入源(独立) > 中间表(table_to_datasource) > 嵌入表",
+                "血缘交叉表项": "项21",
+                "关联验证": {
+                    "正向SQL (独立嵌入源>嵌入表)": "SELECT COUNT(DISTINCT ds.id) || ':' || COUNT(DISTINCT td.table_id) FROM datasources ds JOIN table_to_datasource td ON ds.id = td.datasource_id JOIN tables t ON td.table_id = t.id WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NULL AND t.is_embedded = 1",
+                    "正向SQL结果": "",
+                    "反向SQL (嵌入表>独立嵌入源)": "SELECT COUNT(DISTINCT t.id) || ':' || COUNT(DISTINCT td.datasource_id) FROM tables t JOIN table_to_datasource td ON t.id = td.table_id JOIN datasources ds ON td.datasource_id = ds.id WHERE t.is_embedded = 1 AND ds.is_embedded = 1 AND ds.source_published_datasource_id IS NULL",
+                    "反向SQL结果": ""
+                }
+            },
+            {
+                "目标模块": "工作簿",
+                "任务描述": "验证独立嵌入源被工作簿引用的 M:N 关系",
+                "关联方式": "嵌入源(独立) > 中间表(datasource_to_workbook) > 工作簿",
+                "血缘交叉表项": "项22",
+                "关联验证": {
+                    "正向SQL (独立嵌入源>工作簿)": "SELECT COUNT(DISTINCT ds.id) || ':' || COUNT(DISTINCT dw.workbook_id) FROM datasources ds JOIN datasource_to_workbook dw ON ds.id = dw.datasource_id WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NULL",
+                    "正向SQL结果": "",
+                    "反向SQL (工作簿>独立嵌入源)": "SELECT COUNT(DISTINCT w.id) || ':' || COUNT(DISTINCT dw.datasource_id) FROM workbooks w JOIN datasource_to_workbook dw ON w.id = dw.workbook_id JOIN datasources ds ON dw.datasource_id = ds.id WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NULL",
+                    "反向SQL结果": ""
+                }
+            },
+            {
+                "目标模块": "字段",
+                "任务描述": "验证独立嵌入源包含的字段 1:N 关系",
+                "关联方式": "嵌入源(独立) > 字段",
+                "血缘交叉表项": "项23",
+                "关联验证": {
+                    "正向SQL (独立嵌入源>字段)": "SELECT COUNT(DISTINCT ds.id) || ':' || COUNT(DISTINCT f.id) FROM datasources ds JOIN fields f ON ds.id = f.datasource_id WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NULL",
+                    "正向SQL结果": "",
+                    "反向SQL (字段>独立嵌入源)": "SELECT COUNT(DISTINCT f.id) || ':' || COUNT(DISTINCT f.datasource_id) FROM fields f JOIN datasources ds ON f.datasource_id = ds.id WHERE ds.is_embedded = 1 AND ds.source_published_datasource_id IS NULL",
+                    "反向SQL结果": ""
+                }
+            }
+        ],
+        "前端元素对齐": {
+            "任务描述": "独立嵌入源使用 DatasourceCard.tsx 组件，徽章显示'直连嵌入'",
+            "列表卡片 (DatasourceCard.tsx)": {
+                "字段:isEmbedded": {
+                    "任务描述": "验证独立嵌入源卡片显示'直连嵌入'徽章",
+                    "API键": "isEmbedded",
+                    "验证逻辑": "is_embedded = 1 AND source_published_datasource_id IS NULL"
+                }
+            }
+        },
+        "逻辑闭环验证": {
+            "任务描述": "验证血缘交叉表项20-23的一致性",
+            "比对项列表": [
+                {
+                    "比对名称": "工作簿关联闭环",
+                    "前端数据源": "血缘质量检测.血缘覆盖检测[项22].主口径结果",
+                    "血缘数据源": "血缘质量检测.血缘覆盖检测[项22].交叉结果",
+                    "比对逻辑": "cross >= main",
+                    "差异容忍度": 0
+                }
+            ]
+        }
+    }
+}

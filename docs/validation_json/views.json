@@ -1,0 +1,190 @@
+{
+    "视图": {
+        "任务描述": "验证视图模块的核心指标、血缘关联及数据质量",
+        "显示名称": "视图",
+        "模块定义": {
+            "数据库表": "views",
+            "主键": "id"
+        },
+        "核心属性验证": {
+            "任务描述": "验证视图的基础属性统计",
+            "资产总数": {
+                "任务描述": "统计视图总记录数",
+                "API路径": "/api/stats",
+                "API取值键": "views",
+                "API实际结果": "",
+                "SQL查询": "SELECT COUNT(*) FROM views",
+                "SQL实际结果": ""
+            },
+            "视图类型分布 (枚举)": {
+                "任务描述": "验证视图按类型的分布 (sheet/dashboard)",
+                "字段名": "view_type",
+                "SQL查询": "SELECT view_type || ':' || COUNT(*) FROM views GROUP BY view_type",
+                "SQL实际分布": ""
+            }
+        },
+        "血缘质量检测": {
+            "任务描述": "检测字段空值率及血缘未匹配情况",
+            "关键字段空值检测": [
+                {
+                    "字段名": "workbook_id",
+                    "任务描述": "检测没有所属工作簿的视图数量（孤儿视图）",
+                    "SQL查询": "SELECT COUNT(*) FROM views WHERE workbook_id IS NULL",
+                    "SQL实际结果": ""
+                }
+            ],
+            "未匹配血缘检测": [
+                {
+                    "关联方向": "视图->字段",
+                    "任务描述": "检测没有关联任何字段的视图数量",
+                    "SQL查询": "SELECT COUNT(*) FROM views v WHERE NOT EXISTS (SELECT 1 FROM field_to_view fv WHERE fv.view_id = v.id)",
+                    "SQL实际结果": ""
+                }
+            ]
+        },
+        "关联元素": [
+            {
+                "目标模块": "工作簿",
+                "任务描述": "验证视图与工作簿的 N:1 所属关系",
+                "关联方式": "视图 > 工作簿 (所属簿)",
+                "关联验证": {
+                    "正向SQL (视图>工作簿)": "SELECT COUNT(DISTINCT id) || ':' || COUNT(DISTINCT workbook_id) FROM views WHERE workbook_id IS NOT NULL",
+                    "正向SQL结果": "",
+                    "反向SQL (工作簿>视图)": "SELECT COUNT(DISTINCT w.id) || ':' || COUNT(DISTINCT v.id) FROM workbooks w JOIN views v ON w.id = v.workbook_id",
+                    "反向SQL结果": "",
+                    "API路径": "/api/views/{id}",
+                    "API取值键": "workbook_info",
+                    "API实际结果": ""
+                }
+            },
+            {
+                "目标模块": "字段",
+                "任务描述": "验证视图被字段引用的 M:N 关系",
+                "关联方式": "视图 > 中间表(field_to_view) > 字段 (展示的字段)",
+                "关联验证": {
+                    "正向SQL (视图>字段)": "SELECT COUNT(DISTINCT fv.view_id) || ':' || COUNT(DISTINCT fv.field_id) FROM field_to_view fv",
+                    "正向SQL结果": "",
+                    "反向SQL (字段>视图)": "SELECT COUNT(DISTINCT fv.field_id) || ':' || COUNT(DISTINCT fv.view_id) FROM field_to_view fv",
+                    "反向SQL结果": "",
+                    "API路径": "/api/views/{id}",
+                    "API取值键": "used_fields",
+                    "API实际结果": ""
+                }
+            },
+            {
+                "目标模块": "指标",
+                "任务描述": "验证视图使用的指标 M:N 关系",
+                "关联方式": "视图 > 中间表(field_to_view) > 指标 (展示的指标)",
+                "关联验证": {
+                    "正向SQL (视图>指标)": "SELECT COUNT(DISTINCT fv.view_id) || ':' || COUNT(DISTINCT fv.field_id) FROM field_to_view fv JOIN fields f ON fv.field_id = f.id WHERE f.is_calculated = 1",
+                    "正向SQL结果": "",
+                    "反向SQL (指标>视图)": "SELECT COUNT(DISTINCT f.id) || ':' || COUNT(DISTINCT fv.view_id) FROM fields f JOIN field_to_view fv ON f.id = fv.field_id WHERE f.is_calculated = 1",
+                    "反向SQL结果": "",
+                    "API路径": "/api/views/{id}",
+                    "API取值键": "used_metrics",
+                    "API实际结果": ""
+                }
+            },
+            {
+                "目标模块": "物理表",
+                "任务描述": "验证视图穿透到物理表的 M:N 关系",
+                "关联方式": "视图 > 字段 > 物理表 (穿透关联)",
+                "关联验证": {
+                    "正向SQL (视图>物理表)": "SELECT COUNT(DISTINCT v.id) || ':' || COUNT(DISTINCT f.table_id) FROM views v JOIN field_to_view fv ON v.id = fv.view_id JOIN fields f ON fv.field_id = f.id JOIN tables t ON f.table_id = t.id WHERE t.is_embedded = 0",
+                    "正向SQL结果": "",
+                    "反向SQL (物理表>视图)": "SELECT COUNT(DISTINCT t.id) || ':' || COUNT(DISTINCT v.id) FROM tables t JOIN fields f ON t.id = f.table_id JOIN field_to_view fv ON f.id = fv.field_id JOIN views v ON fv.view_id = v.id WHERE t.is_embedded = 0",
+                    "反向SQL结果": "",
+                    "API路径": "无 (穿透关系)",
+                    "API实际结果": "N/A"
+                }
+            }
+        ],
+        "前端元素对齐": {
+            "任务描述": "验证前端卡片和详情页数据与后端逻辑的一致性 (参考 frontend_element_spec.md)",
+            "列表卡片 (ViewCard.tsx)": {
+                "任务描述": "验证列表页关键指标显示",
+                "字段:hits_total": {
+                    "任务描述": "验证视图卡片上的访问量汇总",
+                    "API键": "hits_total / hitsTotal / usage",
+                    "SQL查询": "SELECT SUM(total_view_count) FROM views",
+                    "API汇总结果": "",
+                    "SQL汇总结果": ""
+                },
+                "字段:field_count": {
+                    "任务描述": "验证视图卡片上的字段计数汇总",
+                    "API键": "field_count / fieldCount",
+                    "SQL查询": "SELECT SUM(field_count) FROM (SELECT COUNT(*) as field_count FROM field_to_view GROUP BY view_id)",
+                    "API汇总结果": "",
+                    "SQL汇总结果": ""
+                },
+                "字段:viewType": {
+                    "任务描述": "验证视图类型分布 (仪表板/工作表/故事)",
+                    "API键": "viewType / type",
+                    "SQL查询": "SELECT view_type || ':' || COUNT(*) FROM views GROUP BY view_type",
+                    "API实际分布": "",
+                    "SQL实际分布": ""
+                }
+            },
+            "详情页 (DetailDrawer L327-L347)": {
+                "任务描述": "验证详情页各 Tab 页签的数据准确性",
+                "Tab:所属工作簿": {
+                    "任务描述": "验证视图详情页的'所属工作簿'信息",
+                    "API路径": "/api/views/{id}",
+                    "API取值键": "workbook_info",
+                    "显示条件": "workbook_info 存在"
+                },
+                "Tab:使用字段 (N)": {
+                    "任务描述": "验证视图详情页的'使用字段' Tab",
+                    "API路径": "/api/views/{id}/fields",
+                    "API取值键": "used_fields",
+                    "显示条件": "used_fields.length > 0",
+                    "API实际记录数": "",
+                    "SQL查询": "SELECT COUNT(*) FROM field_to_view WHERE view_id = ?",
+                    "SQL实际记录数": ""
+                },
+                "Tab:使用指标 (N)": {
+                    "任务描述": "验证视图详情页的'使用指标' Tab",
+                    "API路径": "/api/views/{id}/metrics",
+                    "API取值键": "used_metrics",
+                    "显示条件": "used_metrics.length > 0",
+                    "API实际记录数": "",
+                    "SQL查询": "SELECT COUNT(*) FROM field_to_view fv JOIN fields f ON fv.field_id = f.id WHERE fv.view_id = ? AND f.is_calculated = 1",
+                    "SQL实际记录数": ""
+                },
+                "Tab:访问统计": {
+                    "任务描述": "验证视图详情页的'访问统计' Tab",
+                    "API路径": "/api/views/{id}/usage",
+                    "显示条件": "始终显示"
+                },
+                "Tab:包含视图 (N)": {
+                    "任务描述": "验证仪表板详情页的'包含视图' Tab (Dashboard 专用)",
+                    "API路径": "/api/views/{id}",
+                    "API取值键": "contained_views",
+                    "显示条件": "contained_views.length > 0 (Dashboard only)",
+                    "API实际记录数": "",
+                    "SQL查询": "SELECT COUNT(*) FROM dashboard_to_sheet WHERE dashboard_id = ?",
+                    "SQL实际记录数": ""
+                }
+            }
+        },
+        "逻辑闭环验证": {
+            "任务描述": "跨层级比对：验证'前端展示值'与'底层血缘统计值'是否严丝合缝",
+            "比对项列表": [
+                {
+                    "比对名称": "字段关联数闭环",
+                    "前端数据源": "前端元素对齐.列表卡片.字段:field_count.API汇总结果",
+                    "血缘数据源": "SELECT COUNT(*) FROM field_to_view",
+                    "比对逻辑": "数值相等",
+                    "差异容忍度": 0
+                },
+                {
+                    "比对名称": "视图类型分布闭环",
+                    "前端数据源": "前端元素对齐.列表卡片.字段:viewType.API实际分布",
+                    "血缘数据源": "核心属性验证.视图类型分布 (枚举).SQL实际分布",
+                    "比对逻辑": "分布指纹完全匹配",
+                    "差异容忍度": 0
+                }
+            ]
+        }
+    }
+}

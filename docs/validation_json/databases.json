@@ -1,0 +1,104 @@
+{
+    "数据库": {
+        "任务描述": "验证数据库模块的核心指标、血缘关联及数据质量",
+        "显示名称": "数据库",
+        "模块定义": {
+            "数据库表": "databases",
+            "主键": "id"
+        },
+        "核心属性验证": {
+            "任务描述": "验证数据库的基础属性统计",
+            "资产总数": {
+                "任务描述": "统计数据库总记录数",
+                "API路径": "/api/stats",
+                "API取值键": "databases",
+                "API实际结果": "",
+                "SQL查询": "SELECT COUNT(*) FROM databases",
+                "SQL实际结果": ""
+            },
+            "连接类型分布 (枚举)": {
+                "任务描述": "验证数据库按连接类型的分布情况",
+                "字段名": "connection_type",
+                "SQL查询": "SELECT connection_type || ':' || COUNT(*) FROM databases GROUP BY connection_type",
+                "SQL实际分布": ""
+            }
+        },
+        "血缘质量检测": {
+            "任务描述": "检测字段空值率及血缘未匹配情况",
+            "关键字段空值检测": [
+                {
+                    "字段名": "name",
+                    "任务描述": "检测数据库名称为空的记录",
+                    "SQL查询": "SELECT COUNT(*) FROM databases WHERE name IS NULL OR name = ''",
+                    "SQL实际结果": ""
+                }
+            ],
+            "未匹配血缘检测": [
+                {
+                    "关联方向": "数据库->物理表",
+                    "任务描述": "检测没有任何物理表的数据库数量（孤儿库）",
+                    "SQL查询": "SELECT COUNT(*) FROM databases d WHERE NOT EXISTS (SELECT 1 FROM tables t WHERE t.database_id = d.id AND t.is_embedded = 0)",
+                    "SQL实际结果": ""
+                }
+            ]
+        },
+        "关联元素": [
+            {
+                "目标模块": "物理表",
+                "任务描述": "验证数据库与物理表的 1:N 所属关系",
+                "关联方式": "数据库 > 物理表 (包含的表)",
+                "关联验证": {
+                    "正向SQL (库>表)": "SELECT COUNT(DISTINCT d.id) || ':' || COUNT(DISTINCT t.id) FROM databases d JOIN tables t ON d.id = t.database_id WHERE t.is_embedded = 0",
+                    "正向SQL结果": "",
+                    "反向SQL (表>库)": "SELECT COUNT(DISTINCT t.id) || ':' || COUNT(DISTINCT t.database_id) FROM tables t WHERE t.is_embedded = 0 AND t.database_id IS NOT NULL",
+                    "反向SQL结果": "",
+                    "API路径": "/api/databases/{id}",
+                    "API取值键": "tables",
+                    "API统计逻辑": "返回 tables 数组长度",
+                    "API实际结果": ""
+                }
+            }
+        ],
+        "前端元素对齐": {
+            "任务描述": "验证前端卡片和详情页数据与后端逻辑的一致性 (参考 frontend_element_spec.md)",
+            "列表卡片": {
+                "任务描述": "数据库模块无独立 Card 组件，使用 DataTable 默认渲染",
+                "说明": "数据库列表显示在概览页或作为筛选项"
+            },
+            "详情页 (DetailDrawer L207-L211)": {
+                "任务描述": "验证详情页各 Tab 页签的数据准确性",
+                "Tab:概览": {
+                    "任务描述": "验证数据库基本信息",
+                    "API路径": "/api/databases/{id}",
+                    "显示条件": "始终显示"
+                },
+                "Tab:数据表 (N)": {
+                    "任务描述": "验证数据库详情页的'数据表' Tab",
+                    "API路径": "/api/databases/{id}",
+                    "API取值键": "tables",
+                    "显示条件": "tables.length > 0",
+                    "API实际记录数": "",
+                    "SQL查询": "SELECT COUNT(*) FROM tables WHERE database_id = ? AND is_embedded = 0",
+                    "SQL实际记录数": ""
+                },
+                "Tab:血缘图": {
+                    "任务描述": "验证血缘图加载",
+                    "API路径": "/api/lineage/graph/database/{id}",
+                    "显示条件": "始终显示"
+                }
+            }
+        },
+        "逻辑闭环验证": {
+            "任务描述": "跨层级比对：验证'前端展示值'与'底层血缘统计值'是否严丝合缝",
+            "比对项列表": [
+                {
+                    "比对名称": "物理表数量闭环",
+                    "前端数据源": "前端元素对齐.详情页.Tab:数据表.API实际记录数 (聚合)",
+                    "血缘数据源": "关联元素[目标模块='物理表'].关联验证.正向SQL结果(提取目标数)",
+                    "比对逻辑": "数值相等",
+                    "差异容忍度": 0
+                }
+            ]
+        }
+    }
+}

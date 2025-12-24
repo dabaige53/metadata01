@@ -1,0 +1,238 @@
+{
+    "物理表": {
+        "任务描述": "验证物理表模块的核心指标、血缘关联及数据质量",
+        "显示名称": "物理表",
+        "模块定义": {
+            "数据库表": "tables",
+            "过滤条件": "is_embedded = 0",
+            "主键": "id"
+        },
+        "核心属性验证": {
+            "任务描述": "验证物理表的基础属性统计",
+            "资产总数": {
+                "任务描述": "统计物理表总记录数",
+                "API路径": "/api/stats",
+                "API取值键": "tables",
+                "API实际结果": "",
+                "SQL查询": "SELECT COUNT(*) FROM tables WHERE is_embedded = 0",
+                "SQL实际结果": ""
+            },
+            "数据库分布 (枚举)": {
+                "任务描述": "验证物理表在各数据库中的分布情况",
+                "API路径": "/api/databases",
+                "字段名": "name",
+                "API实际分布": "",
+                "SQL查询": "SELECT d.name || ':' || COUNT(*) FROM tables t JOIN databases d ON t.database_id = d.id WHERE t.is_embedded = 0 GROUP BY d.name",
+                "SQL实际分布": ""
+            },
+            "Schema分布 (枚举)": {
+                "任务描述": "验证物理表在各 Schema 中的分布情况",
+                "字段名": "schema",
+                "SQL查询": "SELECT schema || ':' || COUNT(*) FROM tables WHERE is_embedded = 0 GROUP BY schema",
+                "SQL实际分布": ""
+            }
+        },
+        "血缘质量检测": {
+            "任务描述": "检测字段空值率及血缘未匹配情况",
+            "关键字段空值检测": [
+                {
+                    "字段名": "database_id",
+                    "任务描述": "检测未关联数据库的物理表数量（孤儿表）",
+                    "SQL查询": "SELECT COUNT(*) FROM tables WHERE database_id IS NULL AND is_embedded = 0",
+                    "SQL实际结果": ""
+                }
+            ],
+            "未匹配血缘检测": [
+                {
+                    "关联方向": "物理表->数据源",
+                    "任务描述": "检测未被任何数据源引用的物理表数量（冗余资产）",
+                    "SQL查询": "SELECT COUNT(*) FROM tables t WHERE t.is_embedded = 0 AND NOT EXISTS (SELECT 1 FROM table_to_datasource td WHERE td.table_id = t.id)",
+                    "SQL实际结果": ""
+                },
+                {
+                    "关联方向": "物理表->数据列",
+                    "任务描述": "检测没有任何数据列的物理表数量",
+                    "SQL查询": "SELECT COUNT(*) FROM tables t WHERE t.is_embedded = 0 AND NOT EXISTS (SELECT 1 FROM db_columns c WHERE c.table_id = t.id)",
+                    "SQL实际结果": ""
+                }
+            ]
+        },
+        "关联元素": [
+            {
+                "目标模块": "数据库",
+                "任务描述": "验证物理表与数据库的 N:1 所属关系",
+                "关联方式": "物理表 > 数据库 (所属库)",
+                "关联验证": {
+                    "正向SQL (表>库)": "SELECT COUNT(DISTINCT id) || ':' || COUNT(DISTINCT database_id) FROM tables WHERE is_embedded = 0",
+                    "正向SQL结果": "",
+                    "反向SQL (库>表)": "SELECT COUNT(DISTINCT d.id) || ':' || COUNT(DISTINCT t.id) FROM databases d JOIN tables t ON d.id = t.database_id WHERE t.is_embedded = 0",
+                    "反向SQL结果": "",
+                    "API路径": "/api/tables/{id}",
+                    "API取值键": "database_info",
+                    "API实际结果": ""
+                }
+            },
+            {
+                "目标模块": "数据列",
+                "任务描述": "验证物理表与数据列的 1:N 包含关系",
+                "关联方式": "物理表 > 数据列 (包含的列)",
+                "关联验证": {
+                    "正向SQL (表>列)": "SELECT COUNT(DISTINCT t.id) || ':' || COUNT(DISTINCT c.id) FROM tables t JOIN db_columns c ON t.id = c.table_id WHERE t.is_embedded = 0",
+                    "正向SQL结果": "",
+                    "反向SQL (列>表)": "SELECT COUNT(DISTINCT c.id) || ':' || COUNT(DISTINCT c.table_id) FROM db_columns c JOIN tables t ON c.table_id = t.id WHERE t.is_embedded = 0",
+                    "反向SQL结果": "",
+                    "API路径": "/api/tables/{id}",
+                    "API取值键": "columns",
+                    "API实际结果": ""
+                }
+            },
+            {
+                "目标模块": "发布式数据源",
+                "任务描述": "验证物理表被发布式数据源引用的 M:N 关系",
+                "关联方式": "物理表 > 中间表(table_to_datasource) > 发布式数据源 (被引用)",
+                "关联验证": {
+                    "正向SQL (表>发布源)": "SELECT COUNT(DISTINCT td.table_id) || ':' || COUNT(DISTINCT td.datasource_id) FROM table_to_datasource td JOIN tables t ON td.table_id = t.id JOIN datasources ds ON td.datasource_id = ds.id WHERE t.is_embedded = 0 AND ds.is_embedded = 0",
+                    "正向SQL结果": "",
+                    "反向SQL (发布源>表)": "SELECT COUNT(DISTINCT ds.id) || ':' || COUNT(DISTINCT td.table_id) FROM datasources ds JOIN table_to_datasource td ON ds.id = td.datasource_id JOIN tables t ON td.table_id = t.id WHERE ds.is_embedded = 0 AND t.is_embedded = 0",
+                    "反向SQL结果": "",
+                    "API路径": "/api/tables/{id}",
+                    "API取值键": "datasources",
+                    "API实际结果": ""
+                }
+            },
+            {
+                "目标模块": "工作簿",
+                "任务描述": "验证物理表被工作簿引用的关系 (穿透)",
+                "关联方式": "物理表 > 数据源 > 工作簿 (穿透关联)",
+                "关联验证": {
+                    "正向SQL (表>工作簿)": "SELECT COUNT(DISTINCT t.id) || ':' || COUNT(DISTINCT dw.workbook_id) FROM tables t JOIN table_to_datasource td ON t.id = td.table_id JOIN datasource_to_workbook dw ON td.datasource_id = dw.datasource_id WHERE t.is_embedded = 0",
+                    "正向SQL结果": "",
+                    "反向SQL (工作簿>表)": "SELECT COUNT(DISTINCT w.id) || ':' || COUNT(DISTINCT t.id) FROM workbooks w JOIN datasource_to_workbook dw ON w.id = dw.workbook_id JOIN table_to_datasource td ON dw.datasource_id = td.datasource_id JOIN tables t ON td.table_id = t.id WHERE t.is_embedded = 0",
+                    "反向SQL结果": "",
+                    "API路径": "/api/tables/{id}",
+                    "API取值键": "workbooks",
+                    "API实际结果": ""
+                }
+            },
+            {
+                "目标模块": "字段",
+                "任务描述": "验证物理表与字段的 1:N 关联关系",
+                "关联方式": "物理表 > 字段 (派生的字段)",
+                "关联验证": {
+                    "正向SQL (表>字段)": "SELECT COUNT(DISTINCT t.id) || ':' || COUNT(DISTINCT f.id) FROM tables t JOIN fields f ON t.id = f.table_id WHERE t.is_embedded = 0",
+                    "正向SQL结果": "",
+                    "反向SQL (字段>表)": "SELECT COUNT(DISTINCT f.id) || ':' || COUNT(DISTINCT f.table_id) FROM fields f JOIN tables t ON f.table_id = t.id WHERE t.is_embedded = 0",
+                    "反向SQL结果": "",
+                    "API路径": "/api/tables/{id}",
+                    "API取值键": "full_fields",
+                    "API实际结果": ""
+                }
+            }
+        ],
+        "前端元素对齐": {
+            "任务描述": "验证前端卡片和详情页数据与后端逻辑的一致性 (参考 frontend_element_spec.md)",
+            "列表卡片 (TableCard.tsx)": {
+                "任务描述": "验证列表页关键指标显示",
+                "字段:column_count": {
+                    "任务描述": "验证物理表卡片上的原始列计数汇总",
+                    "API键": "column_count / columnCount",
+                    "SQL查询": "SELECT SUM(col_cnt) FROM (SELECT COUNT(*) as col_cnt FROM db_columns WHERE table_id IN (SELECT id FROM tables WHERE is_embedded=0) GROUP BY table_id)",
+                    "API汇总结果": "",
+                    "SQL汇总结果": ""
+                },
+                "字段:field_count": {
+                    "任务描述": "验证物理表卡片上的Tableau字段计数汇总",
+                    "API键": "field_count / fieldCount",
+                    "SQL查询": "SELECT SUM(field_cnt) FROM (SELECT COUNT(*) as field_cnt FROM fields WHERE table_id IN (SELECT id FROM tables WHERE is_embedded=0) GROUP BY table_id)",
+                    "API汇总结果": "",
+                    "SQL汇总结果": ""
+                },
+                "字段:datasource_count": {
+                    "任务描述": "验证物理表卡片上的数据源计数汇总",
+                    "API键": "datasource_count / datasourceCount",
+                    "SQL查询": "SELECT SUM(ds_cnt) FROM (SELECT COUNT(DISTINCT datasource_id) as ds_cnt FROM table_to_datasource WHERE table_id IN (SELECT id FROM tables WHERE is_embedded=0) GROUP BY table_id)",
+                    "API汇总结果": "",
+                    "SQL汇总结果": ""
+                },
+                "字段:workbook_count": {
+                    "任务描述": "验证物理表卡片上的工作簿计数汇总",
+                    "API键": "workbook_count / workbookCount",
+                    "SQL查询": "SELECT SUM(wb_cnt) FROM (SELECT COUNT(DISTINCT dw.workbook_id) as wb_cnt FROM table_to_datasource td JOIN datasource_to_workbook dw ON td.datasource_id = dw.datasource_id WHERE td.table_id IN (SELECT id FROM tables WHERE is_embedded=0) GROUP BY td.table_id)",
+                    "API汇总结果": "",
+                    "SQL汇总结果": ""
+                }
+            },
+            "详情页 (DetailDrawer L214-L234)": {
+                "任务描述": "验证详情页各 Tab 页签的数据准确性",
+                "Tab:所属数据库": {
+                    "任务描述": "验证物理表详情页的'所属数据库'信息",
+                    "API路径": "/api/tables/{id}",
+                    "API取值键": "database_info",
+                    "显示条件": "database_info 存在"
+                },
+                "Tab:原始列 (N)": {
+                    "任务描述": "验证物理表详情页的'原始列' Tab",
+                    "API路径": "/api/tables/{id}",
+                    "API取值键": "columns",
+                    "显示条件": "columns.length > 0",
+                    "API实际记录数": "",
+                    "SQL查询": "SELECT COUNT(*) FROM db_columns WHERE table_id = ?",
+                    "SQL实际记录数": ""
+                },
+                "Tab:包含字段 (N)": {
+                    "任务描述": "验证物理表详情页的'包含字段' Tab",
+                    "API路径": "/api/tables/{id}/fields",
+                    "API取值键": "full_fields",
+                    "显示条件": "full_fields.length > 0",
+                    "API实际记录数": "",
+                    "SQL查询": "SELECT COUNT(*) FROM fields WHERE table_id = ?",
+                    "SQL实际记录数": ""
+                },
+                "Tab:关联数据源 (N)": {
+                    "任务描述": "验证物理表详情页的'关联数据源' Tab",
+                    "API路径": "/api/tables/{id}/datasources",
+                    "API取值键": "datasources",
+                    "显示条件": "datasources.length > 0",
+                    "API实际记录数": "",
+                    "SQL查询": "SELECT COUNT(DISTINCT datasource_id) FROM table_to_datasource WHERE table_id = ?",
+                    "SQL实际记录数": ""
+                },
+                "Tab:关联工作簿 (N)": {
+                    "任务描述": "验证物理表详情页的'关联工作簿' Tab",
+                    "API路径": "/api/tables/{id}/workbooks",
+                    "API取值键": "workbooks",
+                    "显示条件": "workbooks.length > 0",
+                    "API实际记录数": "",
+                    "SQL查询": "SELECT COUNT(DISTINCT dw.workbook_id) FROM table_to_datasource td JOIN datasource_to_workbook dw ON td.datasource_id = dw.datasource_id WHERE td.table_id = ?",
+                    "SQL实际记录数": ""
+                }
+            }
+        },
+        "逻辑闭环验证": {
+            "任务描述": "跨层级比对：验证'前端展示值'与'底层血缘统计值'是否严丝合缝",
+            "比对项列表": [
+                {
+                    "比对名称": "字段数量闭环",
+                    "前端数据源": "前端元素对齐.列表卡片.字段:field_count.API汇总结果",
+                    "血缘数据源": "关联元素[目标模块='字段'].关联验证.正向SQL结果(提取目标数)",
+                    "比对逻辑": "数值相等",
+                    "差异容忍度": 0
+                },
+                {
+                    "比对名称": "数据源数量闭环",
+                    "前端数据源": "前端元素对齐.列表卡片.字段:datasource_count.API汇总结果",
+                    "血缘数据源": "关联元素[目标模块='发布式数据源'].关联验证.正向SQL结果(提取目标数)",
+                    "比对逻辑": "数值相等",
+                    "差异容忍度": 0
+                },
+                {
+                    "比对名称": "工作簿数量闭环",
+                    "前端数据源": "前端元素对齐.列表卡片.字段:workbook_count.API汇总结果",
+                    "血缘数据源": "关联元素[目标模块='工作簿'].关联验证.正向SQL结果(提取目标数)",
+                    "比对逻辑": "数值相等",
+                    "差异容忍度": 0
+                }
+            ]
+        }
+    }
+}
