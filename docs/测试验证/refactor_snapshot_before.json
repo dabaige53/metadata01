@@ -1,0 +1,4906 @@
+{
+  "generated_at": "2025-12-24T16:28:24.031706",
+  "db_path": "metadata.db",
+  "table_counts": {
+    "databases": 6,
+    "tables": 516,
+    "db_columns": 5893,
+    "datasources": 172,
+    "workbooks": 80,
+    "views": 1594,
+    "fields": 10567,
+    "calculated_fields": 4926,
+    "metrics": 3242,
+    "field_dependencies": 9809,
+    "field_full_lineage": 202484
+  },
+  "databases": {
+    "total_count": 6,
+    "top_databases_by_tables": [
+      {
+        "id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "name": "data_sandbox",
+        "table_count": 23
+      },
+      {
+        "id": "b92455a0-ea7a-2763-e891-68f8e6e6ac11",
+        "name": "10.12.15.14:8123",
+        "table_count": 4
+      },
+      {
+        "id": "7facaa45-0fd2-02ea-0d42-3433f68206e2",
+        "name": "ho",
+        "table_count": 3
+      },
+      {
+        "id": "fd143f08-a080-f147-f01e-f3c11ccdafaf",
+        "name": "data_sandbox",
+        "table_count": 3
+      },
+      {
+        "id": "8342827f-8975-63cc-3434-38cec1dc4ad6",
+        "name": "ho",
+        "table_count": 2
+      },
+      {
+        "id": "05924ae8-6b58-63d0-f4e7-31d401308769",
+        "name": "ho",
+        "table_count": 1
+      }
+    ],
+    "databases_without_tables": 0
+  },
+  "tables": {
+    "total_count": 516,
+    "embedded_count": 480,
+    "physical_count": 36,
+    "top_tables_by_datasources": [
+      {
+        "id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "name": "tbl_tic_trace_ticket",
+        "ds_count": 18
+      },
+      {
+        "id": "8a977b8a-b0b6-3fde-df62-60edf39e0393",
+        "name": "机场三字代码表",
+        "ds_count": 18
+      },
+      {
+        "id": "be3587d9-9bc6-410d-540a-86b1b2df1847",
+        "name": "总表",
+        "ds_count": 18
+      },
+      {
+        "id": "edd5690c-24c1-1f39-00af-55e29fbd00d3",
+        "name": "Sheet1",
+        "ds_count": 18
+      },
+      {
+        "id": "5fd17bd9-47eb-4c1e-0848-70e474669bea",
+        "name": "tbl_transfer_passenger",
+        "ds_count": 14
+      },
+      {
+        "id": "b759b00c-57c3-5c2e-2bd4-a53fbe25489b",
+        "name": "机场三字代码表",
+        "ds_count": 14
+      },
+      {
+        "id": "3bf7b59e-05d4-3b6e-3694-0e496974d1c1",
+        "name": "dim_loc_agent_info",
+        "ds_count": 12
+      },
+      {
+        "id": "1683e08b-6019-b130-0dcd-e123cd9e6baf",
+        "name": "dwm_transfer_passengers_segments",
+        "ds_count": 7
+      },
+      {
+        "id": "75410693-8972-b644-a16a-f570e3956ff2",
+        "name": "dim_loc_airport_3code_detail",
+        "ds_count": 7
+      },
+      {
+        "id": "b114fe00-0f81-5ce3-b564-36b78808d16a",
+        "name": "ods_mkt_dds_sales_monitoring",
+        "ds_count": 6
+      }
+    ],
+    "top_tables_by_fields": [
+      {
+        "id": "1683e08b-6019-b130-0dcd-e123cd9e6baf",
+        "name": "dwm_transfer_passengers_segments",
+        "field_count": 432
+      },
+      {
+        "id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "name": "tbl_tic_trace_ticket",
+        "field_count": 365
+      },
+      {
+        "id": "c4ebd46c-c746-0adb-e0f1-ad86e1ddd815",
+        "name": "Extract",
+        "field_count": 181
+      },
+      {
+        "id": "50cfa963-92e1-7e09-ceae-e58738f07932",
+        "name": "Extract",
+        "field_count": 157
+      },
+      {
+        "id": "d6456edc-1135-95ba-7b15-8283ee8d51c7",
+        "name": "Unknown Table",
+        "field_count": 156
+      },
+      {
+        "id": "5e321aef-49c4-ca42-53d7-b896831363c3",
+        "name": "Extract",
+        "field_count": 146
+      },
+      {
+        "id": "d364710c-c87b-d2fe-f216-225af2908fe9",
+        "name": "O&D数据分析.csv",
+        "field_count": 132
+      },
+      {
+        "id": "426ddc03-4443-5784-09b4-ddb085f3c2aa",
+        "name": "Extract",
+        "field_count": 112
+      },
+      {
+        "id": "a8dd74c1-92f3-090f-db56-24294a3de299",
+        "name": "View_DWD_ZY_Flight_Results",
+        "field_count": 96
+      },
+      {
+        "id": "c55bb5f1-0729-24fb-214d-ca9cfd8f8932",
+        "name": "View_DWD_ZY_Flight_Results",
+        "field_count": 88
+      }
+    ],
+    "tables_without_datasources": 343
+  },
+  "datasources": {
+    "total_count": 172,
+    "embedded_count": 115,
+    "published_count": 57,
+    "penetrating_embedded_count": 68,
+    "top_datasources_by_tables": [
+      {
+        "id": "0222e5a6-c7f4-da9d-aa44-d1b118ca90cc",
+        "name": "ZY数据模型",
+        "table_count": 6
+      },
+      {
+        "id": "16a56cdf-47c0-60d7-fb67-3df12725b89f",
+        "name": "中转航段数据补充票价数据-去重",
+        "table_count": 6
+      },
+      {
+        "id": "5ca7e560-e4f0-285e-fa08-267be66df4e8",
+        "name": "航班信息表-中科",
+        "table_count": 6
+      },
+      {
+        "id": "8f892a27-bcb8-5f3f-9c25-05b8ca58456a",
+        "name": "ZY数据模型",
+        "table_count": 6
+      },
+      {
+        "id": "9760a8e3-3306-1cf3-3fbf-6bb10bbd600c",
+        "name": "航班信息表-中科",
+        "table_count": 6
+      },
+      {
+        "id": "a6553fb7-5acc-1099-26ac-493a171bc4fa",
+        "name": "ZY数据模型",
+        "table_count": 6
+      },
+      {
+        "id": "ae48d8c6-55f7-eb61-1757-efd626f091dc",
+        "name": "航班信息表-中科",
+        "table_count": 6
+      },
+      {
+        "id": "d428d4ab-5701-cf52-3e2e-6b47b9fdf2f4",
+        "name": "中转航段数据补充票价数据",
+        "table_count": 6
+      },
+      {
+        "id": "87f389d4-6cd9-3508-199b-e490111bc3f5",
+        "name": "运力数据",
+        "table_count": 5
+      },
+      {
+        "id": "8d36615b-97fd-e5eb-842d-1e424e0cce62",
+        "name": "运力数据",
+        "table_count": 5
+      }
+    ],
+    "top_datasources_by_workbooks": [
+      {
+        "id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "name": "销售航段",
+        "wb_count": 16
+      },
+      {
+        "id": "b1b414eb-f6d8-929e-8e84-932bf07913c6",
+        "name": "销售票面",
+        "wb_count": 13
+      },
+      {
+        "id": "9760a8e3-3306-1cf3-3fbf-6bb10bbd600c",
+        "name": "航班信息表-中科",
+        "wb_count": 4
+      },
+      {
+        "id": "c642c61a-9e4c-fd26-a4ba-4aa6f12a848d",
+        "name": "未来预售-中科",
+        "wb_count": 4
+      },
+      {
+        "id": "4a04e1e4-dd14-e5a5-a271-5691aeccd79e",
+        "name": "销售航段新",
+        "wb_count": 3
+      },
+      {
+        "id": "9fb266e6-2efd-9f8c-834d-019ebc202eb2",
+        "name": "中转航段表",
+        "wb_count": 3
+      },
+      {
+        "id": "a7a74e5d-a997-d109-8e09-f870110e7717",
+        "name": "代理人信息维护",
+        "wb_count": 3
+      },
+      {
+        "id": "18cd18cf-e229-d958-a1c5-19213ee1de50",
+        "name": "融合表_周期_SQL定制数据",
+        "wb_count": 2
+      },
+      {
+        "id": "1bd2a786-6d39-df33-3aec-7f235442d880",
+        "name": "中转航段数据关联代理人数据",
+        "wb_count": 2
+      },
+      {
+        "id": "1ffb278e-3106-41b5-ce10-f6a22a1c45e7",
+        "name": "特殊产品改期客票",
+        "wb_count": 2
+      }
+    ],
+    "top_datasources_by_fields": [
+      {
+        "id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "name": "销售航段",
+        "field_count": 2838
+      },
+      {
+        "id": "4a04e1e4-dd14-e5a5-a271-5691aeccd79e",
+        "name": "销售航段新",
+        "field_count": 690
+      },
+      {
+        "id": "b1b414eb-f6d8-929e-8e84-932bf07913c6",
+        "name": "销售票面",
+        "field_count": 371
+      },
+      {
+        "id": "1bd2a786-6d39-df33-3aec-7f235442d880",
+        "name": "中转航段数据关联代理人数据",
+        "field_count": 361
+      },
+      {
+        "id": "16a56cdf-47c0-60d7-fb67-3df12725b89f",
+        "name": "中转航段数据补充票价数据-去重",
+        "field_count": 278
+      },
+      {
+        "id": "d428d4ab-5701-cf52-3e2e-6b47b9fdf2f4",
+        "name": "中转航段数据补充票价数据",
+        "field_count": 278
+      },
+      {
+        "id": "9760a8e3-3306-1cf3-3fbf-6bb10bbd600c",
+        "name": "航班信息表-中科",
+        "field_count": 261
+      },
+      {
+        "id": "5850874b-94ed-7914-5704-6a682b6abbcc",
+        "name": "Extract+ (多个连接)",
+        "field_count": 233
+      },
+      {
+        "id": "b0062acc-d3eb-251c-1a86-2b162aa4e4e9",
+        "name": "O&D数据分析.csv+ (多个连接)",
+        "field_count": 195
+      },
+      {
+        "id": "9fb266e6-2efd-9f8c-834d-019ebc202eb2",
+        "name": "中转航段表",
+        "field_count": 188
+      }
+    ]
+  },
+  "workbooks": {
+    "total_count": 80,
+    "top_workbooks_by_datasources": [
+      {
+        "id": "eb889539-558f-3a34-1339-d61517d52015",
+        "name": "Regional",
+        "ds_count": 6
+      },
+      {
+        "id": "db3c420b-ec1e-74fc-cc14-d00f0179063f",
+        "name": "链接test",
+        "ds_count": 5
+      },
+      {
+        "id": "2d1a813f-9816-23ea-d90b-5a4fa35e377b",
+        "name": "中转航线数据",
+        "ds_count": 4
+      },
+      {
+        "id": "3340adb6-da4d-1d7f-70ab-565e0c309931",
+        "name": "OAG数据分析汇报",
+        "ds_count": 4
+      },
+      {
+        "id": "424a9092-f8fd-a030-7bc2-9357f2ac91f3",
+        "name": "销售数据分析平台_佳茗",
+        "ds_count": 4
+      },
+      {
+        "id": "513a0f9f-56e3-1c68-0a45-6a97d17e4944",
+        "name": "HSD-航线特性",
+        "ds_count": 4
+      },
+      {
+        "id": "599c2df4-b8d6-d2e4-ce0b-6258491a871f",
+        "name": "HSD- OD航线定价",
+        "ds_count": 4
+      },
+      {
+        "id": "5be3851c-f8fa-7ff4-0e76-e6294ba0b0e1",
+        "name": "中科_客座算法验证",
+        "ds_count": 4
+      },
+      {
+        "id": "5e586198-88d1-9a0f-7b42-83079ceb6daf",
+        "name": "弃程分析",
+        "ds_count": 4
+      },
+      {
+        "id": "70fc5ba2-6e09-e95d-fd43-dde5aa615604",
+        "name": "HSD-销售-客群分析",
+        "ds_count": 4
+      }
+    ],
+    "top_workbooks_by_views": [
+      {
+        "id": "df95a808-c8bc-364f-4c64-44d9b22b7f34",
+        "name": "销售航段_新",
+        "view_count": 119
+      },
+      {
+        "id": "99cb5cdb-78bd-4397-23dd-d7fb877de00c",
+        "name": "销售数据分析平台",
+        "view_count": 117
+      },
+      {
+        "id": "42fec810-afd8-2db6-ab9c-e87af3927a8f",
+        "name": "销售分析",
+        "view_count": 97
+      },
+      {
+        "id": "8c53c444-2ae8-8781-7660-d69989f01e4b",
+        "name": "销售数据分析-国际平台",
+        "view_count": 76
+      },
+      {
+        "id": "e77fbabe-cc4e-846f-0524-0e392ddabaa7",
+        "name": "OD-TT",
+        "view_count": 75
+      },
+      {
+        "id": "3340adb6-da4d-1d7f-70ab-565e0c309931",
+        "name": "OAG数据分析汇报",
+        "view_count": 61
+      },
+      {
+        "id": "424a9092-f8fd-a030-7bc2-9357f2ac91f3",
+        "name": "销售数据分析平台_佳茗",
+        "view_count": 58
+      },
+      {
+        "id": "83844635-9eb9-ddf2-1379-b288f68334f0",
+        "name": "OAG_CR-运力监控平台",
+        "view_count": 56
+      },
+      {
+        "id": "0d27ed42-fd16-86e4-81cf-593bc2de5180",
+        "name": "ZY经营数据分析-同比",
+        "view_count": 51
+      },
+      {
+        "id": "d9766356-52e4-20bb-c23c-17ab5494db44",
+        "name": "澳洲市场分析-DDS",
+        "view_count": 48
+      }
+    ],
+    "workbooks_without_datasources": 0
+  },
+  "views": {
+    "total_count": 1594,
+    "by_type": {
+      "dashboard": 199,
+      "sheet": 1395
+    },
+    "top_views_by_fields": [
+      {
+        "id": "4a2b48d3-5984-e0af-53dd-5cc1ef4107cf",
+        "name": "承运航线表现",
+        "field_count": 53
+      },
+      {
+        "id": "bf296b8e-b36e-a84c-54c1-42b0b250e3fb",
+        "name": "承运航线表现_出发机场",
+        "field_count": 53
+      },
+      {
+        "id": "d97fcac2-5e76-82f7-f3e7-3bf3e7a7918e",
+        "name": "承运航线表现",
+        "field_count": 53
+      },
+      {
+        "id": "f8f65813-41b0-cb88-5d15-ebd2e04a7216",
+        "name": "承运航线表现_出发机场",
+        "field_count": 53
+      },
+      {
+        "id": "2358a89e-4171-8bd6-0839-a7f5088e7691",
+        "name": "承运航班表现",
+        "field_count": 50
+      },
+      {
+        "id": "52d06930-31f5-0b75-a30b-18be8b5b7c3a",
+        "name": "承运航班表现",
+        "field_count": 50
+      },
+      {
+        "id": "6a1a4373-294f-fb5f-f479-e4f0a8d8396f",
+        "name": "承运航班表现 (2)",
+        "field_count": 46
+      },
+      {
+        "id": "951f4468-be95-276c-028f-f8597c502131",
+        "name": "承运航班表现 (2)",
+        "field_count": 46
+      },
+      {
+        "id": "00eb246c-7a21-db65-117f-681f4e10adab",
+        "name": "承运航线中转表现",
+        "field_count": 45
+      },
+      {
+        "id": "01d45826-3fbb-f3e2-e04e-d21dfa427724",
+        "name": "承运航线中转表现",
+        "field_count": 45
+      }
+    ],
+    "views_without_fields": 213
+  },
+  "fields": {
+    "total_count": 10567,
+    "calculated_count": 4929,
+    "regular_count": 5638,
+    "fields_with_table": 5838,
+    "fields_without_table": 4729,
+    "fields_with_datasource": 10567,
+    "fields_with_workbook": 6849,
+    "fields_with_upstream_column": 4658,
+    "top_fields_by_views": [
+      {
+        "id": "ce6ed2ec-5e52-b4c7-2225-86fcc42aa16a",
+        "name": "航班日期",
+        "view_count": 350
+      },
+      {
+        "id": "15f29002-cdfc-eaf6-5880-4d4044dcc896",
+        "name": "航段",
+        "view_count": 244
+      },
+      {
+        "id": "36e8183f-07e4-cc67-9df5-7b739968c17e",
+        "name": "承运航司",
+        "view_count": 171
+      },
+      {
+        "id": "a0f4eca5-78e0-4813-b746-e68d3d3320fd",
+        "name": "出票日期",
+        "view_count": 154
+      },
+      {
+        "id": "09c99766-f1db-86a8-d079-797ce3f2de95",
+        "name": "CLAZZ",
+        "view_count": 152
+      },
+      {
+        "id": "08d11823-a5c9-5e31-cc8d-1a56dacabfb6",
+        "name": "航班号",
+        "view_count": 140
+      },
+      {
+        "id": "9691bd20-ea0c-e40f-9dc8-1347e9e0a61c",
+        "name": "出票日期筛选",
+        "view_count": 98
+      },
+      {
+        "id": "7b6bd393-1afc-2958-71b6-1cd62ecb915f",
+        "name": "销售航段张数",
+        "view_count": 77
+      },
+      {
+        "id": "35488d66-ad58-a826-ee9f-a5168662f52a",
+        "name": "BOOKINGINFO_GROUP",
+        "view_count": 75
+      },
+      {
+        "id": "5bb37507-cdc7-3052-684f-81874571804f",
+        "name": "客票状态",
+        "view_count": 64
+      }
+    ],
+    "duplicate_calculated_fields": [
+      {
+        "name": "销售票面张数",
+        "count": 31
+      },
+      {
+        "name": "INDEX()",
+        "count": 22
+      },
+      {
+        "name": "航程",
+        "count": 18
+      },
+      {
+        "name": "班次",
+        "count": 18
+      },
+      {
+        "name": "平均票价",
+        "count": 18
+      },
+      {
+        "name": "帕累托占比",
+        "count": 18
+      },
+      {
+        "name": "产品",
+        "count": 18
+      },
+      {
+        "name": "航班数量",
+        "count": 17
+      },
+      {
+        "name": "航班天数",
+        "count": 17
+      },
+      {
+        "name": "是否国际线",
+        "count": 17
+      }
+    ]
+  },
+  "calculated_fields": {
+    "total_count": 4926,
+    "with_duplicates": 4236,
+    "total_dependencies": 9809
+  },
+  "lineage_integrity": {
+    "full_lineage_count": 202484,
+    "complete_field_to_db_chain": 1501,
+    "complete_field_to_wb_chain": 8890,
+    "broken_lineage_regular_fields": 922
+  },
+  "relation_tables": {
+    "table_to_datasource_count": 357,
+    "datasource_to_workbook_count": 186,
+    "field_to_view_count": 12936,
+    "dashboard_to_sheet_count": 640
+  },
+  "db_to_table": {
+    "samples": [
+      {
+        "id": "05924ae8-6b58-63d0-f4e7-31d401308769",
+        "name": "ho",
+        "connection_type": "genericjdbc",
+        "table_count": 1,
+        "table_names": "View_DWD_ZY_Flight_Results"
+      },
+      {
+        "id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "name": "data_sandbox",
+        "connection_type": "mysql",
+        "table_count": 23,
+        "table_names": "dwd_tic_hsd_iinv_1min, tbl_tic_trace_ticket, ads_ord_transfer_od_break, dwm_transfer_passengers_segments, ods_tic_tcn_g_class_transfer, dim_loc_agent_info, ods_mkt_dds_sales_monitoring_2025, ads_hsd_ipnr_remark_detail, ods_mkt_oag_od_report, ods_mkt_oag_cr_report, dim_loc_airline_info, tbl_transfer_passenger, dim_loc_airport_3code_detail, ods_mkt_dds_sales_monitoring_2026, ads_ord_spec_prod_res_tkt_detail, dwd_ord_dds_data, dwd_transfer_abandon_trip_detail_d, ods_mkt_dds_sales_monitoring, dim_loc_flight_segment_type, tbl_tic_trace_ticket, dim_loc_country_region_detail, ads_transfer_abandon_trip_dashboard, ods_mkt_dds_sales_monitoring_2024"
+      },
+      {
+        "id": "7facaa45-0fd2-02ea-0d42-3433f68206e2",
+        "name": "ho",
+        "connection_type": "genericjdbc",
+        "table_count": 3,
+        "table_names": "DIM_ZY_FlightManagement, View_DWD_ZY_Flight_Results, APP_ZY_FlightMatching"
+      },
+      {
+        "id": "8342827f-8975-63cc-3434-38cec1dc4ad6",
+        "name": "ho",
+        "connection_type": "genericjdbc",
+        "table_count": 2,
+        "table_names": "DWD_ZY_Financial_Results_Detail, TEMP_ZY"
+      },
+      {
+        "id": "b92455a0-ea7a-2763-e891-68f8e6e6ac11",
+        "name": "10.12.15.14:8123",
+        "connection_type": "clickhouse_jdbc",
+        "table_count": 4,
+        "table_names": "vm_flight_history, vm_flight_analysis, vm_flight_history, vm_flight_future"
+      },
+      {
+        "id": "fd143f08-a080-f147-f01e-f3c11ccdafaf",
+        "name": "data_sandbox",
+        "connection_type": "mysql",
+        "table_count": 3,
+        "table_names": "ods_mkt_hords3data_d_lpdata, ods_mkt_hords3datam_b_flightinfo, ods_mkt_hords3data_d_lfdata"
+      }
+    ],
+    "stats": {
+      "total_databases": 6,
+      "databases_with_tables": 6
+    }
+  },
+  "table_to_column": {
+    "samples": [
+      {
+        "id": "50cfa963-92e1-7e09-ceae-e58738f07932",
+        "name": "Extract",
+        "is_embedded": 1,
+        "column_count": 278
+      },
+      {
+        "id": "c4ebd46c-c746-0adb-e0f1-ad86e1ddd815",
+        "name": "Extract",
+        "is_embedded": 1,
+        "column_count": 278
+      },
+      {
+        "id": "426ddc03-4443-5784-09b4-ddb085f3c2aa",
+        "name": "Extract",
+        "is_embedded": 1,
+        "column_count": 228
+      },
+      {
+        "id": "1683e08b-6019-b130-0dcd-e123cd9e6baf",
+        "name": "dwm_transfer_passengers_segments",
+        "is_embedded": 0,
+        "column_count": 186
+      },
+      {
+        "id": "5e321aef-49c4-ca42-53d7-b896831363c3",
+        "name": "Extract",
+        "is_embedded": 1,
+        "column_count": 152
+      },
+      {
+        "id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "name": "tbl_tic_trace_ticket",
+        "is_embedded": 0,
+        "column_count": 116
+      },
+      {
+        "id": "d6456edc-1135-95ba-7b15-8283ee8d51c7",
+        "name": "Unknown Table",
+        "is_embedded": 1,
+        "column_count": 116
+      },
+      {
+        "id": "d364710c-c87b-d2fe-f216-225af2908fe9",
+        "name": "O&D数据分析.csv",
+        "is_embedded": 1,
+        "column_count": 92
+      },
+      {
+        "id": "04767b3e-c84a-9a76-db75-1f3cd9f9fd05",
+        "name": "Extract",
+        "is_embedded": 1,
+        "column_count": 87
+      },
+      {
+        "id": "a4625629-1717-c6a3-8e39-990eee75e2ab",
+        "name": "Extract",
+        "is_embedded": 1,
+        "column_count": 87
+      },
+      {
+        "id": "c085a8ad-d535-2de4-3aaf-d19c62c1b494",
+        "name": "Extract",
+        "is_embedded": 1,
+        "column_count": 87
+      },
+      {
+        "id": "e9f79417-cb85-db71-81b9-b31ce1995235",
+        "name": "Extract",
+        "is_embedded": 1,
+        "column_count": 87
+      },
+      {
+        "id": "5209d022-959d-f61a-a24e-29e670e0de31",
+        "name": "Unknown Table",
+        "is_embedded": 1,
+        "column_count": 86
+      },
+      {
+        "id": "5fe1def7-14a8-cdc5-bde9-40e35b53db60",
+        "name": "Extract",
+        "is_embedded": 1,
+        "column_count": 86
+      },
+      {
+        "id": "81016e3b-f783-a4fb-9d45-81898da385dd",
+        "name": "Extract",
+        "is_embedded": 1,
+        "column_count": 86
+      },
+      {
+        "id": "a8dd74c1-92f3-090f-db56-24294a3de299",
+        "name": "View_DWD_ZY_Flight_Results",
+        "is_embedded": 0,
+        "column_count": 86
+      },
+      {
+        "id": "c55bb5f1-0729-24fb-214d-ca9cfd8f8932",
+        "name": "View_DWD_ZY_Flight_Results",
+        "is_embedded": 0,
+        "column_count": 86
+      },
+      {
+        "id": "a71d30dc-2bf7-3752-7cda-704a2d60d775",
+        "name": "dwd_ord_dds_data",
+        "is_embedded": 0,
+        "column_count": 79
+      },
+      {
+        "id": "6d95275c-afc4-7fb1-d69b-613b35dc6804",
+        "name": "Extract",
+        "is_embedded": 1,
+        "column_count": 71
+      },
+      {
+        "id": "a4e3f43e-fe78-a49d-38c8-0ca8e969fd12",
+        "name": "Extract",
+        "is_embedded": 1,
+        "column_count": 71
+      }
+    ],
+    "issues": [
+      {
+        "id": "1350d2a2-f3c2-2936-7479-61283764a012",
+        "name": "vm_flight_history"
+      },
+      {
+        "id": "15a8dfa3-f4e5-864c-02cf-c5872145b58f",
+        "name": "ads_ord_transfer_od_break"
+      },
+      {
+        "id": "3bf7b59e-05d4-3b6e-3694-0e496974d1c1",
+        "name": "dim_loc_agent_info"
+      },
+      {
+        "id": "3f2d0fa1-d8a9-6928-c466-e92e32b05f8b",
+        "name": "ods_mkt_dds_sales_monitoring_2025"
+      },
+      {
+        "id": "455c558d-4103-0aa8-6e70-f3f2f77dbdaf",
+        "name": "ods_mkt_oag_od_report"
+      },
+      {
+        "id": "4836e05e-6bab-cd94-afe1-4402f5ec3b4d",
+        "name": "ods_mkt_oag_cr_report"
+      },
+      {
+        "id": "52644695-06ce-47cb-8db7-cab43650242a",
+        "name": "vm_flight_analysis"
+      },
+      {
+        "id": "54a30fb2-f37c-990a-b030-c72fcae6779f",
+        "name": "dim_loc_airline_info"
+      },
+      {
+        "id": "6a8fb4db-1353-92ad-b8a7-e1aaac58b579",
+        "name": "DWD_ZY_Financial_Results_Detail"
+      },
+      {
+        "id": "6b6b5b2b-a7c5-acf6-006c-30ea2b17b031",
+        "name": "vm_flight_history"
+      },
+      {
+        "id": "75410693-8972-b644-a16a-f570e3956ff2",
+        "name": "dim_loc_airport_3code_detail"
+      },
+      {
+        "id": "a37b39ee-1350-c211-719c-d814c748fe50",
+        "name": "ods_mkt_dds_sales_monitoring_2026"
+      },
+      {
+        "id": "b09ca337-bc42-2ea2-4a08-9e61c1f404c2",
+        "name": "TEMP_ZY"
+      },
+      {
+        "id": "b114fe00-0f81-5ce3-b564-36b78808d16a",
+        "name": "ods_mkt_dds_sales_monitoring"
+      },
+      {
+        "id": "b1bea846-81d8-7529-a873-5704e132aea6",
+        "name": "dim_loc_flight_segment_type"
+      },
+      {
+        "id": "e1d4552a-3e3b-6de3-9591-7089963dabfc",
+        "name": "tbl_tic_trace_ticket"
+      },
+      {
+        "id": "e4dc46e1-7412-be20-7aad-5d7a9e662bd6",
+        "name": "dim_loc_country_region_detail"
+      },
+      {
+        "id": "e6708d2a-c797-ec89-6f36-ab07c985dcb3",
+        "name": "vm_flight_future"
+      },
+      {
+        "id": "fef6046d-b7fb-2315-75b3-70ba030ce688",
+        "name": "ods_mkt_dds_sales_monitoring_2024"
+      }
+    ],
+    "broken_count": 19
+  },
+  "table_to_datasource": {
+    "samples": [
+      {
+        "id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "name": "tbl_tic_trace_ticket",
+        "is_embedded": 0,
+        "ds_count": 18,
+        "ds_names": "销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段_国际大客户专用, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段"
+      },
+      {
+        "id": "8a977b8a-b0b6-3fde-df62-60edf39e0393",
+        "name": "机场三字代码表",
+        "is_embedded": 1,
+        "ds_count": 18,
+        "ds_names": "销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段_国际大客户专用, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段"
+      },
+      {
+        "id": "be3587d9-9bc6-410d-540a-86b1b2df1847",
+        "name": "总表",
+        "is_embedded": 1,
+        "ds_count": 18,
+        "ds_names": "销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段_国际大客户专用, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段"
+      },
+      {
+        "id": "edd5690c-24c1-1f39-00af-55e29fbd00d3",
+        "name": "Sheet1",
+        "is_embedded": 1,
+        "ds_count": 18,
+        "ds_names": "销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段_国际大客户专用, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段, 销售航段"
+      },
+      {
+        "id": "5fd17bd9-47eb-4c1e-0848-70e474669bea",
+        "name": "tbl_transfer_passenger",
+        "is_embedded": 0,
+        "ds_count": 14,
+        "ds_names": "销售票面, 销售票面, 销售票面, 销售票面, 销售票面, 销售票面, 销售票面, 销售票面, 销售票面, 销售票面, 销售票面, 销售票面, 销售票面, 销售票面"
+      },
+      {
+        "id": "b759b00c-57c3-5c2e-2bd4-a53fbe25489b",
+        "name": "机场三字代码表",
+        "is_embedded": 1,
+        "ds_count": 14,
+        "ds_names": "销售票面, 销售票面, 销售票面, 销售票面, 销售票面, 销售票面, 销售票面, 销售票面, 销售票面, 销售票面, 销售票面, 销售票面, 销售票面, 销售票面"
+      },
+      {
+        "id": "3bf7b59e-05d4-3b6e-3694-0e496974d1c1",
+        "name": "dim_loc_agent_info",
+        "is_embedded": 0,
+        "ds_count": 12,
+        "ds_names": "中转航段数据关联代理人数据, 中转航段数据关联代理人数据, DDS销售监控新, 销售航段新, 中转航段数据关联代理人数据, 代理人信息维护, 销售航段新, 销售航段新, 销售航段新, DDS销售监控新, DDS销售监控新, 代理人信息维护"
+      },
+      {
+        "id": "1683e08b-6019-b130-0dcd-e123cd9e6baf",
+        "name": "dwm_transfer_passengers_segments",
+        "is_embedded": 0,
+        "ds_count": 7,
+        "ds_names": "中转航段数据补充票价数据-去重, 中转航段数据关联代理人数据, 中转航段数据关联代理人数据, 中转航段数据关联代理人数据, 中转航段表, 中转航段表, 中转航段数据补充票价数据"
+      },
+      {
+        "id": "75410693-8972-b644-a16a-f570e3956ff2",
+        "name": "dim_loc_airport_3code_detail",
+        "is_embedded": 0,
+        "ds_count": 7,
+        "ds_names": "OAG_CR, OAG_CR, 销售航段新, 销售航段新, 销售航段新, 销售航段新, 机场三字码"
+      },
+      {
+        "id": "b114fe00-0f81-5ce3-b564-36b78808d16a",
+        "name": "ods_mkt_dds_sales_monitoring",
+        "is_embedded": 0,
+        "ds_count": 6,
+        "ds_names": "DDS销售监控, DDS销售监控新, DDS销售监控, DDS销售监控新, DDS销售监控新, DDS销售监控"
+      },
+      {
+        "id": "e1d4552a-3e3b-6de3-9591-7089963dabfc",
+        "name": "tbl_tic_trace_ticket",
+        "is_embedded": 0,
+        "ds_count": 6,
+        "ds_names": "中转航段数据补充票价数据-去重, 销售航段新, 销售航段新, 销售航段新, 销售航段新, 中转航段数据补充票价数据"
+      },
+      {
+        "id": "4ba00e5e-619e-b8f1-536e-2104191e8b3e",
+        "name": "ods_mkt_hords3datam_b_flightinfo",
+        "is_embedded": 0,
+        "ds_count": 5,
+        "ds_names": "航班信息表-中科, 航班信息表-中科, 航班信息表-中科, 航班信息表-中科, 航班信息表-中科"
+      },
+      {
+        "id": "d452a220-27f2-7b03-ee58-eb2bed59829a",
+        "name": "ods_mkt_hords3data_d_lfdata",
+        "is_embedded": 0,
+        "ds_count": 5,
+        "ds_names": "未来预售-中科, 未来预售-中科, 未来预售-中科, 未来预售-中科, 未来预售-中科"
+      },
+      {
+        "id": "1153f7ee-dcde-4eea-8415-c6123371efa9",
+        "name": "机场三字代码表",
+        "is_embedded": 1,
+        "ds_count": 4,
+        "ds_names": "未来预售-中科, 未来预售-中科, 未来预售-中科, 未来预售-中科"
+      },
+      {
+        "id": "2f9f87f3-b913-972b-6b20-2adc982a6d54",
+        "name": "Extract",
+        "is_embedded": 1,
+        "ds_count": 4,
+        "ds_names": "中转航段数据补充票价数据-去重, 代理人信息, 代理人信息, 中转航段数据补充票价数据"
+      },
+      {
+        "id": "6a3f315a-65fa-03f2-e205-41d703713806",
+        "name": "数据结果",
+        "is_embedded": 1,
+        "ds_count": 4,
+        "ds_names": "中转航段数据补充票价数据-去重, 代理人信息, 代理人信息, 中转航段数据补充票价数据"
+      },
+      {
+        "id": "7f3f60ba-6a75-cb18-d40a-1c5d7016dab1",
+        "name": "春运日期表",
+        "is_embedded": 1,
+        "ds_count": 4,
+        "ds_names": "未来预售-中科, 未来预售-中科, 未来预售-中科, 未来预售-中科"
+      },
+      {
+        "id": "bd30c0e9-4a6c-d9fd-6749-9a61f6176617",
+        "name": "机型表",
+        "is_embedded": 1,
+        "ds_count": 4,
+        "ds_names": "未来预售-中科, 未来预售-中科, 未来预售-中科, 未来预售-中科"
+      },
+      {
+        "id": "f39ced2a-9cee-f448-6b15-bbf6504547f1",
+        "name": "航线分类",
+        "is_embedded": 1,
+        "ds_count": 4,
+        "ds_names": "未来预售-中科, 未来预售-中科, 未来预售-中科, 未来预售-中科"
+      },
+      {
+        "id": "09b5a215-b818-ab54-9cb7-459d8ce9f6a8",
+        "name": "机型表",
+        "is_embedded": 1,
+        "ds_count": 3,
+        "ds_names": "航班信息表-中科, 航班信息表-中科, 航班信息表-中科"
+      }
+    ],
+    "stats": {
+      "total_relations": 357,
+      "tables_with_datasource": 173
+    }
+  },
+  "table_to_field": {
+    "samples": [
+      {
+        "id": "1683e08b-6019-b130-0dcd-e123cd9e6baf",
+        "name": "dwm_transfer_passengers_segments",
+        "is_embedded": 0,
+        "field_count": 432
+      },
+      {
+        "id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "name": "tbl_tic_trace_ticket",
+        "is_embedded": 0,
+        "field_count": 365
+      },
+      {
+        "id": "c4ebd46c-c746-0adb-e0f1-ad86e1ddd815",
+        "name": "Extract",
+        "is_embedded": 1,
+        "field_count": 181
+      },
+      {
+        "id": "50cfa963-92e1-7e09-ceae-e58738f07932",
+        "name": "Extract",
+        "is_embedded": 1,
+        "field_count": 157
+      },
+      {
+        "id": "d6456edc-1135-95ba-7b15-8283ee8d51c7",
+        "name": "Unknown Table",
+        "is_embedded": 1,
+        "field_count": 156
+      },
+      {
+        "id": "5e321aef-49c4-ca42-53d7-b896831363c3",
+        "name": "Extract",
+        "is_embedded": 1,
+        "field_count": 146
+      },
+      {
+        "id": "d364710c-c87b-d2fe-f216-225af2908fe9",
+        "name": "O&D数据分析.csv",
+        "is_embedded": 1,
+        "field_count": 132
+      },
+      {
+        "id": "426ddc03-4443-5784-09b4-ddb085f3c2aa",
+        "name": "Extract",
+        "is_embedded": 1,
+        "field_count": 112
+      },
+      {
+        "id": "a8dd74c1-92f3-090f-db56-24294a3de299",
+        "name": "View_DWD_ZY_Flight_Results",
+        "is_embedded": 0,
+        "field_count": 96
+      },
+      {
+        "id": "c55bb5f1-0729-24fb-214d-ca9cfd8f8932",
+        "name": "View_DWD_ZY_Flight_Results",
+        "is_embedded": 0,
+        "field_count": 88
+      },
+      {
+        "id": "a4625629-1717-c6a3-8e39-990eee75e2ab",
+        "name": "Extract",
+        "is_embedded": 1,
+        "field_count": 87
+      },
+      {
+        "id": "c085a8ad-d535-2de4-3aaf-d19c62c1b494",
+        "name": "Extract",
+        "is_embedded": 1,
+        "field_count": 87
+      },
+      {
+        "id": "5209d022-959d-f61a-a24e-29e670e0de31",
+        "name": "Unknown Table",
+        "is_embedded": 1,
+        "field_count": 85
+      },
+      {
+        "id": "e9f79417-cb85-db71-81b9-b31ce1995235",
+        "name": "Extract",
+        "is_embedded": 1,
+        "field_count": 81
+      },
+      {
+        "id": "04767b3e-c84a-9a76-db75-1f3cd9f9fd05",
+        "name": "Extract",
+        "is_embedded": 1,
+        "field_count": 80
+      },
+      {
+        "id": "a71d30dc-2bf7-3752-7cda-704a2d60d775",
+        "name": "dwd_ord_dds_data",
+        "is_embedded": 0,
+        "field_count": 80
+      },
+      {
+        "id": "8a977b8a-b0b6-3fde-df62-60edf39e0393",
+        "name": "机场三字代码表",
+        "is_embedded": 1,
+        "field_count": 79
+      },
+      {
+        "id": "6d95275c-afc4-7fb1-d69b-613b35dc6804",
+        "name": "Extract",
+        "is_embedded": 1,
+        "field_count": 71
+      },
+      {
+        "id": "c27a3d38-0acd-e2e3-ff5c-7335b5f1a376",
+        "name": "Extract",
+        "is_embedded": 1,
+        "field_count": 71
+      },
+      {
+        "id": "81016e3b-f783-a4fb-9d45-81898da385dd",
+        "name": "Extract",
+        "is_embedded": 1,
+        "field_count": 68
+      }
+    ],
+    "stats": {
+      "tables_with_fields": 181
+    }
+  },
+  "embedded_table_penetration": {
+    "samples": [
+      {
+        "id": "004c0915-1428-433a-134d-7b66f7a35561",
+        "name": "20250712_dih.csv",
+        "database_id": "0eb18804-5e39-0a9a-4920-db460e7c9b3d",
+        "database_name": null
+      },
+      {
+        "id": "0106b0af-d8a1-475b-638e-85e231657d9e",
+        "name": "20250522_dih.csv",
+        "database_id": "0eb18804-5e39-0a9a-4920-db460e7c9b3d",
+        "database_name": null
+      },
+      {
+        "id": "014a8d36-f685-72ce-e48f-5d54b69c418f",
+        "name": "机场三字代码表",
+        "database_id": "bfa1d58c-3a10-ec07-32a7-20588e0455f8",
+        "database_name": null
+      },
+      {
+        "id": "0237a9a6-02b9-8ba0-d876-6f39eed63e8f",
+        "name": "20250825_dih.csv",
+        "database_id": "0eb18804-5e39-0a9a-4920-db460e7c9b3d",
+        "database_name": null
+      },
+      {
+        "id": "045d6a30-e8f9-ac41-f3ef-4dc501b11577",
+        "name": "Orders_Central.csv",
+        "database_id": "c2e1053e-429d-eaa9-7661-17d8c6d5bb90",
+        "database_name": null
+      },
+      {
+        "id": "04767b3e-c84a-9a76-db75-1f3cd9f9fd05",
+        "name": "Extract",
+        "database_id": "453c4ae0-b2d9-98f7-afbf-71f6f4f44b85",
+        "database_name": null
+      },
+      {
+        "id": "05939fc5-309c-0814-4ba0-b7d1d01f5564",
+        "name": "20251022_dih.csv",
+        "database_id": "0eb18804-5e39-0a9a-4920-db460e7c9b3d",
+        "database_name": null
+      },
+      {
+        "id": "06216c95-7314-58a3-f5e9-ae1c1583d438",
+        "name": "航司表",
+        "database_id": "8950043c-adb1-aa82-b50b-6d8d741afa7b",
+        "database_name": null
+      },
+      {
+        "id": "06eb319a-f7b6-e4dd-2ccd-35bc6bb8627c",
+        "name": "20251212_dih.csv",
+        "database_id": "0eb18804-5e39-0a9a-4920-db460e7c9b3d",
+        "database_name": null
+      },
+      {
+        "id": "07d648e4-4026-a132-0338-22262705d6d8",
+        "name": "People",
+        "database_id": "aa7e2de6-2a6f-68dd-8b28-740b5796b4a9",
+        "database_name": null
+      },
+      {
+        "id": "08ac801e-b0b5-a39b-a9ad-a23552462480",
+        "name": "20251102_dih.csv",
+        "database_id": "0eb18804-5e39-0a9a-4920-db460e7c9b3d",
+        "database_name": null
+      },
+      {
+        "id": "0999c9e4-f0d9-e709-5713-e79ae6798dfa",
+        "name": "20250808_dih.csv",
+        "database_id": "0eb18804-5e39-0a9a-4920-db460e7c9b3d",
+        "database_name": null
+      },
+      {
+        "id": "09b5a215-b818-ab54-9cb7-459d8ce9f6a8",
+        "name": "机型表",
+        "database_id": "8d6d92b6-ed38-8731-1ba4-b0456d6aa33d",
+        "database_name": null
+      },
+      {
+        "id": "0a5137bb-fd44-c60c-bb5f-0f6d3dc7555a",
+        "name": "Orders",
+        "database_id": "ebb19429-e76f-e006-9d0f-896fc6a676bb",
+        "database_name": null
+      },
+      {
+        "id": "0aaacdb9-057d-8111-4dc8-af9c7e36a527",
+        "name": "20250926_dih.csv",
+        "database_id": "0eb18804-5e39-0a9a-4920-db460e7c9b3d",
+        "database_name": null
+      },
+      {
+        "id": "0ab39c22-fbac-4c84-6148-0cb09e22f49d",
+        "name": "机型表",
+        "database_id": "17ae796b-1ff5-3b59-df5c-e0d702e7e551",
+        "database_name": null
+      },
+      {
+        "id": "0acc1c1c-f7a5-7326-d9ce-940312e71803",
+        "name": "工作表 3.csv",
+        "database_id": "126dde33-bde4-769d-913a-95d527c052cd",
+        "database_name": null
+      },
+      {
+        "id": "0b0b8927-a445-ce19-c365-6efd6eb24b70",
+        "name": "Orders",
+        "database_id": "aa7e2de6-2a6f-68dd-8b28-740b5796b4a9",
+        "database_name": null
+      },
+      {
+        "id": "0d61dda4-38cd-367e-d782-612469f2b113",
+        "name": "20250722_dih.csv",
+        "database_id": "0eb18804-5e39-0a9a-4920-db460e7c9b3d",
+        "database_name": null
+      },
+      {
+        "id": "0e10431d-150f-3673-4f80-28531a8041b2",
+        "name": "20250620_dih.csv",
+        "database_id": "0eb18804-5e39-0a9a-4920-db460e7c9b3d",
+        "database_name": null
+      }
+    ],
+    "stats": {
+      "embedded_tables": 480,
+      "embedded_with_database": 446
+    }
+  },
+  "datasource_to_table": {
+    "samples": [
+      {
+        "id": "0222e5a6-c7f4-da9d-aa44-d1b118ca90cc",
+        "name": "ZY数据模型",
+        "is_embedded": 1,
+        "table_count": 6,
+        "table_names": "机场三字代码表, 春运日期表, 机型表, Extract, 航线分类, 网络改造"
+      },
+      {
+        "id": "16a56cdf-47c0-60d7-fb67-3df12725b89f",
+        "name": "中转航段数据补充票价数据-去重",
+        "is_embedded": 0,
+        "table_count": 6,
+        "table_names": "dwm_transfer_passengers_segments, Extract, Extract, 数据结果, Extract, tbl_tic_trace_ticket"
+      },
+      {
+        "id": "5ca7e560-e4f0-285e-fa08-267be66df4e8",
+        "name": "航班信息表-中科",
+        "is_embedded": 1,
+        "table_count": 6,
+        "table_names": "机型表, ods_mkt_hords3datam_b_flightinfo, 航司表, 机场三字代码表, 春运日期表, 航线分类"
+      },
+      {
+        "id": "8f892a27-bcb8-5f3f-9c25-05b8ca58456a",
+        "name": "ZY数据模型",
+        "is_embedded": 1,
+        "table_count": 6,
+        "table_names": "机型表, 春运日期表, 航线分类, 网络改造, 机场三字代码表, Extract"
+      },
+      {
+        "id": "9760a8e3-3306-1cf3-3fbf-6bb10bbd600c",
+        "name": "航班信息表-中科",
+        "is_embedded": 0,
+        "table_count": 6,
+        "table_names": "机型表, ods_mkt_hords3datam_b_flightinfo, 航司表, 机场三字代码表, 春运日期表, 航线分类"
+      },
+      {
+        "id": "a6553fb7-5acc-1099-26ac-493a171bc4fa",
+        "name": "ZY数据模型",
+        "is_embedded": 1,
+        "table_count": 6,
+        "table_names": "Extract, 机型表, 机场三字代码表, 航线分类, 网络改造, 春运日期表"
+      },
+      {
+        "id": "ae48d8c6-55f7-eb61-1757-efd626f091dc",
+        "name": "航班信息表-中科",
+        "is_embedded": 1,
+        "table_count": 6,
+        "table_names": "机型表, ods_mkt_hords3datam_b_flightinfo, 航司表, 机场三字代码表, 春运日期表, 航线分类"
+      },
+      {
+        "id": "d428d4ab-5701-cf52-3e2e-6b47b9fdf2f4",
+        "name": "中转航段数据补充票价数据",
+        "is_embedded": 0,
+        "table_count": 6,
+        "table_names": "dwm_transfer_passengers_segments, Extract, Extract, 数据结果, Extract, tbl_tic_trace_ticket"
+      },
+      {
+        "id": "87f389d4-6cd9-3508-199b-e490111bc3f5",
+        "name": "运力数据",
+        "is_embedded": 1,
+        "table_count": 5,
+        "table_names": "航司表, 机场三字代码表, 春运日期表, Extract, 航线分类"
+      },
+      {
+        "id": "8d36615b-97fd-e5eb-842d-1e424e0cce62",
+        "name": "运力数据",
+        "is_embedded": 1,
+        "table_count": 5,
+        "table_names": "机场三字代码表, Extract, 航线分类, 春运日期表, 航司表"
+      },
+      {
+        "id": "912fccf3-5554-a861-dc01-295e2354f8a4",
+        "name": "运力数据",
+        "is_embedded": 1,
+        "table_count": 5,
+        "table_names": "春运日期表, 机场三字代码表, 航线分类, Extract, 航司表"
+      },
+      {
+        "id": "a3266973-f4bf-2af3-86ec-98578989f211",
+        "name": "产出计划数据-预算明细数据+ (多个连接)",
+        "is_embedded": 1,
+        "table_count": 5,
+        "table_names": "vm_flight_history, 营业部信息 - 25.03.csv, 航班认领.csv, 预算明细.csv, 'Sheet 1$'"
+      },
+      {
+        "id": "af6e154e-336e-91c0-8e5f-c690b813f21d",
+        "name": "未来预售-中科",
+        "is_embedded": 1,
+        "table_count": 5,
+        "table_names": "机场三字代码表, 春运日期表, 机型表, ods_mkt_hords3data_d_lfdata, 航线分类"
+      },
+      {
+        "id": "afa4c511-b719-0a2e-6777-bf2c7f0d76cc",
+        "name": "运力数据",
+        "is_embedded": 1,
+        "table_count": 5,
+        "table_names": "航司表, Extract, 春运日期表, 机场三字代码表, 航线分类"
+      },
+      {
+        "id": "bf8a6e66-f259-0d33-da00-e596cf45cf9f",
+        "name": "运力数据",
+        "is_embedded": 1,
+        "table_count": 5,
+        "table_names": "春运日期表, 机场三字代码表, 航司表, Extract, 航线分类"
+      },
+      {
+        "id": "c642c61a-9e4c-fd26-a4ba-4aa6f12a848d",
+        "name": "未来预售-中科",
+        "is_embedded": 0,
+        "table_count": 5,
+        "table_names": "机场三字代码表, 春运日期表, 机型表, ods_mkt_hords3data_d_lfdata, 航线分类"
+      },
+      {
+        "id": "e827d539-b452-47ea-f7b5-b0221a91c771",
+        "name": "未来预售-中科",
+        "is_embedded": 1,
+        "table_count": 5,
+        "table_names": "机场三字代码表, 春运日期表, 机型表, ods_mkt_hords3data_d_lfdata, 航线分类"
+      },
+      {
+        "id": "f723fe9c-3827-84e7-504e-cdcda068b74e",
+        "name": "未来预售-中科",
+        "is_embedded": 1,
+        "table_count": 5,
+        "table_names": "机场三字代码表, 春运日期表, 机型表, ods_mkt_hords3data_d_lfdata, 航线分类"
+      },
+      {
+        "id": "022361ca-cda8-4674-d640-5d1715ae3c71",
+        "name": "销售航段",
+        "is_embedded": 1,
+        "table_count": 4,
+        "table_names": "tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1"
+      },
+      {
+        "id": "0834787f-276c-4486-4d79-275b2a1ab830",
+        "name": "销售航段",
+        "is_embedded": 1,
+        "table_count": 4,
+        "table_names": "tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1"
+      }
+    ],
+    "stats": {
+      "datasources_without_tables": 18
+    }
+  },
+  "datasource_to_workbook": {
+    "samples": [
+      {
+        "id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "name": "销售航段",
+        "is_embedded": 0,
+        "wb_count": 16,
+        "wb_names": "销售数据分析平台_佳茗, 销售分析, HSD-航线特性, HSD- OD航线定价, HSD-销售-客群分析, HSD-趋势对比, 销售数据分析平台_佳茗电商_票号匹配, 销售数据分析-国际平台, HSD-销售-航线监控, 日本销售监控-民航局, HSD-航线特性(客体）, 销售数据分析平台, 入盟协议 - 数据支持 - 销售数据, HSD-数据质量监控,  日本销售-民航局-佳茗, HSD-企业客户"
+      },
+      {
+        "id": "b1b414eb-f6d8-929e-8e84-932bf07913c6",
+        "name": "销售票面",
+        "is_embedded": 0,
+        "wb_count": 13,
+        "wb_names": "销售数据分析平台_佳茗, HSD-航线特性, HSD- OD航线定价, HSD-销售-客群分析, HSD-趋势对比, 销售数据分析-国际平台, HSD-销售-航线监控, 日本销售监控-民航局, HSD-航线特性(客体）, 销售数据分析平台, HSD-数据质量监控,  日本销售-民航局-佳茗, HSD-企业客户"
+      },
+      {
+        "id": "9760a8e3-3306-1cf3-3fbf-6bb10bbd600c",
+        "name": "航班信息表-中科",
+        "is_embedded": 0,
+        "wb_count": 4,
+        "wb_names": "中科_客座算法验证, 中科-行业收益数据, 中科_航班信息表_佳茗测试, 中科-融合数据"
+      },
+      {
+        "id": "c642c61a-9e4c-fd26-a4ba-4aa6f12a848d",
+        "name": "未来预售-中科",
+        "is_embedded": 0,
+        "wb_count": 4,
+        "wb_names": "中科_客座算法验证, 中科-行业收益数据, 中科-融合数据, OTA"
+      },
+      {
+        "id": "4a04e1e4-dd14-e5a5-a271-5691aeccd79e",
+        "name": "销售航段新",
+        "is_embedded": 0,
+        "wb_count": 3,
+        "wb_names": "销售数据分析平台_低代码融合_佳茗, 销售航段_新, 销售航段_整体分析"
+      },
+      {
+        "id": "9fb266e6-2efd-9f8c-834d-019ebc202eb2",
+        "name": "中转航段表",
+        "is_embedded": 0,
+        "wb_count": 3,
+        "wb_names": "中转航线数据, 弃程分析, 中转航段表_佳茗测试"
+      },
+      {
+        "id": "a7a74e5d-a997-d109-8e09-f870110e7717",
+        "name": "代理人信息维护",
+        "is_embedded": 0,
+        "wb_count": 3,
+        "wb_names": "中转航线数据, 弃程分析, 代理人存量分析"
+      },
+      {
+        "id": "18cd18cf-e229-d958-a1c5-19213ee1de50",
+        "name": "融合表_周期_SQL定制数据",
+        "is_embedded": 0,
+        "wb_count": 2,
+        "wb_names": "收辅_HO融合表_星期对应, 收辅- HO进度监控"
+      },
+      {
+        "id": "1bd2a786-6d39-df33-3aec-7f235442d880",
+        "name": "中转航段数据关联代理人数据",
+        "is_embedded": 0,
+        "wb_count": 2,
+        "wb_names": "中转航线数据, 弃程分析"
+      },
+      {
+        "id": "1ffb278e-3106-41b5-ce10-f6a22a1c45e7",
+        "name": "特殊产品改期客票",
+        "is_embedded": 0,
+        "wb_count": 2,
+        "wb_names": "产品类客票改期 监控, 产品类客票改期 监控"
+      },
+      {
+        "id": "41a53d84-c0d9-1322-5645-35a83073012e",
+        "name": "DDS销售监控新",
+        "is_embedded": 0,
+        "wb_count": 2,
+        "wb_names": "DDS_销售处, DDS_信息部提供_佳茗"
+      },
+      {
+        "id": "89e1beca-af4a-70fe-a9c8-cb4a278d3406",
+        "name": "DDS销售监控",
+        "is_embedded": 0,
+        "wb_count": 2,
+        "wb_names": "DDS_销售处_冠尧, DDS_信息部提供_佳茗"
+      },
+      {
+        "id": "0222e5a6-c7f4-da9d-aa44-d1b118ca90cc",
+        "name": "ZY数据模型",
+        "is_embedded": 1,
+        "wb_count": 1,
+        "wb_names": "ZY经营数据分析-同比"
+      },
+      {
+        "id": "022361ca-cda8-4674-d640-5d1715ae3c71",
+        "name": "销售航段",
+        "is_embedded": 1,
+        "wb_count": 1,
+        "wb_names": "HSD-航线特性"
+      },
+      {
+        "id": "02ce735d-5ab5-51c9-fa03-849cec0f768a",
+        "name": "销售票面",
+        "is_embedded": 1,
+        "wb_count": 1,
+        "wb_names": "销售数据分析平台_佳茗"
+      },
+      {
+        "id": "0420f119-7b7c-9110-d09f-0ddba950c36c",
+        "name": "票段异常数据标签 数据提取 数据提取",
+        "is_embedded": 1,
+        "wb_count": 1,
+        "wb_names": "票段异常数据"
+      },
+      {
+        "id": "0834787f-276c-4486-4d79-275b2a1ab830",
+        "name": "销售航段",
+        "is_embedded": 1,
+        "wb_count": 1,
+        "wb_names": "日本销售监控-民航局"
+      },
+      {
+        "id": "085459c6-85ee-6304-939e-7b38c1f7fb91",
+        "name": "销售票面",
+        "is_embedded": 1,
+        "wb_count": 1,
+        "wb_names": "销售数据分析-国际平台"
+      },
+      {
+        "id": "0c78699b-29a3-144e-9da1-8298d1d3aa8c",
+        "name": "融合表_周期_模糊匹配_SQL",
+        "is_embedded": 1,
+        "wb_count": 1,
+        "wb_names": "收辅_HO融合表_星期_模糊匹配"
+      },
+      {
+        "id": "0fe2238e-7c17-8e02-51e6-032492f593fb",
+        "name": "销售航段",
+        "is_embedded": 1,
+        "wb_count": 1,
+        "wb_names": "销售数据分析-国际平台"
+      }
+    ],
+    "stats": {
+      "total_relations": 186,
+      "datasources_without_workbook": 30
+    }
+  },
+  "datasource_to_field": {
+    "samples": [
+      {
+        "id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "name": "销售航段",
+        "is_embedded": 0,
+        "field_count": 2838,
+        "calc_count": 2479
+      },
+      {
+        "id": "4a04e1e4-dd14-e5a5-a271-5691aeccd79e",
+        "name": "销售航段新",
+        "is_embedded": 0,
+        "field_count": 690,
+        "calc_count": 425
+      },
+      {
+        "id": "b1b414eb-f6d8-929e-8e84-932bf07913c6",
+        "name": "销售票面",
+        "is_embedded": 0,
+        "field_count": 371,
+        "calc_count": 223
+      },
+      {
+        "id": "1bd2a786-6d39-df33-3aec-7f235442d880",
+        "name": "中转航段数据关联代理人数据",
+        "is_embedded": 0,
+        "field_count": 361,
+        "calc_count": 118
+      },
+      {
+        "id": "16a56cdf-47c0-60d7-fb67-3df12725b89f",
+        "name": "中转航段数据补充票价数据-去重",
+        "is_embedded": 0,
+        "field_count": 278,
+        "calc_count": 0
+      },
+      {
+        "id": "d428d4ab-5701-cf52-3e2e-6b47b9fdf2f4",
+        "name": "中转航段数据补充票价数据",
+        "is_embedded": 0,
+        "field_count": 278,
+        "calc_count": 0
+      },
+      {
+        "id": "9760a8e3-3306-1cf3-3fbf-6bb10bbd600c",
+        "name": "航班信息表-中科",
+        "is_embedded": 0,
+        "field_count": 261,
+        "calc_count": 133
+      },
+      {
+        "id": "5850874b-94ed-7914-5704-6a682b6abbcc",
+        "name": "Extract+ (多个连接)",
+        "is_embedded": 1,
+        "field_count": 233,
+        "calc_count": 84
+      },
+      {
+        "id": "b0062acc-d3eb-251c-1a86-2b162aa4e4e9",
+        "name": "O&D数据分析.csv+ (多个连接)",
+        "is_embedded": 1,
+        "field_count": 195,
+        "calc_count": 59
+      },
+      {
+        "id": "9fb266e6-2efd-9f8c-834d-019ebc202eb2",
+        "name": "中转航段表",
+        "is_embedded": 0,
+        "field_count": 188,
+        "calc_count": 1
+      },
+      {
+        "id": "0420f119-7b7c-9110-d09f-0ddba950c36c",
+        "name": "票段异常数据标签 数据提取 数据提取",
+        "is_embedded": 1,
+        "field_count": 158,
+        "calc_count": 4
+      },
+      {
+        "id": "2d67a63d-3b19-0f45-544b-ce04eba9d661",
+        "name": "OAG_CR",
+        "is_embedded": 0,
+        "field_count": 156,
+        "calc_count": 31
+      },
+      {
+        "id": "8f892a27-bcb8-5f3f-9c25-05b8ca58456a",
+        "name": "ZY数据模型",
+        "is_embedded": 1,
+        "field_count": 155,
+        "calc_count": 129
+      },
+      {
+        "id": "a3266973-f4bf-2af3-86ec-98578989f211",
+        "name": "产出计划数据-预算明细数据+ (多个连接)",
+        "is_embedded": 1,
+        "field_count": 154,
+        "calc_count": 43
+      },
+      {
+        "id": "a6553fb7-5acc-1099-26ac-493a171bc4fa",
+        "name": "ZY数据模型",
+        "is_embedded": 1,
+        "field_count": 139,
+        "calc_count": 109
+      },
+      {
+        "id": "0222e5a6-c7f4-da9d-aa44-d1b118ca90cc",
+        "name": "ZY数据模型",
+        "is_embedded": 1,
+        "field_count": 126,
+        "calc_count": 99
+      },
+      {
+        "id": "edd2547b-d58a-c864-5b84-5b933bf3da66",
+        "name": "View_DWD_ZY_Flight_Results+ (main)",
+        "is_embedded": 1,
+        "field_count": 124,
+        "calc_count": 15
+      },
+      {
+        "id": "41a53d84-c0d9-1322-5645-35a83073012e",
+        "name": "DDS销售监控新",
+        "is_embedded": 0,
+        "field_count": 114,
+        "calc_count": 12
+      },
+      {
+        "id": "c642c61a-9e4c-fd26-a4ba-4aa6f12a848d",
+        "name": "未来预售-中科",
+        "is_embedded": 0,
+        "field_count": 112,
+        "calc_count": 16
+      },
+      {
+        "id": "5c35f1f7-0d01-0f07-2d33-bfc32541e6f0",
+        "name": "Extract+ (多个连接)",
+        "is_embedded": 1,
+        "field_count": 110,
+        "calc_count": 84
+      }
+    ],
+    "stats": {
+      "datasources_with_fields": 104
+    }
+  },
+  "embedded_datasource_penetration": {
+    "samples": [
+      {
+        "id": "49cecd3b-397b-1c31-2db1-67e844218ce4",
+        "embedded_name": "历史对比_周期_SQL定制数据",
+        "published_id": "f52e7121-3c55-81a7-1648-28f19578423a",
+        "published_name": "历史对比_周期_SQL定制数据"
+      },
+      {
+        "id": "ca8d152b-3e18-3624-0ba4-6e890dfbf072",
+        "embedded_name": "DDS-O&D_Ticketing",
+        "published_id": "fa330e00-95d8-6df8-8042-2d24ead945ea",
+        "published_name": "DDS-O&D_Ticketing"
+      },
+      {
+        "id": "270cbc63-cc83-e665-6e10-8391ba8ae8a3",
+        "embedded_name": "OD-Trip",
+        "published_id": "cdd3e130-7e17-5009-15a0-7262849963b4",
+        "published_name": "OD-Trip"
+      },
+      {
+        "id": "abaa365a-73d5-ff8c-1306-ab7bb95eb334",
+        "embedded_name": "销售航段新",
+        "published_id": "4a04e1e4-dd14-e5a5-a271-5691aeccd79e",
+        "published_name": "销售航段新"
+      },
+      {
+        "id": "efedba38-b971-571c-57a0-a903b475ebde",
+        "embedded_name": "DDS销售监控",
+        "published_id": "89e1beca-af4a-70fe-a9c8-cb4a278d3406",
+        "published_name": "DDS销售监控"
+      },
+      {
+        "id": "3f33ac94-66c2-90af-9570-f78fa8cc49cc",
+        "embedded_name": "中转航段数据关联代理人数据",
+        "published_id": "1bd2a786-6d39-df33-3aec-7f235442d880",
+        "published_name": "中转航段数据关联代理人数据"
+      },
+      {
+        "id": "5774225a-0692-603b-b1c6-f82b75d9f379",
+        "embedded_name": "融合表_公历对应_定制数据",
+        "published_id": "412040e3-1436-94d9-ce90-270e966ac019",
+        "published_name": "融合表_公历对应_SQL定制数据"
+      },
+      {
+        "id": "02ce735d-5ab5-51c9-fa03-849cec0f768a",
+        "embedded_name": "销售票面",
+        "published_id": "b1b414eb-f6d8-929e-8e84-932bf07913c6",
+        "published_name": "销售票面"
+      },
+      {
+        "id": "89bdea93-e0d7-5f0e-cdc6-17bcb079f37d",
+        "embedded_name": "销售航段",
+        "published_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "published_name": "销售航段"
+      },
+      {
+        "id": "7093c401-8a0a-f3b1-be1e-c80fe8479e87",
+        "embedded_name": "销售航段_国际大客户专用",
+        "published_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "published_name": "销售航段"
+      },
+      {
+        "id": "fde79fc2-b60a-34da-f1a7-3e063f47b6aa",
+        "embedded_name": "销售航段",
+        "published_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "published_name": "销售航段"
+      },
+      {
+        "id": "b361dc84-273d-4555-e5e2-050565c61cf1",
+        "embedded_name": "DDS-O&D数据采集",
+        "published_id": "e2f0dfe9-25af-c2e0-c291-4529cf4aeaac",
+        "published_name": "DDS-O&D数据采集"
+      },
+      {
+        "id": "022361ca-cda8-4674-d640-5d1715ae3c71",
+        "embedded_name": "销售航段",
+        "published_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "published_name": "销售航段"
+      },
+      {
+        "id": "2eb6594f-64a2-1f26-2d82-d4d183ecadae",
+        "embedded_name": "销售票面",
+        "published_id": "b1b414eb-f6d8-929e-8e84-932bf07913c6",
+        "published_name": "销售票面"
+      },
+      {
+        "id": "ae0e8823-a659-6765-192c-d1a7a4f16f0e",
+        "embedded_name": "OAG数据集",
+        "published_id": "87fe8a1a-de54-d031-cb90-23680c60ed05",
+        "published_name": "OAG数据集"
+      },
+      {
+        "id": "ab0bae57-017b-5278-1525-d76c5be09526",
+        "embedded_name": "融合表_农历对应_SQL定制数据",
+        "published_id": "ca87aa7a-b33f-da52-02d3-560d3f5315df",
+        "published_name": "融合表_农历对应_SQL定制数据"
+      },
+      {
+        "id": "1524b945-2527-9727-2a6b-2f9d90a1bf41",
+        "embedded_name": "销售票面",
+        "published_id": "b1b414eb-f6d8-929e-8e84-932bf07913c6",
+        "published_name": "销售票面"
+      },
+      {
+        "id": "51994454-4c81-da4e-446f-8d6d30916080",
+        "embedded_name": "销售航段",
+        "published_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "published_name": "销售航段"
+      },
+      {
+        "id": "ae48d8c6-55f7-eb61-1757-efd626f091dc",
+        "embedded_name": "航班信息表-中科",
+        "published_id": "9760a8e3-3306-1cf3-3fbf-6bb10bbd600c",
+        "published_name": "航班信息表-中科"
+      },
+      {
+        "id": "f723fe9c-3827-84e7-504e-cdcda068b74e",
+        "embedded_name": "未来预售-中科",
+        "published_id": "c642c61a-9e4c-fd26-a4ba-4aa6f12a848d",
+        "published_name": "未来预售-中科"
+      }
+    ],
+    "stats": {
+      "total_embedded": 115,
+      "penetrating_count": 68,
+      "standalone_count": 47
+    },
+    "issues": [],
+    "broken_count": 0
+  },
+  "workbook_to_datasource": {
+    "samples": [
+      {
+        "id": "eb889539-558f-3a34-1339-d61517d52015",
+        "name": "Regional",
+        "ds_count": 6,
+        "embedded_ds_count": 6,
+        "published_ds_count": 0
+      },
+      {
+        "id": "db3c420b-ec1e-74fc-cc14-d00f0179063f",
+        "name": "链接test",
+        "ds_count": 5,
+        "embedded_ds_count": 3,
+        "published_ds_count": 2
+      },
+      {
+        "id": "2d1a813f-9816-23ea-d90b-5a4fa35e377b",
+        "name": "中转航线数据",
+        "ds_count": 4,
+        "embedded_ds_count": 1,
+        "published_ds_count": 3
+      },
+      {
+        "id": "3340adb6-da4d-1d7f-70ab-565e0c309931",
+        "name": "OAG数据分析汇报",
+        "ds_count": 4,
+        "embedded_ds_count": 4,
+        "published_ds_count": 0
+      },
+      {
+        "id": "424a9092-f8fd-a030-7bc2-9357f2ac91f3",
+        "name": "销售数据分析平台_佳茗",
+        "ds_count": 4,
+        "embedded_ds_count": 2,
+        "published_ds_count": 2
+      },
+      {
+        "id": "513a0f9f-56e3-1c68-0a45-6a97d17e4944",
+        "name": "HSD-航线特性",
+        "ds_count": 4,
+        "embedded_ds_count": 2,
+        "published_ds_count": 2
+      },
+      {
+        "id": "599c2df4-b8d6-d2e4-ce0b-6258491a871f",
+        "name": "HSD- OD航线定价",
+        "ds_count": 4,
+        "embedded_ds_count": 2,
+        "published_ds_count": 2
+      },
+      {
+        "id": "5be3851c-f8fa-7ff4-0e76-e6294ba0b0e1",
+        "name": "中科_客座算法验证",
+        "ds_count": 4,
+        "embedded_ds_count": 2,
+        "published_ds_count": 2
+      },
+      {
+        "id": "5e586198-88d1-9a0f-7b42-83079ceb6daf",
+        "name": "弃程分析",
+        "ds_count": 4,
+        "embedded_ds_count": 1,
+        "published_ds_count": 3
+      },
+      {
+        "id": "70fc5ba2-6e09-e95d-fd43-dde5aa615604",
+        "name": "HSD-销售-客群分析",
+        "ds_count": 4,
+        "embedded_ds_count": 2,
+        "published_ds_count": 2
+      },
+      {
+        "id": "7499f780-7f55-7d9f-2a51-e875c7d42a00",
+        "name": "HSD-趋势对比",
+        "ds_count": 4,
+        "embedded_ds_count": 2,
+        "published_ds_count": 2
+      },
+      {
+        "id": "8c53c444-2ae8-8781-7660-d69989f01e4b",
+        "name": "销售数据分析-国际平台",
+        "ds_count": 4,
+        "embedded_ds_count": 2,
+        "published_ds_count": 2
+      },
+      {
+        "id": "9104e6c3-adff-bedc-a880-b893086c2dd0",
+        "name": "HSD-销售-航线监控",
+        "ds_count": 4,
+        "embedded_ds_count": 2,
+        "published_ds_count": 2
+      },
+      {
+        "id": "91d7f93c-8bf6-0c0f-7dbb-38d2f6e9a326",
+        "name": "日本销售监控-民航局",
+        "ds_count": 4,
+        "embedded_ds_count": 2,
+        "published_ds_count": 2
+      },
+      {
+        "id": "992951be-ed8f-fc70-3c08-0344bef36c26",
+        "name": "HSD-航线特性(客体）",
+        "ds_count": 4,
+        "embedded_ds_count": 2,
+        "published_ds_count": 2
+      },
+      {
+        "id": "99cb5cdb-78bd-4397-23dd-d7fb877de00c",
+        "name": "销售数据分析平台",
+        "ds_count": 4,
+        "embedded_ds_count": 2,
+        "published_ds_count": 2
+      },
+      {
+        "id": "9cfd48a8-61ed-eb94-c25c-7a3465a4b135",
+        "name": "中科-行业收益数据",
+        "ds_count": 4,
+        "embedded_ds_count": 2,
+        "published_ds_count": 2
+      },
+      {
+        "id": "ac543d6c-b58f-8467-4841-2dbb65a86b92",
+        "name": "代理人存量分析",
+        "ds_count": 4,
+        "embedded_ds_count": 2,
+        "published_ds_count": 2
+      },
+      {
+        "id": "c224369f-c474-db5d-722f-92bd389aa456",
+        "name": "中科-融合数据",
+        "ds_count": 4,
+        "embedded_ds_count": 2,
+        "published_ds_count": 2
+      },
+      {
+        "id": "dc0c3ad6-92c6-d27f-1b51-0e55066a8e4b",
+        "name": "OAG看板_信息部沙盒",
+        "ds_count": 4,
+        "embedded_ds_count": 2,
+        "published_ds_count": 2
+      }
+    ],
+    "stats": {
+      "orphan_workbooks": 0
+    }
+  },
+  "workbook_to_view": {
+    "samples": [
+      {
+        "id": "df95a808-c8bc-364f-4c64-44d9b22b7f34",
+        "name": "销售航段_新",
+        "view_count": 119,
+        "sheet_count": 106,
+        "dashboard_count": 13
+      },
+      {
+        "id": "99cb5cdb-78bd-4397-23dd-d7fb877de00c",
+        "name": "销售数据分析平台",
+        "view_count": 117,
+        "sheet_count": 103,
+        "dashboard_count": 14
+      },
+      {
+        "id": "42fec810-afd8-2db6-ab9c-e87af3927a8f",
+        "name": "销售分析",
+        "view_count": 97,
+        "sheet_count": 86,
+        "dashboard_count": 11
+      },
+      {
+        "id": "8c53c444-2ae8-8781-7660-d69989f01e4b",
+        "name": "销售数据分析-国际平台",
+        "view_count": 76,
+        "sheet_count": 59,
+        "dashboard_count": 17
+      },
+      {
+        "id": "e77fbabe-cc4e-846f-0524-0e392ddabaa7",
+        "name": "OD-TT",
+        "view_count": 75,
+        "sheet_count": 64,
+        "dashboard_count": 11
+      },
+      {
+        "id": "3340adb6-da4d-1d7f-70ab-565e0c309931",
+        "name": "OAG数据分析汇报",
+        "view_count": 61,
+        "sheet_count": 45,
+        "dashboard_count": 16
+      },
+      {
+        "id": "424a9092-f8fd-a030-7bc2-9357f2ac91f3",
+        "name": "销售数据分析平台_佳茗",
+        "view_count": 58,
+        "sheet_count": 58,
+        "dashboard_count": 0
+      },
+      {
+        "id": "83844635-9eb9-ddf2-1379-b288f68334f0",
+        "name": "OAG_CR-运力监控平台",
+        "view_count": 56,
+        "sheet_count": 50,
+        "dashboard_count": 6
+      },
+      {
+        "id": "0d27ed42-fd16-86e4-81cf-593bc2de5180",
+        "name": "ZY经营数据分析-同比",
+        "view_count": 51,
+        "sheet_count": 46,
+        "dashboard_count": 5
+      },
+      {
+        "id": "d9766356-52e4-20bb-c23c-17ab5494db44",
+        "name": "澳洲市场分析-DDS",
+        "view_count": 48,
+        "sheet_count": 40,
+        "dashboard_count": 8
+      },
+      {
+        "id": "6b09f9f2-9872-8c20-f45a-60acf347ec25",
+        "name": "OAG_CR-运力监控平台W25",
+        "view_count": 46,
+        "sheet_count": 41,
+        "dashboard_count": 5
+      },
+      {
+        "id": "5e586198-88d1-9a0f-7b42-83079ceb6daf",
+        "name": "弃程分析",
+        "view_count": 38,
+        "sheet_count": 32,
+        "dashboard_count": 6
+      },
+      {
+        "id": "9cfd48a8-61ed-eb94-c25c-7a3465a4b135",
+        "name": "中科-行业收益数据",
+        "view_count": 35,
+        "sheet_count": 34,
+        "dashboard_count": 1
+      },
+      {
+        "id": "7499f780-7f55-7d9f-2a51-e875c7d42a00",
+        "name": "HSD-趋势对比",
+        "view_count": 30,
+        "sheet_count": 25,
+        "dashboard_count": 5
+      },
+      {
+        "id": "d46039a9-77e4-5389-40db-da62207f0fa1",
+        "name": "OAG数据分析汇报-澳洲市场",
+        "view_count": 30,
+        "sheet_count": 27,
+        "dashboard_count": 3
+      },
+      {
+        "id": "5201335f-ba9d-4b9c-235f-3fc06959930f",
+        "name": "收辅_HO融合表_农历对应",
+        "view_count": 29,
+        "sheet_count": 24,
+        "dashboard_count": 5
+      },
+      {
+        "id": "854b9ac3-4c6c-1d16-a3a4-f04ab8a80412",
+        "name": "DDS_销售处",
+        "view_count": 29,
+        "sheet_count": 25,
+        "dashboard_count": 4
+      },
+      {
+        "id": "e805eaf6-1bba-cbe9-a153-1277dae34670",
+        "name": "收辅_HO融合表_星期对应",
+        "view_count": 29,
+        "sheet_count": 24,
+        "dashboard_count": 5
+      },
+      {
+        "id": "7757243c-fbaf-3bce-6136-c8c96f7319b9",
+        "name": "收辅_HO融合表_星期_模糊匹配",
+        "view_count": 28,
+        "sheet_count": 23,
+        "dashboard_count": 5
+      },
+      {
+        "id": "17c652d3-1288-84c7-f2f0-8b49b1e9e89f",
+        "name": "致远-预算分解",
+        "view_count": 27,
+        "sheet_count": 21,
+        "dashboard_count": 6
+      }
+    ],
+    "stats": {
+      "workbooks_without_views": 0
+    }
+  },
+  "workbook_to_table": {
+    "samples": [
+      {
+        "id": "c224369f-c474-db5d-722f-92bd389aa456",
+        "name": "中科-融合数据",
+        "table_count": 11,
+        "table_names": "机型表, ods_mkt_hords3datam_b_flightinfo, 航司表, 机场三字代码表, 春运日期表, 航线分类, 机场三字代码表, 春运日期表, 机型表, ods_mkt_hords3data_d_lfdata, 航线分类, ods_mkt_hords3data_d_lfdata, ods_mkt_hords3datam_b_flightinfo"
+      },
+      {
+        "id": "9cfd48a8-61ed-eb94-c25c-7a3465a4b135",
+        "name": "中科-行业收益数据",
+        "table_count": 11,
+        "table_names": "机型表, ods_mkt_hords3datam_b_flightinfo, 航司表, 机场三字代码表, 春运日期表, 航线分类, 机场三字代码表, 春运日期表, 机型表, ods_mkt_hords3data_d_lfdata, 航线分类, 机型表, ods_mkt_hords3datam_b_flightinfo, 航司表, 机场三字代码表, 春运日期表, 航线分类, 机场三字代码表, 春运日期表, 机型表, ods_mkt_hords3data_d_lfdata, 航线分类"
+      },
+      {
+        "id": "5be3851c-f8fa-7ff4-0e76-e6294ba0b0e1",
+        "name": "中科_客座算法验证",
+        "table_count": 11,
+        "table_names": "机型表, ods_mkt_hords3datam_b_flightinfo, 航司表, 机场三字代码表, 春运日期表, 航线分类, 机场三字代码表, 春运日期表, 机型表, ods_mkt_hords3data_d_lfdata, 航线分类, 机型表, ods_mkt_hords3datam_b_flightinfo, 航司表, 机场三字代码表, 春运日期表, 航线分类, 机场三字代码表, 春运日期表, 机型表, ods_mkt_hords3data_d_lfdata, 航线分类"
+      },
+      {
+        "id": "f13646ce-bcda-f4c2-1257-abafca6b64a8",
+        "name": "HSD-企业客户",
+        "table_count": 6,
+        "table_names": "tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1, tbl_transfer_passenger, 机场三字代码表, tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1, tbl_transfer_passenger, 机场三字代码表"
+      },
+      {
+        "id": "eb889539-558f-3a34-1339-d61517d52015",
+        "name": "Regional",
+        "table_count": 6,
+        "table_names": "Extract, Extract, Extract, Extract, Extract, Extract"
+      },
+      {
+        "id": "e3cb2ad5-80ae-7c14-9bcd-35492205d06b",
+        "name": " 日本销售-民航局-佳茗",
+        "table_count": 6,
+        "table_names": "tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1, tbl_transfer_passenger, 机场三字代码表, tbl_transfer_passenger, 机场三字代码表, tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1"
+      },
+      {
+        "id": "e381236b-f5d8-1ed8-42a6-cc8152420404",
+        "name": "OTA",
+        "table_count": 6,
+        "table_names": "机场三字代码表, 春运日期表, 机型表, ods_mkt_hords3data_d_lfdata, 航线分类, 机场三字代码表, 春运日期表, 机型表, ods_mkt_hords3data_d_lfdata, 航线分类, ota最低价.csv"
+      },
+      {
+        "id": "e21628ac-9467-7fec-6606-071c6a6998e6",
+        "name": "HSD-数据质量监控",
+        "table_count": 6,
+        "table_names": "tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1, tbl_transfer_passenger, 机场三字代码表, tbl_transfer_passenger, 机场三字代码表, tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1"
+      },
+      {
+        "id": "b646f38d-48ba-da9e-c2f9-feb11c3a7df8",
+        "name": "中科_航班信息表_佳茗测试",
+        "table_count": 6,
+        "table_names": "机型表, ods_mkt_hords3datam_b_flightinfo, 航司表, 机场三字代码表, 春运日期表, 航线分类, ods_mkt_hords3datam_b_flightinfo"
+      },
+      {
+        "id": "99cb5cdb-78bd-4397-23dd-d7fb877de00c",
+        "name": "销售数据分析平台",
+        "table_count": 6,
+        "table_names": "tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1, tbl_transfer_passenger, 机场三字代码表, tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1, tbl_transfer_passenger, 机场三字代码表"
+      },
+      {
+        "id": "992951be-ed8f-fc70-3c08-0344bef36c26",
+        "name": "HSD-航线特性(客体）",
+        "table_count": 6,
+        "table_names": "tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1, tbl_transfer_passenger, 机场三字代码表, tbl_transfer_passenger, 机场三字代码表, tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1"
+      },
+      {
+        "id": "91d7f93c-8bf6-0c0f-7dbb-38d2f6e9a326",
+        "name": "日本销售监控-民航局",
+        "table_count": 6,
+        "table_names": "tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1, tbl_transfer_passenger, 机场三字代码表, tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1, tbl_transfer_passenger, 机场三字代码表"
+      },
+      {
+        "id": "9104e6c3-adff-bedc-a880-b893086c2dd0",
+        "name": "HSD-销售-航线监控",
+        "table_count": 6,
+        "table_names": "tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1, tbl_transfer_passenger, 机场三字代码表, tbl_transfer_passenger, 机场三字代码表, tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1"
+      },
+      {
+        "id": "8c53c444-2ae8-8781-7660-d69989f01e4b",
+        "name": "销售数据分析-国际平台",
+        "table_count": 6,
+        "table_names": "tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1, tbl_transfer_passenger, 机场三字代码表, tbl_transfer_passenger, 机场三字代码表, tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1"
+      },
+      {
+        "id": "889392dd-e33a-4ee2-df9b-57a1dd99c7b7",
+        "name": "国际预案模版",
+        "table_count": 6,
+        "table_names": "Extract, 机型表, 机场三字代码表, 航线分类, 网络改造, 春运日期表"
+      },
+      {
+        "id": "7499f780-7f55-7d9f-2a51-e875c7d42a00",
+        "name": "HSD-趋势对比",
+        "table_count": 6,
+        "table_names": "tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1, tbl_transfer_passenger, 机场三字代码表, tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1, tbl_transfer_passenger, 机场三字代码表"
+      },
+      {
+        "id": "70fc5ba2-6e09-e95d-fd43-dde5aa615604",
+        "name": "HSD-销售-客群分析",
+        "table_count": 6,
+        "table_names": "tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1, tbl_transfer_passenger, 机场三字代码表, tbl_transfer_passenger, 机场三字代码表, tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1"
+      },
+      {
+        "id": "599c2df4-b8d6-d2e4-ce0b-6258491a871f",
+        "name": "HSD- OD航线定价",
+        "table_count": 6,
+        "table_names": "tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1, tbl_transfer_passenger, 机场三字代码表, tbl_transfer_passenger, 机场三字代码表, tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1"
+      },
+      {
+        "id": "513a0f9f-56e3-1c68-0a45-6a97d17e4944",
+        "name": "HSD-航线特性",
+        "table_count": 6,
+        "table_names": "tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1, tbl_transfer_passenger, 机场三字代码表, tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1, tbl_transfer_passenger, 机场三字代码表"
+      },
+      {
+        "id": "424a9092-f8fd-a030-7bc2-9357f2ac91f3",
+        "name": "销售数据分析平台_佳茗",
+        "table_count": 6,
+        "table_names": "tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1, tbl_transfer_passenger, 机场三字代码表, tbl_transfer_passenger, 机场三字代码表, tbl_tic_trace_ticket, 机场三字代码表, 总表, Sheet1"
+      }
+    ],
+    "stats": {
+      "workbooks_with_tables": 71
+    }
+  },
+  "workbook_to_database": {
+    "samples": [
+      {
+        "id": "f13646ce-bcda-f4c2-1257-abafca6b64a8",
+        "name": "HSD-企业客户",
+        "db_count": 1,
+        "db_names": "data_sandbox, data_sandbox, data_sandbox, data_sandbox"
+      },
+      {
+        "id": "f132ca4d-72cd-a200-a2bc-637c968cec8a",
+        "name": "销售航段_整体分析",
+        "db_count": 1,
+        "db_names": "data_sandbox, data_sandbox, data_sandbox, data_sandbox, data_sandbox, data_sandbox"
+      },
+      {
+        "id": "f0554435-959d-a35c-8aaa-5ac637ee7ca9",
+        "name": "DDS_信息部提供_佳茗",
+        "db_count": 1,
+        "db_names": "data_sandbox, data_sandbox, data_sandbox, data_sandbox, data_sandbox, data_sandbox"
+      },
+      {
+        "id": "e3cb2ad5-80ae-7c14-9bcd-35492205d06b",
+        "name": " 日本销售-民航局-佳茗",
+        "db_count": 1,
+        "db_names": "data_sandbox, data_sandbox, data_sandbox, data_sandbox"
+      },
+      {
+        "id": "e381236b-f5d8-1ed8-42a6-cc8152420404",
+        "name": "OTA",
+        "db_count": 1,
+        "db_names": "data_sandbox, data_sandbox"
+      },
+      {
+        "id": "e21628ac-9467-7fec-6606-071c6a6998e6",
+        "name": "HSD-数据质量监控",
+        "db_count": 1,
+        "db_names": "data_sandbox, data_sandbox, data_sandbox, data_sandbox"
+      },
+      {
+        "id": "df95a808-c8bc-364f-4c64-44d9b22b7f34",
+        "name": "销售航段_新",
+        "db_count": 1,
+        "db_names": "data_sandbox, data_sandbox, data_sandbox, data_sandbox, data_sandbox, data_sandbox"
+      },
+      {
+        "id": "dc0c3ad6-92c6-d27f-1b51-0e55066a8e4b",
+        "name": "OAG看板_信息部沙盒",
+        "db_count": 1,
+        "db_names": "data_sandbox, data_sandbox, data_sandbox, data_sandbox, data_sandbox, data_sandbox, data_sandbox, data_sandbox, data_sandbox, data_sandbox"
+      },
+      {
+        "id": "c224369f-c474-db5d-722f-92bd389aa456",
+        "name": "中科-融合数据",
+        "db_count": 1,
+        "db_names": "data_sandbox, data_sandbox, data_sandbox, data_sandbox"
+      },
+      {
+        "id": "bc71278d-6f06-ca47-7a7c-d142761a41ee",
+        "name": "产品类客票改期 监控",
+        "db_count": 1,
+        "db_names": "data_sandbox, data_sandbox"
+      },
+      {
+        "id": "b7e184c8-6c22-179d-be5d-c890f245da92",
+        "name": "入盟协议 - 数据支持 - 销售数据",
+        "db_count": 1,
+        "db_names": "data_sandbox, data_sandbox"
+      },
+      {
+        "id": "b646f38d-48ba-da9e-c2f9-feb11c3a7df8",
+        "name": "中科_航班信息表_佳茗测试",
+        "db_count": 1,
+        "db_names": "data_sandbox, data_sandbox"
+      },
+      {
+        "id": "b1ae360b-2360-dc1c-266d-d8e0d0c98081",
+        "name": "产品类客票改期 监控",
+        "db_count": 1,
+        "db_names": "data_sandbox, data_sandbox"
+      },
+      {
+        "id": "ac543d6c-b58f-8467-4841-2dbb65a86b92",
+        "name": "代理人存量分析",
+        "db_count": 1,
+        "db_names": "data_sandbox, data_sandbox"
+      },
+      {
+        "id": "9cfd48a8-61ed-eb94-c25c-7a3465a4b135",
+        "name": "中科-行业收益数据",
+        "db_count": 1,
+        "db_names": "data_sandbox, data_sandbox, data_sandbox, data_sandbox"
+      },
+      {
+        "id": "9c260dd3-d1e2-fada-8030-0e99d8332c25",
+        "name": "历史-致远-模糊匹配看板",
+        "db_count": 1,
+        "db_names": "ho, ho, ho"
+      },
+      {
+        "id": "99cb5cdb-78bd-4397-23dd-d7fb877de00c",
+        "name": "销售数据分析平台",
+        "db_count": 1,
+        "db_names": "data_sandbox, data_sandbox, data_sandbox, data_sandbox"
+      },
+      {
+        "id": "992951be-ed8f-fc70-3c08-0344bef36c26",
+        "name": "HSD-航线特性(客体）",
+        "db_count": 1,
+        "db_names": "data_sandbox, data_sandbox, data_sandbox, data_sandbox"
+      },
+      {
+        "id": "948ef734-e86d-48bf-4201-371402412082",
+        "name": "收辅-飞友采集-APO表(市场共飞)-临时版",
+        "db_count": 1,
+        "db_names": "10.12.15.14:8123, 10.12.15.14:8123"
+      },
+      {
+        "id": "91d7f93c-8bf6-0c0f-7dbb-38d2f6e9a326",
+        "name": "日本销售监控-民航局",
+        "db_count": 1,
+        "db_names": "data_sandbox, data_sandbox, data_sandbox, data_sandbox"
+      }
+    ],
+    "stats": {}
+  },
+  "view_to_workbook": {
+    "samples": [
+      {
+        "id": "a05567ee-9401-6e0b-b98e-412ecce56707",
+        "name": "指标卡4",
+        "view_type": "sheet",
+        "workbook_id": "df95a808-c8bc-364f-4c64-44d9b22b7f34",
+        "workbook_name": "销售航段_新"
+      },
+      {
+        "id": "2dcdea98-4e18-998a-efa8-e418b594f7bb",
+        "name": "H1",
+        "view_type": "sheet",
+        "workbook_id": "3340adb6-da4d-1d7f-70ab-565e0c309931",
+        "workbook_name": "OAG数据分析汇报"
+      },
+      {
+        "id": "ae1a21a5-6389-f0e7-54dd-1b07980bcf67",
+        "name": "我航航线-航线细分",
+        "view_type": "sheet",
+        "workbook_id": "83844635-9eb9-ddf2-1379-b288f68334f0",
+        "workbook_name": "OAG_CR-运力监控平台"
+      },
+      {
+        "id": "bfcf3fd9-e58a-5d61-b540-eb06083b04a4",
+        "name": "代理人分布",
+        "view_type": "sheet",
+        "workbook_id": "42fec810-afd8-2db6-ab9c-e87af3927a8f",
+        "workbook_name": "销售分析"
+      },
+      {
+        "id": "fc55d158-2d2a-fa1a-1b46-68be7f7078ad",
+        "name": "航段航距",
+        "view_type": "sheet",
+        "workbook_id": "5be3851c-f8fa-7ff4-0e76-e6294ba0b0e1",
+        "workbook_name": "中科_客座算法验证"
+      },
+      {
+        "id": "bbcc51b4-f248-bf54-91e8-7b7457ddb41c",
+        "name": "工作表 1",
+        "view_type": "sheet",
+        "workbook_id": "b646f38d-48ba-da9e-c2f9-feb11c3a7df8",
+        "workbook_name": "中科_航班信息表_佳茗测试"
+      },
+      {
+        "id": "41b684a3-b060-7684-8b41-8fab4e3fecf1",
+        "name": "工作表 1",
+        "view_type": "sheet",
+        "workbook_id": "bc71278d-6f06-ca47-7a7c-d142761a41ee",
+        "workbook_name": "产品类客票改期 监控"
+      },
+      {
+        "id": "e69a61eb-7d35-adc3-709b-1265d7098d3b",
+        "name": "利润对比日历",
+        "view_type": "sheet",
+        "workbook_id": "5201335f-ba9d-4b9c-235f-3fc06959930f",
+        "workbook_name": "收辅_HO融合表_农历对应"
+      },
+      {
+        "id": "d8f94519-0561-0ed2-05b3-1329dfcb86db",
+        "name": "月度票价对比",
+        "view_type": "sheet",
+        "workbook_id": "e805eaf6-1bba-cbe9-a153-1277dae34670",
+        "workbook_name": "收辅_HO融合表_星期对应"
+      },
+      {
+        "id": "2539bb67-27e3-b657-3e63-38c588ef35ba",
+        "name": "到达四象限",
+        "view_type": "sheet",
+        "workbook_id": "7499f780-7f55-7d9f-2a51-e875c7d42a00",
+        "workbook_name": "HSD-趋势对比"
+      },
+      {
+        "id": "05adbab9-c3da-644a-ba31-6763283fb7d2",
+        "name": "市场航线 -航司",
+        "view_type": "sheet",
+        "workbook_id": "6b09f9f2-9872-8c20-f45a-60acf347ec25",
+        "workbook_name": "OAG_CR-运力监控平台W25"
+      },
+      {
+        "id": "622d0082-f938-7a7b-91f0-c84d19e12d75",
+        "name": "重点区域",
+        "view_type": "sheet",
+        "workbook_id": "e77fbabe-cc4e-846f-0524-0e392ddabaa7",
+        "workbook_name": "OD-TT"
+      },
+      {
+        "id": "d27e48e2-b568-c2ba-e1d6-bb3e5c502511",
+        "name": "弃程票类型分布 (2)",
+        "view_type": "sheet",
+        "workbook_id": "5e586198-88d1-9a0f-7b42-83079ceb6daf",
+        "workbook_name": "弃程分析"
+      },
+      {
+        "id": "8c34d86d-b3be-cc1e-cdb3-695dc9a9f456",
+        "name": "利润航班",
+        "view_type": "sheet",
+        "workbook_id": "35152ee1-85e9-de6a-cc7b-b160a2dcab9d",
+        "workbook_name": "收辅_HO融合表_公历对应"
+      },
+      {
+        "id": "42995751-040f-5076-8be2-b6fc36c8c968",
+        "name": "区域明细表",
+        "view_type": "sheet",
+        "workbook_id": "e805eaf6-1bba-cbe9-a153-1277dae34670",
+        "workbook_name": "收辅_HO融合表_星期对应"
+      },
+      {
+        "id": "b2ac77a3-002b-3e06-ed3d-fd42027d9173",
+        "name": "混合趋势图细分",
+        "view_type": "sheet",
+        "workbook_id": "e805eaf6-1bba-cbe9-a153-1277dae34670",
+        "workbook_name": "收辅_HO融合表_星期对应"
+      },
+      {
+        "id": "f009d323-8d54-d1f6-ecb2-d9636f7eeef0",
+        "name": "CustomerScatter",
+        "view_type": "sheet",
+        "workbook_id": "f87cb7ec-7a0c-cdca-4a4f-39b08d58a431",
+        "workbook_name": "Superstore"
+      },
+      {
+        "id": "49e56b8f-785f-ca35-dfdb-ff338b291efb",
+        "name": "工作表 5 (2)",
+        "view_type": "sheet",
+        "workbook_id": "d675a052-f250-f827-ed6d-92f05850d580",
+        "workbook_name": "DDS-国际预售分析"
+      },
+      {
+        "id": "0ea82dd0-e194-f487-736b-7a7a272d77b5",
+        "name": "销售航段-票号对称",
+        "view_type": "sheet",
+        "workbook_id": "8c53c444-2ae8-8781-7660-d69989f01e4b",
+        "workbook_name": "销售数据分析-国际平台"
+      },
+      {
+        "id": "b6ce23d4-2937-08b2-0971-1f7fe07041ac",
+        "name": "概念介绍",
+        "view_type": "dashboard",
+        "workbook_id": "e77fbabe-cc4e-846f-0524-0e392ddabaa7",
+        "workbook_name": "OD-TT"
+      }
+    ],
+    "issues": [],
+    "broken_count": 0
+  },
+  "view_to_field": {
+    "samples": [
+      {
+        "id": "4a2b48d3-5984-e0af-53dd-5cc1ef4107cf",
+        "name": "承运航线表现",
+        "view_type": "sheet",
+        "field_count": 53
+      },
+      {
+        "id": "bf296b8e-b36e-a84c-54c1-42b0b250e3fb",
+        "name": "承运航线表现_出发机场",
+        "view_type": "sheet",
+        "field_count": 53
+      },
+      {
+        "id": "d97fcac2-5e76-82f7-f3e7-3bf3e7a7918e",
+        "name": "承运航线表现",
+        "view_type": "sheet",
+        "field_count": 53
+      },
+      {
+        "id": "f8f65813-41b0-cb88-5d15-ebd2e04a7216",
+        "name": "承运航线表现_出发机场",
+        "view_type": "sheet",
+        "field_count": 53
+      },
+      {
+        "id": "2358a89e-4171-8bd6-0839-a7f5088e7691",
+        "name": "承运航班表现",
+        "view_type": "sheet",
+        "field_count": 50
+      },
+      {
+        "id": "52d06930-31f5-0b75-a30b-18be8b5b7c3a",
+        "name": "承运航班表现",
+        "view_type": "sheet",
+        "field_count": 50
+      },
+      {
+        "id": "6a1a4373-294f-fb5f-f479-e4f0a8d8396f",
+        "name": "承运航班表现 (2)",
+        "view_type": "sheet",
+        "field_count": 46
+      },
+      {
+        "id": "951f4468-be95-276c-028f-f8597c502131",
+        "name": "承运航班表现 (2)",
+        "view_type": "sheet",
+        "field_count": 46
+      },
+      {
+        "id": "00eb246c-7a21-db65-117f-681f4e10adab",
+        "name": "承运航线中转表现",
+        "view_type": "sheet",
+        "field_count": 45
+      },
+      {
+        "id": "01d45826-3fbb-f3e2-e04e-d21dfa427724",
+        "name": "承运航线中转表现",
+        "view_type": "sheet",
+        "field_count": 45
+      },
+      {
+        "id": "b55b5a88-ab00-8fc9-75c9-09c0ceaf0eec",
+        "name": "承运航线表现-周数",
+        "view_type": "sheet",
+        "field_count": 45
+      },
+      {
+        "id": "da23e895-8b01-85fe-fc62-11ae7508b9b5",
+        "name": "承运航线表现-周数",
+        "view_type": "sheet",
+        "field_count": 45
+      },
+      {
+        "id": "1aeb1e44-1494-662c-c945-584b5a200736",
+        "name": "承运航班表现",
+        "view_type": "sheet",
+        "field_count": 40
+      },
+      {
+        "id": "716a91bd-c97d-e1c3-d166-f2c1d8602ce1",
+        "name": "8.网络分析",
+        "view_type": "sheet",
+        "field_count": 40
+      },
+      {
+        "id": "2532993a-c243-8921-23d0-faddbc7971a1",
+        "name": "电商模块 (2)",
+        "view_type": "sheet",
+        "field_count": 37
+      },
+      {
+        "id": "c55c73e7-d52a-9972-f45e-f63b4498a680",
+        "name": "电商模块 (2)",
+        "view_type": "sheet",
+        "field_count": 37
+      },
+      {
+        "id": "d7bd88df-cf3d-d916-88a9-8a5797931c60",
+        "name": "7.航线分析",
+        "view_type": "sheet",
+        "field_count": 36
+      },
+      {
+        "id": "04129af1-79a3-d5b7-8a06-4a3edd4725e9",
+        "name": "电商模块",
+        "view_type": "sheet",
+        "field_count": 35
+      },
+      {
+        "id": "1562b26a-2dea-695c-6419-244b41cf2a86",
+        "name": "电商模块",
+        "view_type": "sheet",
+        "field_count": 35
+      },
+      {
+        "id": "04d26401-6619-5241-0826-c23a23157520",
+        "name": "弃程明细数据-航线动态对比用",
+        "view_type": "sheet",
+        "field_count": 33
+      }
+    ],
+    "stats": {
+      "total_relations": 12936,
+      "views_without_fields": 213
+    },
+    "issues": [],
+    "broken_count": 0
+  },
+  "dashboard_to_sheet": {
+    "samples": [
+      {
+        "dashboard_id": "a52ff431-07e0-597f-4937-f21746744b68",
+        "dashboard_name": "经营数据监控",
+        "sheet_count": 16
+      },
+      {
+        "dashboard_id": "c4e3fdda-1e85-c3c5-a895-fc3b552af219",
+        "dashboard_name": "1-市场研究",
+        "sheet_count": 15
+      },
+      {
+        "dashboard_id": "0cb6764f-e0ab-472d-0146-d292f9977c3b",
+        "dashboard_name": "（暂时勿用）总览KPI",
+        "sheet_count": 13
+      },
+      {
+        "dashboard_id": "66a288bd-e86b-fc8e-264a-3ff6f1448df9",
+        "dashboard_name": "销售数据监控平台",
+        "sheet_count": 13
+      },
+      {
+        "dashboard_id": "737a2291-fdc6-b66b-ca36-2c479f88bc9e",
+        "dashboard_name": "经营数据监控",
+        "sheet_count": 13
+      },
+      {
+        "dashboard_id": "01fab6c3-d34f-dcf2-0837-2c9eebbf7e00",
+        "dashboard_name": "代理人全景透视",
+        "sheet_count": 12
+      },
+      {
+        "dashboard_id": "35a03137-2e7a-1219-551c-267117e22492",
+        "dashboard_name": "代理人全景透视",
+        "sheet_count": 12
+      },
+      {
+        "dashboard_id": "4978f12e-a9ea-fcd4-8b20-518d2ba1c0b4",
+        "dashboard_name": "致远看板",
+        "sheet_count": 12
+      },
+      {
+        "dashboard_id": "90aeb324-756e-e1ae-7621-77dbd6b93d89",
+        "dashboard_name": "销售数据监控平台",
+        "sheet_count": 12
+      },
+      {
+        "dashboard_id": "0a3eb0fa-8945-d5f7-5472-b9a9b04a3b65",
+        "dashboard_name": "国内营业部数据监控",
+        "sheet_count": 11
+      },
+      {
+        "dashboard_id": "5787e268-da54-23b6-073a-3205372002e6",
+        "dashboard_name": "精准营销复盘",
+        "sheet_count": 11
+      },
+      {
+        "dashboard_id": "a2ed5b22-09d1-c69d-0283-b8bda9191095",
+        "dashboard_name": "精准营销复盘",
+        "sheet_count": 11
+      },
+      {
+        "dashboard_id": "effb994f-778f-9f53-8df6-46323c197d11",
+        "dashboard_name": "（暂时勿用）国内营业部数据监控",
+        "sheet_count": 11
+      },
+      {
+        "dashboard_id": "30c81dfd-becf-4051-6c3a-3f5ca998641e",
+        "dashboard_name": "弃程日常监控（可选指定周期）",
+        "sheet_count": 10
+      },
+      {
+        "dashboard_id": "71ad4f37-6563-b46e-7cf0-35903951f1a6",
+        "dashboard_name": "弃程日常监控（选择日期范围监控）",
+        "sheet_count": 10
+      },
+      {
+        "dashboard_id": "d3db4bcd-fc01-af18-90e1-8b73590822d3",
+        "dashboard_name": "国际大客户看板",
+        "sheet_count": 10
+      },
+      {
+        "dashboard_id": "75e7c41d-5a46-0cb7-1d4e-3ed810fae950",
+        "dashboard_name": "代理售票情况筛选",
+        "sheet_count": 9
+      },
+      {
+        "dashboard_id": "ef63b0b9-3777-f6f8-65f3-28810491e2bf",
+        "dashboard_name": "航线分析",
+        "sheet_count": 9
+      },
+      {
+        "dashboard_id": "98a16a98-9ee6-f0e3-b8e2-592be24785bc",
+        "dashboard_name": "（暂时勿用）国际营业部数据监控",
+        "sheet_count": 8
+      },
+      {
+        "dashboard_id": "c6b094c1-5dbc-9afa-d361-bd797d458aa9",
+        "dashboard_name": "国际营业部数据监控",
+        "sheet_count": 8
+      }
+    ],
+    "stats": {
+      "total_relations": 640
+    }
+  },
+  "field_to_table": {
+    "samples": [
+      {
+        "id": "6452d725-c690-7d1b-fb27-c0d78b78759e",
+        "name": "第一段出发机场中文",
+        "is_calculated": 0,
+        "table_id": "1683e08b-6019-b130-0dcd-e123cd9e6baf",
+        "table_name": "dwm_transfer_passengers_segments",
+        "table_is_embedded": 0
+      },
+      {
+        "id": "de85a99b-f386-4e28-dd3c-a43b92a185d4",
+        "name": "F32",
+        "is_calculated": 0,
+        "table_id": "6a3f315a-65fa-03f2-e205-41d703713806",
+        "table_name": "数据结果",
+        "table_is_embedded": 1
+      },
+      {
+        "id": "b1aa8164-8f40-af90-d38f-37932b74cc27",
+        "name": "中文拼音",
+        "is_calculated": 0,
+        "table_id": "1683e08b-6019-b130-0dcd-e123cd9e6baf",
+        "table_name": "dwm_transfer_passengers_segments",
+        "table_is_embedded": 0
+      },
+      {
+        "id": "32e820f5-0bc4-c7e3-ebb5-bfc120044516",
+        "name": "变动成本",
+        "is_calculated": 0,
+        "table_id": "4a683a03-f491-34ca-d13a-9421fe5c8cc5",
+        "table_name": "Unknown Table",
+        "table_is_embedded": 1
+      },
+      {
+        "id": "ea99f721-810c-5bc8-c9cd-623d22c2c6c3",
+        "name": "第一段航班日期当地时间",
+        "is_calculated": 0,
+        "table_id": "426ddc03-4443-5784-09b4-ddb085f3c2aa",
+        "table_name": "Extract",
+        "table_is_embedded": 1
+      },
+      {
+        "id": "2bdb9525-69fb-2b5b-04b6-2f4ae4d006a7",
+        "name": "第二段航班日期北京时间",
+        "is_calculated": 0,
+        "table_id": "50cfa963-92e1-7e09-ceae-e58738f07932",
+        "table_name": "Extract",
+        "table_is_embedded": 1
+      },
+      {
+        "id": "acca529e-b2ba-21c4-29ab-76b6688d0f91",
+        "name": "变更备注",
+        "is_calculated": 0,
+        "table_id": "7263d84c-ee34-2736-311b-45ed8c2b9851",
+        "table_name": "Unknown Table",
+        "table_is_embedded": 1
+      },
+      {
+        "id": "44e53a99-e793-8ec2-dd98-d8a783626608",
+        "name": "经停次数",
+        "is_calculated": 0,
+        "table_id": "8bcdef44-3347-680e-77d0-9f3cbdabf10a",
+        "table_name": "ota最低价.csv",
+        "table_is_embedded": 1
+      },
+      {
+        "id": "471998ef-146c-2a50-08d3-f7711feb4b1b",
+        "name": "Tcn Additional Sales Data Fareamount",
+        "is_calculated": 0,
+        "table_id": "10735460-5c9d-f1f4-6f57-e75e35182303",
+        "table_name": "'TCN补偿trace票价确实数据-2025-1~3月$'",
+        "table_is_embedded": 1
+      },
+      {
+        "id": "71b5ee48-20de-9493-cb3e-f5f6f1669618",
+        "name": "我航欧洲客票-标识",
+        "is_calculated": 1,
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "table_is_embedded": 0
+      },
+      {
+        "id": "7fb435fe-8f86-647c-533a-93ed297a4944",
+        "name": "Mkt Al 4",
+        "is_calculated": 0,
+        "table_id": "6e18105d-f71f-eb38-c18e-7c1f705c5654",
+        "table_name": "Extract",
+        "table_is_embedded": 1
+      },
+      {
+        "id": "cbcafff2-7e6c-d69e-8f60-34254be1d178",
+        "name": "doris数据创建更新时间",
+        "is_calculated": 0,
+        "table_id": "7263d84c-ee34-2736-311b-45ed8c2b9851",
+        "table_name": "Unknown Table",
+        "table_is_embedded": 1
+      },
+      {
+        "id": "e8be6a76-2a66-b373-b435-091308891c77",
+        "name": "Name",
+        "is_calculated": 0,
+        "table_id": "e6499219-5d54-0d48-1ebb-148b104057a0",
+        "table_name": "订座工作号台账.csv",
+        "table_is_embedded": 1
+      },
+      {
+        "id": "4ddd59ce-dfbb-b97e-de08-14b51b96efeb",
+        "name": "模糊匹配航班号",
+        "is_calculated": 0,
+        "table_id": "ae0b62e4-7721-eaf1-e0bf-951ec59b066b",
+        "table_name": "Unknown Table",
+        "table_is_embedded": 1
+      },
+      {
+        "id": "bde282fc-c6e3-81a8-edd5-fe4deb51827a",
+        "name": "地区 (自定义 SQL 查询2)",
+        "is_calculated": 0,
+        "table_id": "33030e06-1c91-bb4e-39d6-b55b3c80d947",
+        "table_name": "Unknown Table",
+        "table_is_embedded": 1
+      },
+      {
+        "id": "902bc2a8-5c60-bb63-4291-75540563f595",
+        "name": "Cnf",
+        "is_calculated": 0,
+        "table_id": "4ba00e5e-619e-b8f1-536e-2104191e8b3e",
+        "table_name": "ods_mkt_hords3datam_b_flightinfo",
+        "table_is_embedded": 0
+      },
+      {
+        "id": "113ea6f2-4d78-83d4-19fd-9a39f2448aa3",
+        "name": "Clazz No1",
+        "is_calculated": 0,
+        "table_id": "1683e08b-6019-b130-0dcd-e123cd9e6baf",
+        "table_name": "dwm_transfer_passengers_segments",
+        "table_is_embedded": 0
+      },
+      {
+        "id": "eae33f05-d687-c3eb-ac5f-3ce3dfda4fd0",
+        "name": "第三航段执飞航司二字码",
+        "is_calculated": 0,
+        "table_id": "a382bc7b-bcdb-f7dd-6f46-30868b0df5a0",
+        "table_name": "Unknown Table",
+        "table_is_embedded": 1
+      },
+      {
+        "id": "7552f445-0808-5678-bf95-9e841179217e",
+        "name": "销售渠道*",
+        "is_calculated": 1,
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "table_is_embedded": 0
+      },
+      {
+        "id": "9976f6d0-5fc3-4e98-7a74-94b7a6c885b3",
+        "name": "始发",
+        "is_calculated": 0,
+        "table_id": "ae0b62e4-7721-eaf1-e0bf-951ec59b066b",
+        "table_name": "Unknown Table",
+        "table_is_embedded": 1
+      }
+    ],
+    "stats": {
+      "total": 10567,
+      "with_table": 5838,
+      "regular_without_table": 922,
+      "calc_without_table": 3807
+    },
+    "issues": [],
+    "broken_count": 0
+  },
+  "field_to_column": {
+    "samples": [
+      {
+        "id": "e59abdd6-0358-0a29-271f-c1a5335afc45",
+        "name": "房号信息",
+        "upstream_column_id": "6c9b5c13-f55e-582d-4911-c465ae6eccf7",
+        "upstream_column_name": "房号信息",
+        "column_name": "房号信息",
+        "table_name": "Extract"
+      },
+      {
+        "id": "389aa601-a609-639b-f77e-cc34a992f1df",
+        "name": "承运航空公司代码",
+        "upstream_column_id": "b72a4f9d-e613-efc6-8b96-db289ebd50eb",
+        "upstream_column_name": "承运航空公司代码",
+        "column_name": "承运航空公司代码",
+        "table_name": "Extract"
+      },
+      {
+        "id": "16ac8acf-eafd-71e3-f962-8643e136000f",
+        "name": "运价 货币代码",
+        "upstream_column_id": "5d414f4c-1a66-7536-ed06-acf94a100127",
+        "upstream_column_name": "运价_货币代码",
+        "column_name": "运价_货币代码",
+        "table_name": "Extract"
+      },
+      {
+        "id": "0fd02dec-a963-689a-17c1-714f0d4ec735",
+        "name": "进港-经度",
+        "upstream_column_id": "bdd832b3-0ee6-ff3a-7635-f61f31ce0b0c",
+        "upstream_column_name": "进港-经度",
+        "column_name": "进港-经度",
+        "table_name": "Unknown Table"
+      },
+      {
+        "id": "016eb02e-eee0-cbf8-aa57-d0f8b7b4fcaf",
+        "name": "Agency Name",
+        "upstream_column_id": "db75232b-181a-38c2-9137-62854d846f02",
+        "upstream_column_name": "Agency Name",
+        "column_name": "Agency Name",
+        "table_name": "Extract"
+      },
+      {
+        "id": "52d215b4-1891-06e1-49e1-db2213190cd7",
+        "name": "第一航段销售航司二字码",
+        "upstream_column_id": "df4452a6-a508-57ae-45aa-ec4e68c71d9f",
+        "upstream_column_name": "第一航段销售航司二字码",
+        "column_name": "第一航段销售航司二字码",
+        "table_name": "Unknown Table"
+      },
+      {
+        "id": "8f341bc8-55ba-dbba-766c-416a31325a2e",
+        "name": "起飞机场",
+        "upstream_column_id": "c0f3912b-5195-ac5b-0a8a-74f4e40c3926",
+        "upstream_column_name": "起飞机场",
+        "column_name": "起飞机场",
+        "table_name": "Extract"
+      },
+      {
+        "id": "38b37d26-624a-deb8-f9a2-e28fbac1e51b",
+        "name": "Dest",
+        "upstream_column_id": "a97850c3-1cb1-dc8e-4448-22b858a01846",
+        "upstream_column_name": "Dest",
+        "column_name": "Dest",
+        "table_name": "Extract"
+      },
+      {
+        "id": "0e7c73d4-20fb-5bef-e5f9-dfb30a032eaa",
+        "name": "代理-数据最新变动时间",
+        "upstream_column_id": "c7a4d267-cb4b-86b3-fc07-26db17b74684",
+        "upstream_column_name": "代理-数据最新变动时间",
+        "column_name": "代理-数据最新变动时间",
+        "table_name": "Unknown Table"
+      },
+      {
+        "id": "eeccc8b6-7da1-759f-8f74-1256b7e85eb8",
+        "name": "b2b_iatano",
+        "upstream_column_id": "147832cd-71b9-1612-c0e8-9350cc10c90a",
+        "upstream_column_name": "b2b_iatano",
+        "column_name": "b2b_iatano",
+        "table_name": "tbl_tic_trace_ticket"
+      },
+      {
+        "id": "1004c922-9d6f-3fc5-4f90-e20e7bf0b7ed",
+        "name": "地区",
+        "upstream_column_id": "5e9267c6-24b2-6026-4112-57c5b94e5cbc",
+        "upstream_column_name": "地区",
+        "column_name": "地区",
+        "table_name": "Extract"
+      },
+      {
+        "id": "e6e476e4-5aca-735a-8b27-1b2d791fefc6",
+        "name": "TOURCODE",
+        "upstream_column_id": "214b774d-b606-17ce-be23-9b44eddefc23",
+        "upstream_column_name": "TOURCODE",
+        "column_name": "TOURCODE",
+        "table_name": "tbl_tic_trace_ticket"
+      },
+      {
+        "id": "36d511c6-7fd6-eb56-209f-265044897f90",
+        "name": "DOM/INT",
+        "upstream_column_id": "400544ed-b85f-330c-c2a5-a66266e94443",
+        "upstream_column_name": "DOM/INT",
+        "column_name": "DOM/INT",
+        "table_name": "Extract"
+      },
+      {
+        "id": "473a8bfb-e46c-55fc-218e-d4c2f703420a",
+        "name": "Main Clazz",
+        "upstream_column_id": "4002b90e-1981-08bc-9de9-a3aeae3b513a",
+        "upstream_column_name": "main_clazz",
+        "column_name": "main_clazz",
+        "table_name": "ads_transfer_abandon_trip_dashboard"
+      },
+      {
+        "id": "6b9982e5-b805-526c-b4ed-de72e10ab785",
+        "name": "航空联盟",
+        "upstream_column_id": "9aa1c363-129f-42f1-df40-b6e8a496c0da",
+        "upstream_column_name": "航空联盟",
+        "column_name": "航空联盟",
+        "table_name": "Unknown Table"
+      },
+      {
+        "id": "f34fb7aa-c16a-0742-7af2-35e51099a2e8",
+        "name": "other_number_aes",
+        "upstream_column_id": "eacba842-3856-1a9f-e3d2-692c6ef2d067",
+        "upstream_column_name": "other_number_aes",
+        "column_name": "other_number_aes",
+        "table_name": "tbl_tic_trace_ticket"
+      },
+      {
+        "id": "343853a1-d04e-6b2f-de84-69535143af7c",
+        "name": "第二段预计到达时间",
+        "upstream_column_id": "3a9a0e9c-1ace-247d-4b5a-a9af0cffc541",
+        "upstream_column_name": "第二段预计到达时间",
+        "column_name": "第二段预计到达时间",
+        "table_name": "Extract"
+      },
+      {
+        "id": "8b9b8640-05e3-36b5-1f1d-16f64cdea155",
+        "name": "到达时间",
+        "upstream_column_id": "cee861ae-bc7a-cac6-76bb-63d40ce67e1a",
+        "upstream_column_name": "到达时间",
+        "column_name": "到达时间",
+        "table_name": "ota最低价.csv"
+      },
+      {
+        "id": "53e52671-a887-d440-2075-3692312b6942",
+        "name": "Time Period",
+        "upstream_column_id": "ff82f474-02a7-a8be-21ce-b8ecf292aaa8",
+        "upstream_column_name": "Time Period",
+        "column_name": "Time Period",
+        "table_name": "Extract"
+      },
+      {
+        "id": "82ace0f4-a89f-4f64-3510-e2b513a808e5",
+        "name": "Agent Type 2",
+        "upstream_column_id": "091085bf-a2ec-c757-844c-1a76fbf638ab",
+        "upstream_column_name": "agent_type_2",
+        "column_name": "agent_type_2",
+        "table_name": "ads_transfer_abandon_trip_dashboard"
+      }
+    ],
+    "stats": {
+      "total_regular": 5638,
+      "with_column": 4658
+    },
+    "issues": [],
+    "broken_count": 0
+  },
+  "field_to_datasource": {
+    "samples": [
+      {
+        "id": "5464b33e-9420-2a59-8a48-431752c3fe56",
+        "name": "航线出票总数",
+        "datasource_id": "41a53d84-c0d9-1322-5645-35a83073012e",
+        "datasource_name": "DDS销售监控新",
+        "is_embedded": 0
+      },
+      {
+        "id": "0e46b4bd-c679-4fc0-8e56-af218e69b113",
+        "name": "企业客户-国际(收入)",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "is_embedded": 0
+      },
+      {
+        "id": "30ba8dbd-81a8-baa9-3a14-42f245ad1209",
+        "name": "第一段到达城市中文",
+        "datasource_id": "16a56cdf-47c0-60d7-fb67-3df12725b89f",
+        "datasource_name": "中转航段数据补充票价数据-去重",
+        "is_embedded": 0
+      },
+      {
+        "id": "39507ed6-7909-cf9d-8e5f-00c258229cd7",
+        "name": "POD-地点类型",
+        "datasource_id": "4a04e1e4-dd14-e5a5-a271-5691aeccd79e",
+        "datasource_name": "销售航段新",
+        "is_embedded": 0
+      },
+      {
+        "id": "0c1fff28-ea0c-4797-c320-19aa4506413a",
+        "name": "剔除3rd",
+        "datasource_id": "8f892a27-bcb8-5f3f-9c25-05b8ca58456a",
+        "datasource_name": "ZY数据模型",
+        "is_embedded": 1
+      },
+      {
+        "id": "bf09607b-3a25-b8fe-47ec-ce28f99cd6d3",
+        "name": "Issuedate",
+        "datasource_id": "d428d4ab-5701-cf52-3e2e-6b47b9fdf2f4",
+        "datasource_name": "中转航段数据补充票价数据",
+        "is_embedded": 0
+      },
+      {
+        "id": "62622b45-8d54-e510-c21c-accbfabb739b",
+        "name": "第一段登机序号",
+        "datasource_id": "16a56cdf-47c0-60d7-fb67-3df12725b89f",
+        "datasource_name": "中转航段数据补充票价数据-去重",
+        "is_embedded": 0
+      },
+      {
+        "id": "29909fc5-e692-40ce-1d69-12b4b11a6ce6",
+        "name": "Blended Fare",
+        "datasource_id": "44904026-0529-803e-852c-210c00dbb0e8",
+        "datasource_name": "DDS-国际收益 数据提取",
+        "is_embedded": 1
+      },
+      {
+        "id": "157f89d7-de09-c7b1-8fb9-6aff0d3ba5aa",
+        "name": "POO-营业部",
+        "datasource_id": "4a04e1e4-dd14-e5a5-a271-5691aeccd79e",
+        "datasource_name": "销售航段新",
+        "is_embedded": 0
+      },
+      {
+        "id": "8a2207b3-05c9-fb56-28ea-3180a4ed4390",
+        "name": "平均票价-中位数",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "is_embedded": 0
+      },
+      {
+        "id": "eca167b8-071f-26cb-18b5-b6e895358323",
+        "name": "B舱班均人数",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "is_embedded": 0
+      },
+      {
+        "id": "897a37fd-7a93-d77c-9397-0b282ee971d2",
+        "name": "邮箱",
+        "datasource_id": "16a56cdf-47c0-60d7-fb67-3df12725b89f",
+        "datasource_name": "中转航段数据补充票价数据-去重",
+        "is_embedded": 0
+      },
+      {
+        "id": "a92daf72-1e40-d43d-5e1e-a2bdcd90c31b",
+        "name": "我航洲际客票",
+        "datasource_id": "b1b414eb-f6d8-929e-8e84-932bf07913c6",
+        "datasource_name": "销售票面",
+        "is_embedded": 0
+      },
+      {
+        "id": "3ed22cd4-9975-c480-eee3-4f4686f32329",
+        "name": "是否完成目标值",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "is_embedded": 0
+      },
+      {
+        "id": "470ac715-14a8-e855-8d21-54f0c4097a03",
+        "name": "小时收入+",
+        "datasource_id": "8f892a27-bcb8-5f3f-9c25-05b8ca58456a",
+        "datasource_name": "ZY数据模型",
+        "is_embedded": 1
+      },
+      {
+        "id": "6e6fa761-843f-975b-5f21-614ce4809423",
+        "name": "Checkout Flag No1",
+        "datasource_id": "9fb266e6-2efd-9f8c-834d-019ebc202eb2",
+        "datasource_name": "中转航段表",
+        "is_embedded": 0
+      },
+      {
+        "id": "01f36720-d497-6522-5585-efffe1f822bb",
+        "name": "婴儿(航节)",
+        "datasource_id": "a38fdef5-0efe-dbcc-a726-f9a9d3d2bc67",
+        "datasource_name": "View_DWD_ZY_Flight_Results (main)",
+        "is_embedded": 1
+      },
+      {
+        "id": "6297578c-c263-c669-9be1-026aef8a1907",
+        "name": "分摊票价-东南亚/日韩 区间",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "is_embedded": 0
+      },
+      {
+        "id": "70d69509-5ba8-9b9d-b173-bbbf87979a76",
+        "name": "大客户编码",
+        "datasource_id": "d428d4ab-5701-cf52-3e2e-6b47b9fdf2f4",
+        "datasource_name": "中转航段数据补充票价数据",
+        "is_embedded": 0
+      },
+      {
+        "id": "cd22cb7e-cadc-5e02-ff00-9cc4b71816d7",
+        "name": "DIM-出港",
+        "datasource_id": "8d36615b-97fd-e5eb-842d-1e424e0cce62",
+        "datasource_name": "运力数据",
+        "is_embedded": 1
+      }
+    ],
+    "stats": {
+      "total": 10567,
+      "with_datasource": 10567
+    },
+    "issues": [],
+    "broken_count": 0
+  },
+  "field_to_workbook": {
+    "samples": [
+      {
+        "id": "ddc0a621-8b20-9405-2d37-241da521f46c",
+        "name": "出票航司二字码",
+        "workbook_id": null,
+        "direct_wb": null,
+        "datasource_name": "DDS-2024"
+      },
+      {
+        "id": "05885588-a783-4586-fce0-514d2df5ecc9",
+        "name": "I舱人数",
+        "workbook_id": "599c2df4-b8d6-d2e4-ce0b-6258491a871f",
+        "direct_wb": "HSD- OD航线定价",
+        "datasource_name": "销售航段"
+      },
+      {
+        "id": "78edd300-8e12-34c6-3115-9d507590dc28",
+        "name": "出票日期筛选",
+        "workbook_id": "424a9092-f8fd-a030-7bc2-9357f2ac91f3",
+        "direct_wb": "销售数据分析平台_佳茗",
+        "datasource_name": "销售航段"
+      },
+      {
+        "id": "a667f98d-f37c-6144-7552-0e763e8dd297",
+        "name": "是否国外旅客",
+        "workbook_id": "42fec810-afd8-2db6-ab9c-e87af3927a8f",
+        "direct_wb": "销售分析",
+        "datasource_name": "销售航段"
+      },
+      {
+        "id": "9b4c09f6-1a4b-96c6-4e1a-137f27fa425f",
+        "name": "洲际航点-粗略 (组)",
+        "workbook_id": "7499f780-7f55-7d9f-2a51-e875c7d42a00",
+        "direct_wb": "HSD-趋势对比",
+        "datasource_name": "销售航段"
+      },
+      {
+        "id": "621777db-fb9e-50c1-b4db-112463c3774f",
+        "name": "计划衔接时间",
+        "workbook_id": null,
+        "direct_wb": null,
+        "datasource_name": "中转航段数据补充票价数据"
+      },
+      {
+        "id": "7e78d7e8-c11f-aa94-2bda-536ae80f7cdb",
+        "name": "EXCHANGED_FLAG",
+        "workbook_id": null,
+        "direct_wb": null,
+        "datasource_name": "销售航段"
+      },
+      {
+        "id": "2a3bbdf9-a23d-2f15-8f75-1863bac672c3",
+        "name": "flightHourNum",
+        "workbook_id": "17c652d3-1288-84c7-f2f0-8b49b1e9e89f",
+        "direct_wb": "致远-预算分解",
+        "datasource_name": "产出计划数据-预算明细数据+ (多个连接)"
+      },
+      {
+        "id": "eaf8499c-ef4f-a260-37b1-b636c4258dc9",
+        "name": "出港-Latitude",
+        "workbook_id": null,
+        "direct_wb": null,
+        "datasource_name": "销售票面"
+      },
+      {
+        "id": "ceb28440-2797-30a1-b188-41e22652bb9c",
+        "name": "票价本期-同比",
+        "workbook_id": "7757243c-fbaf-3bce-6136-c8c96f7319b9",
+        "direct_wb": "收辅_HO融合表_星期_模糊匹配",
+        "datasource_name": "融合表_周期_模糊匹配_SQL"
+      },
+      {
+        "id": "d3a6e136-1441-c06b-88f4-3724234c858c",
+        "name": "tourcode识别的大客户代码",
+        "workbook_id": "42fec810-afd8-2db6-ab9c-e87af3927a8f",
+        "direct_wb": "销售分析",
+        "datasource_name": "销售航段"
+      },
+      {
+        "id": "da849dc2-3816-5ef3-0557-8bbd5f3492ce",
+        "name": "Gateway2-航协大区",
+        "workbook_id": "121ffa8b-e1d2-a29c-7b86-13a93e604593",
+        "direct_wb": "群哥OAG_OD_佳茗",
+        "datasource_name": "Extract+ (多个连接)"
+      },
+      {
+        "id": "83b725f6-f557-1d74-d1f5-9e2289c2d3f1",
+        "name": "Flight Dep Time",
+        "workbook_id": null,
+        "direct_wb": null,
+        "datasource_name": "DDS数据"
+      },
+      {
+        "id": "77b350f7-499f-ddad-cf08-ecb7622132c5",
+        "name": "Seg Orig Country Name",
+        "workbook_id": null,
+        "direct_wb": null,
+        "datasource_name": "DDS-Segment"
+      },
+      {
+        "id": "5a742713-b831-a8db-0b20-5034087437f9",
+        "name": "平均票价",
+        "workbook_id": "d9766356-52e4-20bb-c23c-17ab5494db44",
+        "direct_wb": "澳洲市场分析-DDS",
+        "datasource_name": "Ticketing-TripOD"
+      },
+      {
+        "id": "8340a8fe-9952-28c2-a93f-d82ea89f2994",
+        "name": "外航销售",
+        "workbook_id": "91d7f93c-8bf6-0c0f-7dbb-38d2f6e9a326",
+        "direct_wb": "日本销售监控-民航局",
+        "datasource_name": "销售航段"
+      },
+      {
+        "id": "a609d515-7160-ffc8-a2a0-788ae61cafc5",
+        "name": "总运输量(吨)(航节)",
+        "workbook_id": "9c260dd3-d1e2-fada-8030-0e99d8332c25",
+        "direct_wb": "历史-致远-模糊匹配看板",
+        "datasource_name": "View_DWD_ZY_Flight_Results+ (main)"
+      },
+      {
+        "id": "8658ff90-5c9d-bdfd-0546-d58629004161",
+        "name": "代理-地区",
+        "workbook_id": null,
+        "direct_wb": null,
+        "datasource_name": "DDS销售监控新"
+      },
+      {
+        "id": "344ecc59-f3bb-1ac0-b352-d82458dc4d94",
+        "name": "经济舱收入",
+        "workbook_id": null,
+        "direct_wb": null,
+        "datasource_name": "经营分析复盘-本地数据"
+      },
+      {
+        "id": "fc4000d3-cc91-24d9-6c3c-ddda217d8a5b",
+        "name": "对齐日期",
+        "workbook_id": "91d7f93c-8bf6-0c0f-7dbb-38d2f6e9a326",
+        "direct_wb": "日本销售监控-民航局",
+        "datasource_name": "销售航段"
+      }
+    ],
+    "stats": {
+      "direct_workbook": 6849,
+      "via_datasource": 8890
+    }
+  },
+  "field_to_view": {
+    "samples": [
+      {
+        "id": "ce6ed2ec-5e52-b4c7-2225-86fcc42aa16a",
+        "name": "航班日期",
+        "view_count": 350
+      },
+      {
+        "id": "15f29002-cdfc-eaf6-5880-4d4044dcc896",
+        "name": "航段",
+        "view_count": 244
+      },
+      {
+        "id": "36e8183f-07e4-cc67-9df5-7b739968c17e",
+        "name": "承运航司",
+        "view_count": 171
+      },
+      {
+        "id": "a0f4eca5-78e0-4813-b746-e68d3d3320fd",
+        "name": "出票日期",
+        "view_count": 154
+      },
+      {
+        "id": "09c99766-f1db-86a8-d079-797ce3f2de95",
+        "name": "CLAZZ",
+        "view_count": 152
+      },
+      {
+        "id": "08d11823-a5c9-5e31-cc8d-1a56dacabfb6",
+        "name": "航班号",
+        "view_count": 140
+      },
+      {
+        "id": "9691bd20-ea0c-e40f-9dc8-1347e9e0a61c",
+        "name": "出票日期筛选",
+        "view_count": 98
+      },
+      {
+        "id": "7b6bd393-1afc-2958-71b6-1cd62ecb915f",
+        "name": "销售航段张数",
+        "view_count": 77
+      },
+      {
+        "id": "35488d66-ad58-a826-ee9f-a5168662f52a",
+        "name": "BOOKINGINFO_GROUP",
+        "view_count": 75
+      },
+      {
+        "id": "5bb37507-cdc7-3052-684f-81874571804f",
+        "name": "客票状态",
+        "view_count": 64
+      },
+      {
+        "id": "da9d79b2-5dc6-9eb4-5b21-fb54b4921056",
+        "name": "实际销售_标识",
+        "view_count": 63
+      },
+      {
+        "id": "b88f1901-b223-20cf-564d-e04a04d0370c",
+        "name": "总数据-筛选去重",
+        "view_count": 62
+      },
+      {
+        "id": "ee1e19cd-2e43-af4a-b5e1-f146f7ef7b46",
+        "name": "Flightdate",
+        "view_count": 61
+      },
+      {
+        "id": "bf229e82-b5cd-1841-cccc-4991927ed5a5",
+        "name": "MAIN_CLAZZ",
+        "view_count": 60
+      },
+      {
+        "id": "a3bd0c47-6299-206f-fa9d-aa6642aed965",
+        "name": "代理人名称",
+        "view_count": 56
+      },
+      {
+        "id": "2f6bb071-5f6a-5150-c14b-651a7a272f88",
+        "name": ":Measure Names",
+        "view_count": 55
+      },
+      {
+        "id": "9171871d-915f-489a-b106-393ef06bc7f2",
+        "name": "航程",
+        "view_count": 54
+      },
+      {
+        "id": "bea4ce47-5203-8a93-ad0c-be5280110d2d",
+        "name": "归属营业部",
+        "view_count": 54
+      },
+      {
+        "id": "50c1151c-7e6d-d419-5271-61dda7f44d08",
+        "name": "代理-代理人名称",
+        "view_count": 53
+      },
+      {
+        "id": "eef61f21-877a-7b5c-e130-3a44af1dc1d7",
+        "name": "客票状态",
+        "view_count": 52
+      }
+    ],
+    "stats": {
+      "fields_with_views": 2463
+    }
+  },
+  "field_to_database": {
+    "samples": [
+      {
+        "id": "0eda960d-1428-eb58-23b9-1ffdde04331c",
+        "name": "EXCHANGE_RATE_TOTAL",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "id": "4ca7df95-e76a-8290-4692-4033ab104285",
+        "name": "货运收入",
+        "table_name": "View_DWD_ZY_Flight_Results",
+        "database_name": "ho"
+      },
+      {
+        "id": "27292089-ff10-1c83-7376-2f655dfdd47f",
+        "name": "虚拟航班标识",
+        "table_name": "View_DWD_ZY_Flight_Results",
+        "database_name": "ho"
+      },
+      {
+        "id": "f635c227-43b1-b0c6-44b4-8a35c0828708",
+        "name": "First Cancelled",
+        "table_name": "ods_tic_tcn_g_class_transfer",
+        "database_name": "data_sandbox"
+      },
+      {
+        "id": "09f187b6-7eb3-c286-30ad-3118bb705337",
+        "name": "经济舱-直销价差",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "id": "86482f4c-277e-c25a-6edc-bf5e1d11f9a3",
+        "name": "Ndc Ident",
+        "table_name": "dwd_ord_dds_data",
+        "database_name": "data_sandbox"
+      },
+      {
+        "id": "e2dcbd1d-2936-1d27-5baa-2c69d3183792",
+        "name": "FINAL_DISTANCE",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "id": "508c80cd-98c0-9e97-d4d7-01a8752f5ca4",
+        "name": "b2b_office_no",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "id": "757bcd41-829f-32c2-49f6-670d8e11e066",
+        "name": "X舱班均人数",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "id": "3c6c5a97-6bc6-4345-e16a-ba3c6aa6a4aa",
+        "name": "是否24小时内衔接",
+        "table_name": "dwm_transfer_passengers_segments",
+        "database_name": "data_sandbox"
+      },
+      {
+        "id": "e222ba29-eb12-b6b7-8eeb-21994fbac330",
+        "name": "Change Channel",
+        "table_name": "ads_ord_spec_prod_res_tkt_detail",
+        "database_name": "data_sandbox"
+      },
+      {
+        "id": "26e495b5-4b4a-116f-aaee-e2c08ef0e750",
+        "name": "航段编号 (DIM ZY FlightManagement)",
+        "table_name": "DIM_ZY_FlightManagement",
+        "database_name": "ho"
+      },
+      {
+        "id": "7d7141dc-a3dd-7529-818e-c969b4861f9e",
+        "name": "航班组标识",
+        "table_name": "dwm_transfer_passengers_segments",
+        "database_name": "data_sandbox"
+      },
+      {
+        "id": "f8b9e0cd-2041-537c-aae7-f1ce7e1181d2",
+        "name": "ARRIVAL_AIRPORTCODE",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "id": "42439ae8-afc8-b0d1-e3f5-bde0bec3bbfc",
+        "name": "第一段航班日期北京时间",
+        "table_name": "dwm_transfer_passengers_segments",
+        "database_name": "data_sandbox"
+      },
+      {
+        "id": "b4049b49-81f4-4cea-7491-19cf4e6818d8",
+        "name": "Tickettype",
+        "table_name": "ads_transfer_abandon_trip_dashboard",
+        "database_name": "data_sandbox"
+      },
+      {
+        "id": "ef7b9778-b046-fb43-c7c9-170652fd6b26",
+        "name": "计算 1",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "id": "6365adaf-be67-9f10-4654-b9cfe4e2dbe4",
+        "name": "Change Count",
+        "table_name": "ads_ord_spec_prod_res_tkt_detail",
+        "database_name": "data_sandbox"
+      },
+      {
+        "id": "d37189f5-481b-760b-94bb-7c3acbc532e1",
+        "name": "Leg Sch Dep Changeofday",
+        "table_name": "dwd_tic_hsd_iinv_1min",
+        "database_name": "data_sandbox"
+      },
+      {
+        "id": "82b9a51c-7fef-7446-c2f0-1cf55fd20c0f",
+        "name": "Second Delayed",
+        "table_name": "ods_tic_tcn_g_class_transfer",
+        "database_name": "data_sandbox"
+      }
+    ],
+    "stats": {
+      "fields_with_database": 1501
+    }
+  },
+  "calc_field_to_dependency": {
+    "samples": [
+      {
+        "source_field_id": "7f7c63d9-fcf2-03bc-a756-b38626ede9df",
+        "source_name": "座位数-本期",
+        "dependency_field_id": null,
+        "dependency_name": "本期年份",
+        "resolved_name": null,
+        "table_id": null
+      },
+      {
+        "source_field_id": "de67f0cf-fb0b-66d3-c1a5-970330bfdc18",
+        "source_name": "产品",
+        "dependency_field_id": "35488d66-ad58-a826-ee9f-a5168662f52a",
+        "dependency_name": "BOOKINGINFO_GROUP",
+        "resolved_name": "BOOKINGINFO_GROUP",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a"
+      },
+      {
+        "source_field_id": "2b91bb4b-32e6-fd40-c440-6a4290e39d41",
+        "source_name": "洲际航点-粗略",
+        "dependency_field_id": "9171871d-915f-489a-b106-393ef06bc7f2",
+        "dependency_name": "航程",
+        "resolved_name": "航程",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a"
+      },
+      {
+        "source_field_id": "49096f63-3ca7-4f94-1890-1f001c0cc5f6",
+        "source_name": "时间范围",
+        "dependency_field_id": "bfdf47f8-0405-b179-b7cb-7bfa13ee9583",
+        "dependency_name": "结束日期",
+        "resolved_name": "结束日期",
+        "table_id": "a225cf01-aadf-9e30-3f18-911f54f51e3f"
+      },
+      {
+        "source_field_id": "68ff212f-fc19-90b5-e473-1aac39f91e31",
+        "source_name": "会员-平均票价",
+        "dependency_field_id": "8bc4613b-ab2b-2c6e-c999-842b294e9e96",
+        "dependency_name": "会员人数",
+        "resolved_name": "会员人数",
+        "table_id": null
+      },
+      {
+        "source_field_id": "82840568-28d1-6533-bf0f-512b7463bae1",
+        "source_name": "seg-1",
+        "dependency_field_id": "37e3bdab-19cc-6525-ca7e-b402c2c537bf",
+        "dependency_name": "2-Gateway2",
+        "resolved_name": "2-Gateway2",
+        "table_id": "437645a9-e631-8900-1bec-4f272b09cf54"
+      },
+      {
+        "source_field_id": "1d977804-738f-b395-a561-ce047def1d4e",
+        "source_name": "航司",
+        "dependency_field_id": "7005ed15-c15a-2892-e2a5-e490b47d9e8f",
+        "dependency_name": "Flightno",
+        "resolved_name": "Flightno",
+        "table_id": "d452a220-27f2-7b03-ee58-eb2bed59829a"
+      },
+      {
+        "source_field_id": "9542e814-7c0a-5298-e9cd-a8620e648b71",
+        "source_name": "班均国际客票数",
+        "dependency_field_id": "b6fb42bd-e03e-ec85-b07e-534ad0fb6973",
+        "dependency_name": "国际客票数",
+        "resolved_name": "国际客票数",
+        "table_id": null
+      },
+      {
+        "source_field_id": "c4d63dd0-c8f8-a0c5-c954-47ef55b9fd16",
+        "source_name": "经济舱-平均票价",
+        "dependency_field_id": "bf229e82-b5cd-1841-cccc-4991927ed5a5",
+        "dependency_name": "MAIN_CLAZZ",
+        "resolved_name": "MAIN_CLAZZ",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a"
+      },
+      {
+        "source_field_id": "043fa541-06dc-7b6f-1cfc-a7261c55f91c",
+        "source_name": "总收入-复权",
+        "dependency_field_id": "faf013ff-5658-40b6-f499-9401f6ba5ef4",
+        "dependency_name": "TRAVEL_FLAG",
+        "resolved_name": "TRAVEL_FLAG",
+        "table_id": "5fd17bd9-47eb-4c1e-0848-70e474669bea"
+      },
+      {
+        "source_field_id": "0dfcdbc7-30a0-3f70-37a4-4243dae79a52",
+        "source_name": "航司对",
+        "dependency_field_id": "32279ee8-9933-15a2-ed3a-8bbb6bfed639",
+        "dependency_name": "第一班航司",
+        "resolved_name": "第一班航司",
+        "table_id": null
+      },
+      {
+        "source_field_id": "303a978b-df21-0799-9ca6-e81826340a1f",
+        "source_name": "航段-城市",
+        "dependency_field_id": null,
+        "dependency_name": "城市对 (Extract1)",
+        "resolved_name": null,
+        "table_id": null
+      },
+      {
+        "source_field_id": "c109447d-bed6-3a6f-fa3f-3feabeff965c",
+        "source_name": "起飞时间区间",
+        "dependency_field_id": "1831b88a-8267-e155-97fa-e14fdf11e0aa",
+        "dependency_name": "起飞时间 (数字)",
+        "resolved_name": "起飞时间 (数字)",
+        "table_id": "45b1a577-cfdc-4f47-b275-deb0e10170f7"
+      },
+      {
+        "source_field_id": "37bc799f-458c-1c68-51ab-99ee624742fa",
+        "source_name": "企业客户-国内",
+        "dependency_field_id": "294c0028-b376-170c-7a3e-f86aa0e6b8d6",
+        "dependency_name": "IS_BIG_CUSTOMER",
+        "resolved_name": "IS_BIG_CUSTOMER",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a"
+      },
+      {
+        "source_field_id": "365692ef-f8ac-5541-361d-d30e64907bd7",
+        "source_name": "始发贡献_航段数",
+        "dependency_field_id": "251071f8-4d3a-c986-6d92-a02a0272b164",
+        "dependency_name": "始发营业部",
+        "resolved_name": "始发营业部",
+        "table_id": null
+      },
+      {
+        "source_field_id": "ff0ab568-f8d0-a039-5d5f-b56652839ca2",
+        "source_name": "座公里收入-移动平均",
+        "dependency_field_id": "ed3df7cf-d1fc-b812-a8d6-8b2dbf9f87bc",
+        "dependency_name": "座公里收入-客运",
+        "resolved_name": "座公里收入-客运",
+        "table_id": "04767b3e-c84a-9a76-db75-1f3cd9f9fd05"
+      },
+      {
+        "source_field_id": "6fa3b610-3e80-5f1b-756d-979bb074d0a3",
+        "source_name": "出票日期截断",
+        "dependency_field_id": "ce6ed2ec-5e52-b4c7-2225-86fcc42aa16a",
+        "dependency_name": "航班日期",
+        "resolved_name": "航班日期",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a"
+      },
+      {
+        "source_field_id": "8048a70e-26e6-a7a5-3642-3269ae83c0a7",
+        "source_name": "座位数",
+        "dependency_field_id": "2c3f4c9f-1038-3b9b-f415-4525529bf301",
+        "dependency_name": "Seats",
+        "resolved_name": "Seats",
+        "table_id": "5cf8033a-36d7-d0c5-7dcf-843cb2bfa5fc"
+      },
+      {
+        "source_field_id": "5fc767dd-a0c8-698c-2649-d2ca7daba4ba",
+        "source_name": "精准营销政策判断",
+        "dependency_field_id": "96238747-f5c6-52bd-2a9a-cab6ef24cc50",
+        "dependency_name": "航班日期",
+        "resolved_name": "航班日期",
+        "table_id": "7e828812-59da-4a28-e821-5d3aa3b5d3d0"
+      },
+      {
+        "source_field_id": "d85f6896-5955-8c88-c6e2-e88ca6662ba6",
+        "source_name": "累积票价-日增",
+        "dependency_field_id": null,
+        "dependency_name": "票价-展示参数",
+        "resolved_name": null,
+        "table_id": null
+      },
+      {
+        "source_field_id": "0fe443e3-f2a5-9693-a1ae-3ad6cc67b9dd",
+        "source_name": "婴儿及儿童占比",
+        "dependency_field_id": "c15885f6-5efc-6434-1ec0-55f1748cb450",
+        "dependency_name": "销售航段张数",
+        "resolved_name": "销售航段张数",
+        "table_id": null
+      },
+      {
+        "source_field_id": "78b041d1-62b1-80ac-b506-4c06886dc5e8",
+        "source_name": "聚合历史期毛利",
+        "dependency_field_id": "93bfc8ba-5ad6-f153-2e61-e57416b26c60",
+        "dependency_name": "对比",
+        "resolved_name": "对比",
+        "table_id": "ae0b62e4-7721-eaf1-e0bf-951ec59b066b"
+      },
+      {
+        "source_field_id": "33ee30a0-c493-56cc-d811-484c302df682",
+        "source_name": "销售集团*",
+        "dependency_field_id": "a3bd0c47-6299-206f-fa9d-aa6642aed965",
+        "dependency_name": "代理人名称",
+        "resolved_name": "代理人名称",
+        "table_id": "edd5690c-24c1-1f39-00af-55e29fbd00d3"
+      },
+      {
+        "source_field_id": "bfa8708a-5f4d-e4c8-4790-4c1a78c202ce",
+        "source_name": "同比-未补贴利润",
+        "dependency_field_id": "380fe8c4-cab6-38bf-6afe-81bc95354cf8",
+        "dependency_name": "客运利润",
+        "resolved_name": "客运利润",
+        "table_id": "e9f79417-cb85-db71-81b9-b31ce1995235"
+      },
+      {
+        "source_field_id": "170bc3a0-5c5f-3889-8043-b2e5b6d198d6",
+        "source_name": "代理_前一窗口N天出票量",
+        "dependency_field_id": "a0f4eca5-78e0-4813-b746-e68d3d3320fd",
+        "dependency_name": "出票日期",
+        "resolved_name": "出票日期",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a"
+      },
+      {
+        "source_field_id": "64a98e60-ffeb-d835-bafe-034d375d622c",
+        "source_name": "GP票_分摊票价_占比",
+        "dependency_field_id": null,
+        "dependency_name": "分摊票价_人民币",
+        "resolved_name": null,
+        "table_id": null
+      },
+      {
+        "source_field_id": "44dfb79a-bddd-848b-868f-b78461541823",
+        "source_name": "竞价升舱占公务舱比率",
+        "dependency_field_id": "98e86900-8760-f32b-ba08-7fbd02ac79e4",
+        "dependency_name": "公务舱人数",
+        "resolved_name": "公务舱人数",
+        "table_id": null
+      },
+      {
+        "source_field_id": "e5e9ee19-a55b-9ca4-af49-183a04a14237",
+        "source_name": "K舱班均人数",
+        "dependency_field_id": "4cfbbbef-24b2-a91e-47f1-b1b0d078c40e",
+        "dependency_name": "K舱人数",
+        "resolved_name": "K舱人数",
+        "table_id": null
+      },
+      {
+        "source_field_id": "e7e620ec-b62c-1c2f-d4cf-b1d03aa50b63",
+        "source_name": "出票日期截断",
+        "dependency_field_id": null,
+        "dependency_name": "趋势 提前截断天数",
+        "resolved_name": null,
+        "table_id": null
+      },
+      {
+        "source_field_id": "87c1d082-6815-a955-e026-5962a53574e8",
+        "source_name": "IT票",
+        "dependency_field_id": "2f2500c9-66e0-faa5-f469-51cc0c1f41e4",
+        "dependency_name": "TICKETNUMBER",
+        "resolved_name": "TICKETNUMBER",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a"
+      }
+    ],
+    "stats": {
+      "total_dependencies": 9809,
+      "calc_fields_with_deps": 4851,
+      "unresolved_dependencies": 717
+    },
+    "issues": [],
+    "broken_count": 0
+  },
+  "calc_field_to_table": {
+    "samples": [
+      {
+        "id": "ed8c27ca-11a6-8012-87e9-0252855e8582",
+        "name": "HO权重pct-航季",
+        "formula": "[HO班次]/MAX([HO分析参数-班次-航季])*1000",
+        "table_id": null,
+        "table_name": null
+      },
+      {
+        "id": "248c240b-8973-d692-8426-c90e47f20241",
+        "name": "动态同比",
+        "formula": "IF [Parameters].[参数 5] = '年' THEN\r\n    [销售票面张数] / LOOKUP([销售票面张数], -1 * DATEPART('year', [首段航班日期]))\r\nELSEIF [Parameters].[参数 5] = '月' THEN\r\n    [销售票面张数]/ LOOKUP([销售票面张数], -1 * DATEPART('month', [首段航班日期]))\r\nELSEIF [Parameters].[参数 5] = '周' THEN\r\n    [销售票面张数] / LOOKUP([销售票面张数], -1 * DATEPART('week', [首段航班日期]))\r\nEND",
+        "table_id": null,
+        "table_name": null
+      },
+      {
+        "id": "764abb1f-2ce1-774c-2bec-12d5d5a26db6",
+        "name": "排序-1",
+        "formula": "IF  ISNULL([班次-本期]) THEN -9999\nELSEIF  ISNULL([座公里投入-本期]) OR  ISNULL([座公里投入-同比]) THEN -8888\n\nELSE [座公里投入-本期]/[座公里投入-同比]-1\nEND\n\n//排序 座公里同比",
+        "table_id": null,
+        "table_name": null
+      },
+      {
+        "id": "35fb9c07-e36b-affe-3897-559211056bd8",
+        "name": "年龄分布-销售2 (会员卡)",
+        "formula": "{ FIXED [年龄分布-2],[DESCRIPTION_CN]:[销售航段张数]}",
+        "table_id": null,
+        "table_name": null
+      },
+      {
+        "id": "b26b8af9-3fb5-fca1-4caa-e8342ead3e49",
+        "name": "I舱班均人数",
+        "formula": "[I舱人数]/[航班班次]",
+        "table_id": null,
+        "table_name": null
+      },
+      {
+        "id": "b2918b49-c9f4-df53-d75f-bd65f42fe805",
+        "name": "同比-折扣率",
+        "formula": "IF  ISNULL([折扣率 含税]) OR LOOKUP(ZN([折扣率 含税]), -1)=0 THEN NULL\nELSE ZN([折扣率 含税]) - LOOKUP(ZN([折扣率 含税]), -1)\nEND",
+        "table_id": null,
+        "table_name": null
+      },
+      {
+        "id": "f3128b58-1530-4268-12ba-5413276f780f",
+        "name": "韩国客票占比",
+        "formula": "[韩国客票数]/[销售航段张数]",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket"
+      },
+      {
+        "id": "919873a2-1d6d-3291-4b50-f834f0690e1b",
+        "name": "我航洲际客票",
+        "formula": "IF CONTAINS( [OPCARRIER_FLIGHT_NO] , \"HO1655\") THEN \"墨尔本\"\nELSEIF CONTAINS( [OPCARRIER_FLIGHT_NO] , \"HO1656\") THEN \"墨尔本\"\nELSEIF CONTAINS( [OPCARRIER_FLIGHT_NO] , \"HO1669\") THEN \"悉尼\"\nELSEIF CONTAINS( [OPCARRIER_FLIGHT_NO] , \"HO1670\") THEN \"悉尼\"\n\nELSEIF CONTAINS( [OPCARRIER_FLIGHT_NO] , \"HO1607\") THEN \"赫尔辛基\"\nELSEIF CONTAINS( [OPCARRIER_FLIGHT_NO] , \"HO1608\") THEN \"赫尔辛基\"\nELSEIF CONTAINS( [OPCARRIER_FLIGHT_NO] , \"HO1657\") THEN \"雅典\"\nELSEIF CONTAINS( [OPCARRIER_FLIGHT_NO] , \"HO1658\") THEN \"雅典\"\nELSEIF CONTAINS( [OPCARRIER_FLIGHT_NO] , \"HO1659\") THEN \"布鲁塞尔\"\nELSEIF CONTAINS( [OPCARRIER_FLIGHT_NO] , \"HO1660\") THEN \"布鲁塞尔\"\nELSEIF CONTAINS( [OPCARRIER_FLIGHT_NO] , \"HO1661\") THEN \"曼彻斯特\"\nELSEIF CONTAINS( [OPCARRIER_FLIGHT_NO] , \"HO1662\") THEN \"曼彻斯特\"\nELSEIF CONTAINS( [OPCARRIER_FLIGHT_NO] , \"HO1665\") THEN \"赫尔辛基\"\nELSEIF CONTAINS( [OPCARRIER_FLIGHT_NO] , \"HO1666\") THEN \"赫尔辛基\"\nELSEIF CONTAINS( [OPCARRIER_FLIGHT_NO] , \"HO1667\") THEN \"米兰\"\nELSEIF CONTAINS( [OPCARRIER_FLIGHT_NO] , \"HO1668\") THEN \"米兰\"\nELSEIF [D_OR_I]=\"国际\" then \"国际短线\"\nELSE  \"国内航线\"\n\n\r\nEND",
+        "table_id": null,
+        "table_name": null
+      },
+      {
+        "id": "87e81871-6987-8fd3-4f9d-17607bfffe85",
+        "name": "特殊航班查询",
+        "formula": "IF CONTAINS([OPCARRIER_FLIGHT_NO],\"HO1367\") THEN \"HO1367\" ELSEIF CONTAINS([OPCARRIER_FLIGHT_NO],\"HO1368\") THEN \"HO1368\"END",
+        "table_id": null,
+        "table_name": null
+      },
+      {
+        "id": "5386387c-9869-5c96-bf17-d2ad55b9e1ca",
+        "name": "代理-生命周期",
+        "formula": "DATEDIFF('month',[代理-首次承运月份],[代理-最后承运月份])",
+        "table_id": null,
+        "table_name": null
+      },
+      {
+        "id": "ef6c489b-e2e7-af75-3788-1e828d6c80b9",
+        "name": "中国=北美",
+        "formula": "IF [始发-Continent] = \"北美洲\" OR [到达-Continent] = \"北美洲\" THEN \"北美洲\" END",
+        "table_id": "437645a9-e631-8900-1bec-4f272b09cf54",
+        "table_name": "机场三字代码表"
+      },
+      {
+        "id": "9abd9630-b201-91d7-73da-d0f5c04d1b50",
+        "name": "去哪儿占比",
+        "formula": "[去哪儿销量]/[销售航段张数]",
+        "table_id": null,
+        "table_name": null
+      },
+      {
+        "id": "ed3d185e-3bba-56be-23ee-5b2e9a216b47",
+        "name": "企业客户销量",
+        "formula": "[企业客户-国内]+[企业客户-国际]",
+        "table_id": null,
+        "table_name": null
+      },
+      {
+        "id": "de16164a-0690-80cd-4851-08c77b0da2c7",
+        "name": "我航欧洲线",
+        "formula": "IF CONTAINS([OD航段],\"HEL\") \nor CONTAINS([OD航段],\"MXP\") \nor CONTAINS([OD航段],\"ATH\")\nor CONTAINS([OD航段],\"MAN\")\nor CONTAINS([OD航段],\"BRU\") THEN \"我航欧洲\"\nELSEIF CONTAINS([始发-Continent],\"欧洲\") OR CONTAINS([到达-Continent],\"欧洲\")\nTHEN \"其他欧洲线\"\nELSE \"非欧洲线\"\nEND",
+        "table_id": "75fde438-5032-5ec9-840e-d85fccd432e4",
+        "table_name": "机场三字代码表"
+      },
+      {
+        "id": "1d369c49-7f07-9ac3-1004-ec02d83029d3",
+        "name": "平均票价-航段含油",
+        "formula": "ZN( SUM([分摊含油收入]))/ZN([销售航段张数])",
+        "table_id": null,
+        "table_name": null
+      },
+      {
+        "id": "5059156d-a40f-c0ee-6938-df3385015c0a",
+        "name": "韩国客票-标识",
+        "formula": "IF CONTAINS([航程],\"TAE\") then \"大邱\"\nELSEIF CONTAINS([航程],\"PUS\") then \"釜山\"\nELSEIF CONTAINS([航程],\"KWJ\") then \"光州\"\nELSEIF CONTAINS([航程],\"CJU\") then \"济州\"\nELSEIF CONTAINS([航程],\"YNY\") then \"江原道\"\nELSEIF CONTAINS([航程],\"WJU\") then \"原州\"\nELSEIF CONTAINS([航程],\"KPO\") then \"普项\"\nELSEIF CONTAINS([航程],\"HIN\") then \"泗川\"\nELSEIF CONTAINS([航程],\"KUV\") then \"群山\"\nELSEIF CONTAINS([航程],\"RSU\") then \"丽水\"\nELSEIF CONTAINS([航程],\"MWX\") then \"务安\"\nELSEIF CONTAINS([航程],\"ICN\") then \"仁川\"\nELSEIF CONTAINS([航程],\"GMP\") then \"首尔\"\nELSEIF CONTAINS([航程],\"USN\") then \"蔚山\"\nELSEIF CONTAINS([航程],\"CJJ\") then \"清州\"\n\n\n\nELSE  \"Others\"\n\n\nEND",
+        "table_id": null,
+        "table_name": null
+      },
+      {
+        "id": "787e9d39-dbd7-96a3-7099-03bd372137d6",
+        "name": "溢价产品_溢价金额_当期",
+        "formula": "SUM(\n    IF [Period Flag] = \"当期\" THEN [溢价产品_溢价金额] END\n)",
+        "table_id": null,
+        "table_name": null
+      },
+      {
+        "id": "15a9100d-705c-3daf-c454-e9b5f7c35b58",
+        "name": "班次",
+        "formula": "[航班号]+\"-\"+str([航班日期])",
+        "table_id": null,
+        "table_name": null
+      },
+      {
+        "id": "775aab1b-f083-e35f-7511-2f4f05a8a695",
+        "name": "出票月日",
+        "formula": "INT(DATEPART('month', [出票日期]))*100+INT(DATEPART('day', [出票日期]))",
+        "table_id": null,
+        "table_name": null
+      },
+      {
+        "id": "1b71bd53-6b53-15b4-f849-3e7f5974a353",
+        "name": "同比-未补贴利润",
+        "formula": "IF  ISNULL(SUM([客运利润])) THEN  NULL   \nELSE (ZN(SUM([客运利润])) - LOOKUP(ZN(SUM([客运利润])), -1)) / ABS(LOOKUP(ZN(SUM([客运利润])), -1))\nEND",
+        "table_id": null,
+        "table_name": null
+      }
+    ],
+    "stats": {
+      "total_calc": 4929,
+      "with_table": 1122
+    }
+  },
+  "full_chain_field_to_db": {
+    "samples": [
+      {
+        "field_id": "5c101af8-3397-f1ac-9bcc-1134f34af2e3",
+        "field_name": "Tpm",
+        "column_id": "18904377-cc75-31ab-525a-b845eef8ce4b",
+        "column_name": "tpm",
+        "table_id": "4ba00e5e-619e-b8f1-536e-2104191e8b3e",
+        "table_name": "ods_mkt_hords3datam_b_flightinfo",
+        "schema": "",
+        "database_id": "fd143f08-a080-f147-f01e-f3c11ccdafaf",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "bfef23dd-b655-03bb-977e-d61459497224",
+        "field_name": "Createtime",
+        "column_id": "f8e8721e-8a0f-2f66-7ad5-e0a9f3550a86",
+        "column_name": "createtime",
+        "table_id": "0d250521-2d17-15eb-2d65-2cf13529ffd2",
+        "table_name": "ods_mkt_hords3data_d_lpdata",
+        "schema": "",
+        "database_id": "fd143f08-a080-f147-f01e-f3c11ccdafaf",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "4a0169ba-7bc0-ced6-2368-cddc4f8358a3",
+        "field_name": "Old Couponumber",
+        "column_id": "025b893d-8f5f-4774-fa97-27497010f2d8",
+        "column_name": "old_couponumber",
+        "table_id": "a6169143-63cc-2467-4b0d-09b3c4fefe8a",
+        "table_name": "ads_ord_spec_prod_res_tkt_detail",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "060a2fab-5c95-cbe6-6b99-b200998f685f",
+        "field_name": "FARE_AMOUNT_CNY",
+        "column_id": "d4b26583-e95d-b96c-b04c-29f5115112b4",
+        "column_name": "FARE_AMOUNT_CNY",
+        "table_id": "5fd17bd9-47eb-4c1e-0848-70e474669bea",
+        "table_name": "tbl_transfer_passenger",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "15abacee-1188-7710-96f5-95d8fd671fe5",
+        "field_name": "Luggage Hanging Count",
+        "column_id": "91767937-24b5-b688-0f38-284c888589ef",
+        "column_name": "luggage_hanging_count",
+        "table_id": "1683e08b-6019-b130-0dcd-e123cd9e6baf",
+        "table_name": "dwm_transfer_passengers_segments",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "44029839-7a08-6a1f-1aae-2cc2d958c1aa",
+        "field_name": "Departure Date Cn No2",
+        "column_id": "2f2e68ae-3376-cc9d-bccd-6d9e6e846912",
+        "column_name": "departure_date_cn_no2",
+        "table_id": "1683e08b-6019-b130-0dcd-e123cd9e6baf",
+        "table_name": "dwm_transfer_passengers_segments",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "91bea414-8186-c81f-6b21-57445d3e77d3",
+        "field_name": "ARRIVAL_TIME",
+        "column_id": "751e0f33-82c0-47aa-e317-4f230372ef5e",
+        "column_name": "ARRIVAL_TIME",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "cac934c5-1fc3-a496-4dda-15141ef23a7c",
+        "field_name": "Cnf",
+        "column_id": "d925ca7a-5921-69f4-9e90-67d5ecb86cf6",
+        "column_name": "cnf",
+        "table_id": "d452a220-27f2-7b03-ee58-eb2bed59829a",
+        "table_name": "ods_mkt_hords3data_d_lfdata",
+        "schema": "",
+        "database_id": "fd143f08-a080-f147-f01e-f3c11ccdafaf",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "36e8183f-07e4-cc67-9df5-7b739968c17e",
+        "field_name": "承运航司",
+        "column_id": "d18aa631-ba00-24f9-7255-e535378125b9",
+        "column_name": "OPCARRIER_AIRLINECODE",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "dc2a5374-2c0c-c76b-3577-6037e9b7a35a",
+        "field_name": "Ccabin",
+        "column_id": "c781bc39-2a90-0141-7593-1d984e12c9b7",
+        "column_name": "ccabin",
+        "table_id": "0d250521-2d17-15eb-2d65-2cf13529ffd2",
+        "table_name": "ods_mkt_hords3data_d_lpdata",
+        "schema": "",
+        "database_id": "fd143f08-a080-f147-f01e-f3c11ccdafaf",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "4c9937c9-6d7a-0242-405c-1f120939c0ae",
+        "field_name": "ota_type",
+        "column_id": "92a36c3b-5724-4e8b-52d9-367f70b813bf",
+        "column_name": "ota_type",
+        "table_id": "1683e08b-6019-b130-0dcd-e123cd9e6baf",
+        "table_name": "dwm_transfer_passengers_segments",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "678a5c11-d4d1-21f0-50fb-64fc95fc6d3c",
+        "field_name": "Cpricediscount",
+        "column_id": "e338c585-fb96-78e6-95a3-d9b1bf4e65d0",
+        "column_name": "cpricediscount",
+        "table_id": "0d250521-2d17-15eb-2d65-2cf13529ffd2",
+        "table_name": "ods_mkt_hords3data_d_lpdata",
+        "schema": "",
+        "database_id": "fd143f08-a080-f147-f01e-f3c11ccdafaf",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "1ebb4911-56c5-0c1c-3bc0-bffed317eb13",
+        "field_name": "中转航点",
+        "column_id": "a0361154-0a23-0cdb-a34d-a7c3e862c8ee",
+        "column_name": "transfer_airportcode",
+        "table_id": "1683e08b-6019-b130-0dcd-e123cd9e6baf",
+        "table_name": "dwm_transfer_passengers_segments",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "144f3b8f-60e0-35b3-7c7b-85c8e8c4507f",
+        "field_name": "Ticketnumber No2",
+        "column_id": "ea6f1569-5689-3724-420b-3b0e85412113",
+        "column_name": "ticketnumber_no2",
+        "table_id": "ab03fa32-8715-c184-347e-579d9347590d",
+        "table_name": "dwd_transfer_abandon_trip_detail_d",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "a27f3a98-fa80-d721-98a2-7e4daeddcaf6",
+        "field_name": "Curr Type",
+        "column_id": "64215c8e-c880-822d-b822-0fbf9633f97e",
+        "column_name": "curr_type",
+        "table_id": "a71d30dc-2bf7-3752-7cda-704a2d60d775",
+        "table_name": "dwd_ord_dds_data",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "56e4b03a-25fb-1f10-ea64-d7629fde1770",
+        "field_name": "第二段承运航司",
+        "column_id": "41eb3376-2f74-3f42-cd8f-036a3ba67592",
+        "column_name": "opcarrier_airlinecode_no2",
+        "table_id": "1683e08b-6019-b130-0dcd-e123cd9e6baf",
+        "table_name": "dwm_transfer_passengers_segments",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "a90c1f51-8641-cd6a-8dd5-85742ffbb7d9",
+        "field_name": "第二段登机口",
+        "column_id": "1ea634cf-7b66-7dec-1501-7b7f61989906",
+        "column_name": "boarding_gate_no2",
+        "table_id": "1683e08b-6019-b130-0dcd-e123cd9e6baf",
+        "table_name": "dwm_transfer_passengers_segments",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "dd1b6bf4-de37-8334-6013-d4f525f16b46",
+        "field_name": "Seg Flightsuffix",
+        "column_id": "cd73fff8-4693-c8db-fa3b-6d6ff9e470d9",
+        "column_name": "seg_flightsuffix",
+        "table_id": "03e4b637-01f5-b0a8-3a37-b316d2e3efd7",
+        "table_name": "dwd_tic_hsd_iinv_1min",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "7ab00f5f-c2c2-72b0-f5b1-13ccc0922430",
+        "field_name": "Agent Type",
+        "column_id": "25e46d1b-dc57-9a4a-bde3-dbdf938b5ad4",
+        "column_name": "agent_type",
+        "table_id": "f24dfa4d-b994-3aa3-400b-a6ec7b485212",
+        "table_name": "ads_transfer_abandon_trip_dashboard",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "f542cddc-9a7b-bf97-5d9f-7f60adaae3c3",
+        "field_name": "New Totalamount",
+        "column_id": "d7031373-2e44-e6f3-0514-a49d33ea3e06",
+        "column_name": "new_totalamount",
+        "table_id": "a6169143-63cc-2467-4b0d-09b3c4fefe8a",
+        "table_name": "ads_ord_spec_prod_res_tkt_detail",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "712f9818-fcaa-4e6b-56aa-fb92cb2a854f",
+        "field_name": "Airport Link Sign No1",
+        "column_id": "6f5bb9c6-e826-a25c-6fe9-d9503e101ba6",
+        "column_name": "airport_link_sign_no1",
+        "table_id": "1683e08b-6019-b130-0dcd-e123cd9e6baf",
+        "table_name": "dwm_transfer_passengers_segments",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "ded7cde8-e020-de72-adcc-94d9ccf1a717",
+        "field_name": "公务舱",
+        "column_id": "92b32cb3-113c-83ca-5e68-fab8566da7b8",
+        "column_name": "公务舱",
+        "table_id": "a8dd74c1-92f3-090f-db56-24294a3de299",
+        "table_name": "View_DWD_ZY_Flight_Results",
+        "schema": "main",
+        "database_id": "7facaa45-0fd2-02ea-0d42-3433f68206e2",
+        "database_name": "ho"
+      },
+      {
+        "field_id": "b964c6b8-2777-968a-ab3a-94e8eaa38ce3",
+        "field_name": "Leg Sch Arr Time",
+        "column_id": "8ccbe572-875c-41a9-5e9f-f9f167f6b3f9",
+        "column_name": "leg_sch_arr_time",
+        "table_id": "03e4b637-01f5-b0a8-3a37-b316d2e3efd7",
+        "table_name": "dwd_tic_hsd_iinv_1min",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "92411b50-6db4-54a2-abb4-c9a677849039",
+        "field_name": "Orig Issue Info",
+        "column_id": "106ab0cf-e0ff-95ea-5a1d-fd229915e884",
+        "column_name": "orig_issue_info",
+        "table_id": "a71d30dc-2bf7-3752-7cda-704a2d60d775",
+        "table_name": "dwd_ord_dds_data",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "39bb0a3a-ecb3-6b84-8aa5-58733542d730",
+        "field_name": "Org Ticket No",
+        "column_id": "6a402914-1d55-e961-2969-60fde47b9afd",
+        "column_name": "org_ticket_no",
+        "table_id": "a6169143-63cc-2467-4b0d-09b3c4fefe8a",
+        "table_name": "ads_ord_spec_prod_res_tkt_detail",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "0162ac79-8dc0-9b8c-ac92-dc2c1f542595",
+        "field_name": "Estimatedarrtime",
+        "column_id": "bd8ef498-bebf-a838-7757-9b2defe621ef",
+        "column_name": "estimatedarrtime",
+        "table_id": "4ba00e5e-619e-b8f1-536e-2104191e8b3e",
+        "table_name": "ods_mkt_hords3datam_b_flightinfo",
+        "schema": "",
+        "database_id": "fd143f08-a080-f147-f01e-f3c11ccdafaf",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "b0c2b204-e41b-e1f4-b18d-b2b638dc9315",
+        "field_name": "是否急转航班",
+        "column_id": "c75ab857-c3c6-355b-1c9e-51cca51c361a",
+        "column_name": "is_sharp",
+        "table_id": "1683e08b-6019-b130-0dcd-e123cd9e6baf",
+        "table_name": "dwm_transfer_passengers_segments",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "b8ac8a78-9b07-3af0-2567-0eec69cfd5fa",
+        "field_name": "Deptime",
+        "column_id": "52ba6926-3912-0fac-7637-44ebde6f2786",
+        "column_name": "deptime",
+        "table_id": "d452a220-27f2-7b03-ee58-eb2bed59829a",
+        "table_name": "ods_mkt_hords3data_d_lfdata",
+        "schema": "",
+        "database_id": "fd143f08-a080-f147-f01e-f3c11ccdafaf",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "294c0028-b376-170c-7a3e-f86aa0e6b8d6",
+        "field_name": "IS_BIG_CUSTOMER",
+        "column_id": "ce6930a1-afed-1c7a-a06d-f082de83daa8",
+        "column_name": "IS_BIG_CUSTOMER",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      },
+      {
+        "field_id": "99ab2974-0ce9-260a-f8d8-5099a83519a4",
+        "field_name": "CHECKIN_COUNT",
+        "column_id": "8cb468ed-eb07-2907-544f-dd0de24decdf",
+        "column_name": "CHECKIN_COUNT",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "schema": "",
+        "database_id": "527b9867-0696-d002-fd5e-fe5845f1a4af",
+        "database_name": "data_sandbox"
+      }
+    ],
+    "stats": {
+      "complete_chain_count": 1209
+    }
+  },
+  "full_chain_field_to_wb": {
+    "samples": [
+      {
+        "field_id": "8c63da04-e73a-595c-443c-f63a6960873d",
+        "field_name": "折扣",
+        "datasource_id": "9760a8e3-3306-1cf3-3fbf-6bb10bbd600c",
+        "datasource_name": "航班信息表-中科",
+        "workbook_id": "5be3851c-f8fa-7ff4-0e76-e6294ba0b0e1",
+        "workbook_name": "中科_客座算法验证"
+      },
+      {
+        "field_id": "1ee89ea1-f173-d891-31b4-aa6dad521248",
+        "field_name": "FAREAMOUNT_CNY",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "b7e184c8-6c22-179d-be5d-c890f245da92",
+        "workbook_name": "入盟协议 - 数据支持 - 销售数据"
+      },
+      {
+        "field_id": "b960263b-e44b-fc3a-bb40-4dadf01e7eb8",
+        "field_name": "飞猪占比",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "f13646ce-bcda-f4c2-1257-abafca6b64a8",
+        "workbook_name": "HSD-企业客户"
+      },
+      {
+        "field_id": "39a159f1-07f3-7004-2ce9-17e12670a04f",
+        "field_name": "有行李PNR占比",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "7499f780-7f55-7d9f-2a51-e875c7d42a00",
+        "workbook_name": "HSD-趋势对比"
+      },
+      {
+        "field_id": "1cb104f2-e5bf-b06b-fe26-cd8e92ceb2c2",
+        "field_name": "第五经停点机场三字码",
+        "datasource_id": "89e1beca-af4a-70fe-a9c8-cb4a278d3406",
+        "datasource_name": "DDS销售监控",
+        "workbook_id": "2a358a49-c00a-6334-365d-5988110c7f46",
+        "workbook_name": "DDS_销售处_冠尧"
+      },
+      {
+        "field_id": "645bc5c4-39ed-da7c-45c8-d216bec751d9",
+        "field_name": "平均票价-欧洲航程分摊",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "513a0f9f-56e3-1c68-0a45-6a97d17e4944",
+        "workbook_name": "HSD-航线特性"
+      },
+      {
+        "field_id": "355c59e3-8a0a-3ccc-0600-66c78347ff14",
+        "field_name": "IT票数量",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "513a0f9f-56e3-1c68-0a45-6a97d17e4944",
+        "workbook_name": "HSD-航线特性"
+      },
+      {
+        "field_id": "df52d141-4871-97c3-a47b-4e3efe301ea3",
+        "field_name": "网络收益贡献",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "8c53c444-2ae8-8781-7660-d69989f01e4b",
+        "workbook_name": "销售数据分析-国际平台"
+      },
+      {
+        "field_id": "0fbdf4a3-eb8b-e9ec-f643-d37d711ef845",
+        "field_name": "班均中转人数",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "817ffe72-ba05-2a1f-8161-c9bdc732ec5c",
+        "workbook_name": "销售数据分析平台_佳茗电商_票号匹配"
+      },
+      {
+        "field_id": "4a9730a7-3d3c-beec-dc4b-c6d7ee82fd04",
+        "field_name": "经济舱人数",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "9104e6c3-adff-bedc-a880-b893086c2dd0",
+        "workbook_name": "HSD-销售-航线监控"
+      },
+      {
+        "field_id": "f88b18d6-7b90-e2be-3133-ae92cfa29e13",
+        "field_name": "我航航线类型划分 (组)",
+        "datasource_id": "b1b414eb-f6d8-929e-8e84-932bf07913c6",
+        "datasource_name": "销售票面",
+        "workbook_id": "f13646ce-bcda-f4c2-1257-abafca6b64a8",
+        "workbook_name": "HSD-企业客户"
+      },
+      {
+        "field_id": "b117dbcf-5a95-4086-036a-ce6cb7438d7b",
+        "field_name": "班均外籍旅客人数",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "91d7f93c-8bf6-0c0f-7dbb-38d2f6e9a326",
+        "workbook_name": "日本销售监控-民航局"
+      },
+      {
+        "field_id": "76a89983-5285-f97b-df1f-f9dde4c2ea21",
+        "field_name": "溢价产品_扣除服务费溢价金额_上期",
+        "datasource_id": "4a04e1e4-dd14-e5a5-a271-5691aeccd79e",
+        "datasource_name": "销售航段新",
+        "workbook_id": "f132ca4d-72cd-a200-a2bc-637c968cec8a",
+        "workbook_name": "销售航段_整体分析"
+      },
+      {
+        "field_id": "af7d9e78-1af2-7887-92dd-fb6bebb595e9",
+        "field_name": "起飞机场-数字串",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "70fc5ba2-6e09-e95d-fd43-dde5aa615604",
+        "workbook_name": "HSD-销售-客群分析"
+      },
+      {
+        "field_id": "4dc456a9-930b-ae66-36d5-9ed6ac4987e7",
+        "field_name": ":Measure Names",
+        "datasource_id": "912fccf3-5554-a861-dc01-295e2354f8a4",
+        "datasource_name": "运力数据",
+        "workbook_id": "0989b30d-d0ca-c7b8-d076-b88163571346",
+        "workbook_name": "OAG_南京国庆"
+      },
+      {
+        "field_id": "06453062-1850-9f0a-d374-02ae5675e080",
+        "field_name": "欧洲平均票价-航程拆段",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "992951be-ed8f-fc70-3c08-0344bef36c26",
+        "workbook_name": "HSD-航线特性(客体）"
+      },
+      {
+        "field_id": "48cec28e-84bb-e373-913c-9efdcf41ee78",
+        "field_name": "代理人&集团",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "e3cb2ad5-80ae-7c14-9bcd-35492205d06b",
+        "workbook_name": " 日本销售-民航局-佳茗"
+      },
+      {
+        "field_id": "bd107366-2a59-ad9b-d357-9c942f51f485",
+        "field_name": "欧洲客票数",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "992951be-ed8f-fc70-3c08-0344bef36c26",
+        "workbook_name": "HSD-航线特性(客体）"
+      },
+      {
+        "field_id": "e3b7385a-172c-573f-1140-2b2635ba410f",
+        "field_name": "平均旅客购票数量",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "992951be-ed8f-fc70-3c08-0344bef36c26",
+        "workbook_name": "HSD-航线特性(客体）"
+      },
+      {
+        "field_id": "2a21cfca-0a8b-591c-efd8-ec2be4821ced",
+        "field_name": "美洲客票-标识",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "992951be-ed8f-fc70-3c08-0344bef36c26",
+        "workbook_name": "HSD-航线特性(客体）"
+      },
+      {
+        "field_id": "45bd6ff0-ab88-1711-6402-e1eed8fbb230",
+        "field_name": "中转旅客人数",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "e3cb2ad5-80ae-7c14-9bcd-35492205d06b",
+        "workbook_name": " 日本销售-民航局-佳茗"
+      },
+      {
+        "field_id": "708961b7-f2fd-f815-dfa7-9455bb498d67",
+        "field_name": "平均票价-航段含油",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "99cb5cdb-78bd-4397-23dd-d7fb877de00c",
+        "workbook_name": "销售数据分析平台"
+      },
+      {
+        "field_id": "8340a8fe-9952-28c2-a93f-d82ea89f2994",
+        "field_name": "外航销售",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "e3cb2ad5-80ae-7c14-9bcd-35492205d06b",
+        "workbook_name": " 日本销售-民航局-佳茗"
+      },
+      {
+        "field_id": "df33956e-f099-04d3-13d3-437f8d0890e3",
+        "field_name": "年龄分布-2",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "9104e6c3-adff-bedc-a880-b893086c2dd0",
+        "workbook_name": "HSD-销售-航线监控"
+      },
+      {
+        "field_id": "4d07530a-2d17-c8af-c037-eaa8546e004f",
+        "field_name": "销售航段张数-女性",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "424a9092-f8fd-a030-7bc2-9357f2ac91f3",
+        "workbook_name": "销售数据分析平台_佳茗"
+      },
+      {
+        "field_id": "5948f1c5-a162-bafa-9a0a-0d3afd25a9d4",
+        "field_name": "洲际航线",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "599c2df4-b8d6-d2e4-ce0b-6258491a871f",
+        "workbook_name": "HSD- OD航线定价"
+      },
+      {
+        "field_id": "3498a271-5eef-56d9-7ecd-09c6766201b2",
+        "field_name": "HO座投-同比",
+        "datasource_id": "912fccf3-5554-a861-dc01-295e2354f8a4",
+        "datasource_name": "运力数据",
+        "workbook_id": "0989b30d-d0ca-c7b8-d076-b88163571346",
+        "workbook_name": "OAG_南京国庆"
+      },
+      {
+        "field_id": "f44dc083-6c31-e102-bf92-b352add586a7",
+        "field_name": "欧洲客票数",
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72",
+        "datasource_name": "销售航段",
+        "workbook_id": "817ffe72-ba05-2a1f-8161-c9bdc732ec5c",
+        "workbook_name": "销售数据分析平台_佳茗电商_票号匹配"
+      },
+      {
+        "field_id": "05290cb1-8776-9dd7-9ae3-fa2bd0c18f9d",
+        "field_name": "O&D主要子舱段",
+        "datasource_id": "89e1beca-af4a-70fe-a9c8-cb4a278d3406",
+        "datasource_name": "DDS销售监控",
+        "workbook_id": "2a358a49-c00a-6334-365d-5988110c7f46",
+        "workbook_name": "DDS_销售处_冠尧"
+      },
+      {
+        "field_id": "224417f1-d273-5ee2-59a2-cfc33552c57f",
+        "field_name": "HO座位数",
+        "datasource_id": "87f389d4-6cd9-3508-199b-e490111bc3f5",
+        "datasource_name": "运力数据",
+        "workbook_id": "f0064901-c572-0caf-19cb-e3ec16ad7545",
+        "workbook_name": "OAG_CR-我司25国庆共飞"
+      }
+    ],
+    "stats": {
+      "via_datasource_count": 8890
+    }
+  },
+  "full_chain_view_to_db": {
+    "samples": [
+      {
+        "view_id": "4f0c650c-c315-b4b9-46ff-2dd3937111dd",
+        "view_name": "贵阳渠道产品",
+        "field_id": "ce6ed2ec-5e52-b4c7-2225-86fcc42aa16a",
+        "field_name": "航班日期",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "006af6f1-07a7-e00b-883a-c1e110203d0c",
+        "view_name": "产品速查 (2)",
+        "field_id": "891e1228-505a-358a-4491-d59de0923efe",
+        "field_name": "FAREBASISCODE",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "ff1f9821-8569-767f-6502-4601b3b989d6",
+        "view_name": "指标卡4",
+        "field_id": "09c99766-f1db-86a8-d079-797ce3f2de95",
+        "field_name": "CLAZZ",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "ae1b4da7-5f8a-2d8b-6bd6-357282749c4b",
+        "view_name": "航线月统计-总部",
+        "field_id": "ee1e19cd-2e43-af4a-b5e1-f146f7ef7b46",
+        "field_name": "Flightdate",
+        "table_id": "4ba00e5e-619e-b8f1-536e-2104191e8b3e",
+        "table_name": "ods_mkt_hords3datam_b_flightinfo",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "1da700c3-60a3-51a2-2976-7b7ef5404799",
+        "view_name": "航程类型-当前年",
+        "field_id": "d477472e-95a9-d4d5-3562-a3e891682ed0",
+        "field_name": "分摊票价",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "777325d4-81cf-b401-8190-37c847e9602a",
+        "view_name": "民航局燃油",
+        "field_id": "bf229e82-b5cd-1841-cccc-4991927ed5a5",
+        "field_name": "MAIN_CLAZZ",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "be654255-07a5-fea1-7ad4-95cf6053143d",
+        "view_name": "民航局-澳洲国际经济舱分布",
+        "field_id": "294c0028-b376-170c-7a3e-f86aa0e6b8d6",
+        "field_name": "IS_BIG_CUSTOMER",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "fc21842a-4cc4-c7eb-64e1-65ba1cbf9721",
+        "view_name": "欧洲贡献情况-去程",
+        "field_id": "08d11823-a5c9-5e31-cc8d-1a56dacabfb6",
+        "field_name": "航班号",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "3e731282-02ce-3a86-93d4-8f8792472554",
+        "view_name": "平均旅客购票次数",
+        "field_id": "ce6ed2ec-5e52-b4c7-2225-86fcc42aa16a",
+        "field_name": "航班日期",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "e8c9e6c7-08f1-2396-6c7b-5700c838be79",
+        "view_name": "航线数据",
+        "field_id": "7828187f-91c5-dac6-8067-919776d2e622",
+        "field_name": "State",
+        "table_id": "4ba00e5e-619e-b8f1-536e-2104191e8b3e",
+        "table_name": "ods_mkt_hords3datam_b_flightinfo",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "3d2803e1-5bc0-8a0f-edbb-fb53647a8da5",
+        "view_name": "民航局问题票号",
+        "field_id": "09c99766-f1db-86a8-d079-797ce3f2de95",
+        "field_name": "CLAZZ",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "2668cae9-308f-07ac-f70d-f408fa0be4f6",
+        "view_name": "民航局燃油",
+        "field_id": "bf229e82-b5cd-1841-cccc-4991927ed5a5",
+        "field_name": "MAIN_CLAZZ",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "014e9910-21f5-747c-c15c-b5f7c0dc220b",
+        "view_name": "国际-类型 ",
+        "field_id": "36e8183f-07e4-cc67-9df5-7b739968c17e",
+        "field_name": "承运航司",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "1a9a6170-278c-9511-655d-3674fbacf81b",
+        "view_name": "弃程明细数据 (2)",
+        "field_id": "c1a0f721-92da-423a-59dc-e89df5646eea",
+        "field_name": "起飞航点",
+        "table_id": "1683e08b-6019-b130-0dcd-e123cd9e6baf",
+        "table_name": "dwm_transfer_passengers_segments",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "61c01ae2-cdc6-a43e-23eb-340a98494f29",
+        "view_name": "销售航线表现",
+        "field_id": "d5268c5d-e0d9-5c9e-7cb2-9987d3b07b24",
+        "field_name": "企业客户占比",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "01631dba-1925-e8c9-9ce1-a075e2d8b9a8",
+        "view_name": "未来预售检查",
+        "field_id": "b7891690-0952-6108-0b05-cad870ec5082",
+        "field_name": "Lf",
+        "table_id": "d452a220-27f2-7b03-ee58-eb2bed59829a",
+        "table_name": "ods_mkt_hords3data_d_lfdata",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "67bd33f1-f6ba-c1fc-3fd5-b22c5324c2e6",
+        "view_name": "国际大客户明细_出票日期",
+        "field_id": "a0f4eca5-78e0-4813-b746-e68d3d3320fd",
+        "field_name": "出票日期",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "12db3746-494f-e5bd-60ac-6c8284574798",
+        "view_name": "民航局-澳洲国际经济舱分布",
+        "field_id": "36e8183f-07e4-cc67-9df5-7b739968c17e",
+        "field_name": "承运航司",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "4b6da711-62b1-79d6-7774-3c71e46cfa6c",
+        "view_name": "年龄分布",
+        "field_id": "f8b9e0cd-2041-537c-aae7-f1ce7e1181d2",
+        "field_name": "ARRIVAL_AIRPORTCODE",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "8c36ac8f-0c64-f550-f1d2-74229b847857",
+        "view_name": "航线平均票价",
+        "field_id": "6cf40b4e-dfd1-3e6f-d403-dd808baa3046",
+        "field_name": "SME产品-平均票价",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "e2cc4f14-e233-3ac4-4a3d-18174768094f",
+        "view_name": "弃程代理人分布",
+        "field_id": "28e07e4f-89f7-f43e-deaa-b6d075e53396",
+        "field_name": "第一段是否延误",
+        "table_id": "1683e08b-6019-b130-0dcd-e123cd9e6baf",
+        "table_name": "dwm_transfer_passengers_segments",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "204cfbac-10d5-6366-013e-15c2acc7ebae",
+        "view_name": "航线-银卡",
+        "field_id": "ce6ed2ec-5e52-b4c7-2225-86fcc42aa16a",
+        "field_name": "航班日期",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "97d5e7c0-4aa2-2740-86b5-2841c80cc5c6",
+        "view_name": "3-舱位分布",
+        "field_id": "09c99766-f1db-86a8-d079-797ce3f2de95",
+        "field_name": "CLAZZ",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "74b67338-999e-7eff-ad50-aa538f57f952",
+        "view_name": "公务舱上客",
+        "field_id": "15f29002-cdfc-eaf6-5880-4d4044dcc896",
+        "field_name": "航段",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "22253e38-d07d-ee9a-f539-11ec9406b67d",
+        "view_name": "月度航班总收入-备用",
+        "field_id": "08d11823-a5c9-5e31-cc8d-1a56dacabfb6",
+        "field_name": "航班号",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "f07902e5-91a6-639d-87aa-2177a8b5cac4",
+        "view_name": "日本航线退票趋势",
+        "field_id": "c9382ad1-bdd0-d780-937e-2c6b554b0244",
+        "field_name": "问题客票占比",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "aa30e3d7-1dff-f25d-076f-9a63b30c2243",
+        "view_name": "18日",
+        "field_id": "2f2500c9-66e0-faa5-f469-51cc0c1f41e4",
+        "field_name": "TICKETNUMBER",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "beace0e6-4201-1a5b-e1ce-88cabca1eb6d",
+        "view_name": "航线构成占比",
+        "field_id": "ce6ed2ec-5e52-b4c7-2225-86fcc42aa16a",
+        "field_name": "航班日期",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "3bccfef8-2512-d31e-04f9-0ef7ad24f4f3",
+        "view_name": "国内-类型",
+        "field_id": "15f29002-cdfc-eaf6-5880-4d4044dcc896",
+        "field_name": "航段",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      },
+      {
+        "view_id": "01d45826-3fbb-f3e2-e04e-d21dfa427724",
+        "view_name": "承运航线中转表现",
+        "field_id": "f3128b58-1530-4268-12ba-5413276f780f",
+        "field_name": "韩国客票占比",
+        "table_id": "12a9ebf9-007d-5876-4d34-26ffb5b1e02a",
+        "table_name": "tbl_tic_trace_ticket",
+        "database_name": "data_sandbox"
+      }
+    ],
+    "stats": {
+      "views_with_table_lineage": 1323
+    }
+  }
+}
