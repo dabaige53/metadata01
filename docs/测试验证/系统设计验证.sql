@@ -93,6 +93,35 @@ WHERE is_embedded = 0
 SELECT '空壳数据源(无字段)' as 验证内容, COUNT(*) as 异常数, 'DS 必须包含至少一个 Field' as 规则 
 FROM datasources ds WHERE NOT EXISTS (SELECT 1 FROM fields f WHERE f.datasource_id = ds.id);
 
+-- 2.5 嵌入式数据源关联完整性 (v2.1)
+SELECT '嵌入式源关联丢失' as 验证内容, COUNT(*) as 异常数, '嵌入式 DS 应关联已发布 DS (排除白名单)' as 规则
+FROM datasources
+WHERE is_embedded = 1
+  AND (source_published_datasource_id IS NULL OR source_published_datasource_id = '')
+  AND NOT EXISTS (
+      SELECT 1 FROM temp_whitelist w
+      WHERE w.rule_id = '2.5' AND (
+          (w.match_type = 'EXACT' AND datasources.name = w.value) OR
+          (w.match_type = 'LIKE' AND datasources.name LIKE w.value)
+      )
+  );
+
+-- 2.6 嵌入式字段关联完整性 (v2.1)
+SELECT '嵌入式字段关联丢失' as 验证内容, COUNT(*) as 异常数, '嵌入式 Field 应关联已发布 Field (排除白名单)' as 规则
+FROM fields f
+JOIN datasources ds ON f.datasource_id = ds.id
+WHERE ds.is_embedded = 1
+  -- 只检查引用了远程字段的字段（部分字段可能是工作簿新建的计算字段，没有 remote_field）
+  AND f.is_calculated = 0 
+  AND (f.remote_field_id IS NULL OR f.remote_field_id = '')
+  AND NOT EXISTS (
+      SELECT 1 FROM temp_whitelist w
+      WHERE w.rule_id = '2.6' AND (
+          (w.match_type = 'EXACT' AND f.name = w.value) OR
+          (w.match_type = 'LIKE' AND f.name LIKE w.value)
+      )
+  );
+
 -- ================================================================
 -- 3. 消费层验证 (Consumption Layer)
 -- Object: Workbook, View, Project
@@ -149,6 +178,31 @@ FROM fields WHERE role = 'measure' AND (data_type IS NULL OR data_type = '');
 -- 4.4 度量角色缺失 (如果定义为 Metric 但没 Role)
 SELECT '计算字段角色未定义' as 验证内容, COUNT(*) as 异常数, 'is_calculated=1 且名为 Metric 的字段应有 Role' as 规则 
 FROM fields WHERE is_calculated = 1 AND role IS NULL;
+
+-- 4.5 字段采集空值检测 (新增)
+SELECT '字段名称为空' as 验证内容, COUNT(*) as 异常数, 'Field.name 不能为空' as 规则 
+FROM fields WHERE name IS NULL OR name = '';
+
+SELECT '字段ID为空' as 验证内容, COUNT(*) as 异常数, 'Field.id 不能为空' as 规则 
+FROM fields WHERE id IS NULL OR id = '';
+
+SELECT '字段数据源ID为空' as 验证内容, COUNT(*) as 异常数, 'Field.datasource_id 不能为空' as 规则 
+FROM fields WHERE datasource_id IS NULL;
+
+-- 4.6 三层命名结构验证 (新增)
+SELECT '字段无上游列关联' as 验证内容, COUNT(*) as 异常数, '非计算字段应有 upstream_column_id (理想状态)' as 规则 
+FROM fields WHERE is_calculated = 0 AND upstream_column_id IS NULL;
+
+SELECT '上游列ID无效' as 验证内容, COUNT(*) as 异常数, 'upstream_column_id 必须存在于 db_columns 表' as 规则 
+FROM fields f 
+WHERE f.upstream_column_id IS NOT NULL 
+  AND NOT EXISTS (SELECT 1 FROM db_columns c WHERE c.id = f.upstream_column_id);
+
+-- 4.7 嵌入式字段关联验证 (新增)
+SELECT '嵌入式字段无源字段关联' as 验证内容, COUNT(*) as 异常数, '嵌入式数据源字段应有 remote_field_id' as 规则 
+FROM fields f 
+JOIN datasources ds ON f.datasource_id = ds.id
+WHERE ds.is_embedded = 1 AND f.remote_field_id IS NULL;
 
 -- ================================================================
 -- 5. 血缘全链路中断验证 (Broken Lineage)
@@ -329,4 +383,65 @@ WHERE f.is_calculated = 1
 
 
 SELECT '========== 系统问题扫描完成 ==========' as 状态;
+
+-- ================================================================
+-- 10. 有数据但无血缘验证 (Orphan Asset Detection)
+-- 目的: 检测同步进来但缺少关联的资产，用于排查同步逻辑遗漏
+-- ================================================================
+SELECT '★★★ 10. 有数据但无血缘验证 ★★★' as 验证类别;
+
+-- 10.1 嵌入式表无数据源关联
+SELECT '嵌入式表无数据源关联' as 验证内容,
+    COUNT(*) as 异常数,
+    '嵌入式表应通过 table_to_datasource 关联到嵌入式数据源' as 规则
+FROM tables t
+WHERE t.is_embedded = 1
+  AND NOT EXISTS (SELECT 1 FROM table_to_datasource td WHERE td.table_id = t.id);
+
+-- 10.2 嵌入式数据源无工作簿关联
+SELECT '嵌入式数据源无工作簿关联' as 验证内容,
+    COUNT(*) as 异常数,
+    '嵌入式数据源应通过 datasource_to_workbook 关联到工作簿' as 规则
+FROM datasources d
+WHERE d.is_embedded = 1
+  AND NOT EXISTS (SELECT 1 FROM datasource_to_workbook dw WHERE dw.datasource_id = d.id);
+
+-- 10.3 嵌入式表工作簿可追溯率
+SELECT '嵌入式表工作簿可追溯率' as 验证内容,
+    ROUND(100.0 * (
+        SELECT COUNT(DISTINCT t.id)
+        FROM tables t
+        JOIN table_to_datasource td ON t.id = td.table_id
+        JOIN datasource_to_workbook dw ON td.datasource_id = dw.datasource_id
+        WHERE t.is_embedded = 1
+    ) / NULLIF((SELECT COUNT(*) FROM tables WHERE is_embedded = 1), 0), 2) || '%' as 可追溯率,
+    '嵌入式表能追溯到工作簿的比例' as 规则;
+
+-- 10.4 有数据无血缘的嵌入式表样本
+SELECT '无血缘嵌入式表样本' as 验证内容,
+    t.name as 表名,
+    t.database_id as 数据库ID
+FROM tables t
+WHERE t.is_embedded = 1
+  AND NOT EXISTS (SELECT 1 FROM table_to_datasource td WHERE td.table_id = t.id)
+LIMIT 5;
+
+-- 10.5 已发布数据源无工作簿关联
+SELECT '已发布数据源无工作簿关联' as 验证内容,
+    COUNT(*) as 异常数,
+    '已发布数据源应被工作簿引用 (排除新发布未使用)' as 规则
+FROM datasources d
+WHERE d.is_embedded = 0
+  AND NOT EXISTS (SELECT 1 FROM datasource_to_workbook dw WHERE dw.datasource_id = d.id);
+
+-- 10.6 已发布数据表无数据源关联
+SELECT '已发布数据表无数据源关联' as 验证内容,
+    COUNT(*) as 异常数,
+    '已发布数据表应被数据源引用 (排除新建未使用)' as 规则
+FROM tables t
+WHERE t.is_embedded = 0
+  AND NOT EXISTS (SELECT 1 FROM table_to_datasource td WHERE td.table_id = t.id);
+
+SELECT '========== 完整验证扫描完成 ==========' as 状态;
+
 

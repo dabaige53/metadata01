@@ -1,5 +1,5 @@
 import React from 'react';
-import { CircleDot, Eye, AlertCircle } from 'lucide-react';
+import { CircleDot, Eye, AlertCircle, Database } from 'lucide-react';
 import HorizontalCard from './HorizontalCard';
 import { formatDateWithRelative, isRecent } from '@/lib/date';
 
@@ -50,10 +50,19 @@ export default function FieldCard({ field, onClick }: FieldCardProps) {
   const createdAt = field.created_at ?? field.createdAt;
   const updatedAt = field.updated_at ?? field.updatedAt;
 
+  // 物理列名和别名
+  const upstreamColumn = field.upstream_column_name ?? field.upstreamColumnName;
+  const displayName = field.name;
+
+  // 主标题：优先显示物理列名，如果没有则显示当前名称
+  const mainTitle = upstreamColumn || displayName;
+
+  // 副标题：如果有物理列名且与当前名称不同，显示别名
+  const hasAlias = upstreamColumn && upstreamColumn !== displayName;
+
   // Use counts if arrays are empty (Server-side optimized list)
   const finalMetricUsageCount = metricUsageCount > 0 ? metricUsageCount : usedByMetrics.length;
   const finalViewUsageCount = usageCount > 0 ? usageCount : usedInViews.length;
-  const upstreamColumn = field.upstream_column_name ?? field.upstreamColumnName;
 
   // 构建徽章
   const badges: Array<{ text: string; color: 'green' | 'blue' | 'gray' | 'red' | 'purple' | 'orange' | 'indigo' }> = [
@@ -77,9 +86,10 @@ export default function FieldCard({ field, onClick }: FieldCardProps) {
 
   // 构建详情信息
   const details = [
-    {
-      label: '表',
-      value: field.table_name, // Removed default '-' to allow filtering
+    hasAlias && {
+      label: '别名',
+      value: displayName,
+      highlight: true,
     },
     {
       label: '数据源',
@@ -89,15 +99,6 @@ export default function FieldCard({ field, onClick }: FieldCardProps) {
       label: '热度',
       value: `${usageCount} 次`,
       highlight: usageCount > 10,
-    },
-    createdAt && {
-      label: '创建',
-      value: formatDateWithRelative(createdAt),
-    },
-    updatedAt && {
-      label: '更新',
-      value: formatDateWithRelative(updatedAt),
-      highlight: isRecent(updatedAt),
     },
   ].filter((item): item is { label: string; value: string; highlight?: boolean } =>
     Boolean(item && item.value !== undefined && item.value !== null && item.value !== ''));
@@ -128,10 +129,11 @@ export default function FieldCard({ field, onClick }: FieldCardProps) {
     });
   }
 
-  if (upstreamColumn) {
+  // 如果是计算字段，显示
+  if (isCalculated) {
     tags.push({
-      label: `已追溯到 ${upstreamColumn}`,
-      color: 'green' as const,
+      label: '计算字段',
+      color: 'purple' as const,
     });
   }
 
@@ -143,17 +145,11 @@ export default function FieldCard({ field, onClick }: FieldCardProps) {
     });
   }
 
-  if (isCalculated) {
-    tags.push({
-      label: '计算字段',
-      color: 'purple' as const,
-    });
-  }
-
   return (
     <HorizontalCard
       icon={<CircleDot className="w-5 h-5" />}
-      title={field.name}
+      title={mainTitle}
+      subtitle={hasAlias ? `→ ${displayName} (${field.datasource_name || '数据源'})` : undefined}
       badges={badges}
       details={details}
       tags={tags}

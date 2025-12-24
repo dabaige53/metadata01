@@ -100,15 +100,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </div>
 
                 <div className="flex-1 overflow-y-auto py-6 px-4 space-y-1">
-                    <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-2">资源</div>
+                    <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-2">数据血缘</div>
                     <NavItem href="/" icon={LayoutDashboard} label="概览" />
                     <NavItem href="/databases" icon={Database} label="数据库" count={stats.databases} />
                     <NavItem href="/tables" icon={Table2} label="数据表" count={stats.tables} />
-                    <NavItem href="/fields" icon={Columns} label="原始字段" count={stats.fields} />
-                    <NavItem href="/metrics" icon={FunctionSquare} label="计算字段" count={stats.metrics} />
                     <NavItem href="/datasources" icon={Layers} label="数据源" count={stats.datasources} />
                     <NavItem href="/workbooks" icon={BookOpen} label="工作簿" count={stats.workbooks} />
                     <NavItem href="/views" icon={LayoutDashboard} label="视图" count={stats.views} />
+
+                    <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mt-6 mb-2 px-2">字段资产</div>
+                    <NavItem href="/fields" icon={Columns} label="原始字段" count={stats.fields} />
+                    <NavItem href="/metrics" icon={FunctionSquare} label="计算字段" count={stats.metrics} />
+
+                    <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mt-6 mb-2 px-2">组织管理</div>
                     <NavItem href="/projects" icon={FolderOpen} label="项目" count={stats.projects} />
                     <NavItem href="/users" icon={Users} label="用户" count={stats.users} />
 

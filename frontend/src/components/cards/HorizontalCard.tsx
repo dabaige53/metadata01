@@ -4,6 +4,7 @@ export interface HorizontalCardProps {
   // 第一行：主标题和徽章
   icon: React.ReactNode;
   title: string;
+  subtitle?: string;  // 新增：副标题
   badges?: Array<{
     text: string;
     color: 'green' | 'blue' | 'purple' | 'red' | 'orange' | 'gray' | 'indigo';
@@ -51,6 +52,7 @@ const tagColors = {
 export default function HorizontalCard({
   icon,
   title,
+  subtitle,
   badges,
   details,
   tags,
@@ -67,7 +69,12 @@ export default function HorizontalCard({
       {/* 第一行：图标 + 标题 + 徽章 */}
       <div className="flex items-center gap-3 mb-2">
         <div className="text-indigo-600 flex-shrink-0">{icon}</div>
-        <h3 className="font-semibold text-gray-800 text-sm">{title}</h3>
+        <div className="flex flex-col">
+          <h3 className="font-semibold text-gray-800 text-sm">{title}</h3>
+          {subtitle && (
+            <span className="text-xs text-gray-500">{subtitle}</span>
+          )}
+        </div>
         {badges && badges.length > 0 && (
           <div className="flex items-center gap-2 ml-auto">
             {badges.map((badge, idx) => (

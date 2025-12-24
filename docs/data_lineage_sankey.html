@@ -97,12 +97,12 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
         
-        /* 图表容器 - 固定高度 */
+        /* 图表容器 - 增大高度减少重叠 */
         #sankey-chart { 
             flex: 1;
             width: 100%; 
-            min-height: 700px;
-            height: 700px;
+            min-height: 900px;
+            height: 900px;
         }
 
         /* 术语定义 */
@@ -171,7 +171,7 @@
                 <div class="stat-label">数据库</div>
             </div>
             <div class="stat-card">
-                <div class="stat-val">104</div>
+                <div class="stat-val">172</div>
                 <div class="stat-label">数据源总数</div>
             </div>
             <div class="stat-card">
@@ -264,65 +264,73 @@
         const C_BROKEN = '#f59e0b';   // 柑橙色
 
         const data = [
-            // Layer 1: Databases
+            // Layer 0: 数据库
             { name: '数据库 (6)', itemStyle: { color: C_HEALTHY }, depth: 0 },
             
-            // Layer 2: Tables
-            { name: '已关联表 (34)', itemStyle: { color: C_HEALTHY }, depth: 1 },
-            { name: '孤立表 (2)', itemStyle: { color: C_ORPHAN }, depth: 1 },
+            // Layer 1: 数据表
+            { name: '非嵌入式表 (36)', itemStyle: { color: C_HEALTHY }, depth: 1 },
+            { name: '嵌入式表 (446)', itemStyle: { color: C_EMBEDDED }, depth: 1 },
+            { name: '孤立表 (309)', itemStyle: { color: C_ORPHAN }, depth: 1 },
 
-            // Layer 3: Datasources
+            // Layer 2: 已发布数据源
             { name: '正常发布数据源 (21)', itemStyle: { color: C_HEALTHY }, depth: 2 },
-            { name: '嵌入式数据源 (47)', itemStyle: { color: C_EMBEDDED }, depth: 2 },
-            { name: '孤立数据源 (30)', itemStyle: { color: C_ORPHAN }, depth: 2 },
-            { name: 'Custom SQL 数据源 (6)', itemStyle: { color: C_BROKEN }, depth: 2 },
+            { name: '孤立发布数据源 (30)', itemStyle: { color: C_ORPHAN }, depth: 2 },
+            { name: 'CustomSQL数据源 (6)', itemStyle: { color: C_BROKEN }, depth: 2 },
 
-            // Layer 4: Fields (Native)
-            { name: '原生字段:用于计算 (1,073)', itemStyle: { color: C_HEALTHY }, depth: 3 },
-            { name: '原生字段:直接展示 (485)', itemStyle: { color: C_HEALTHY }, depth: 3 },
-            { name: '原生僵尸字段 (6,462)', itemStyle: { color: C_ORPHAN }, depth: 3 },
+            // Layer 3: 嵌入式数据源
+            { name: '嵌入式:引用已发布 (68)', itemStyle: { color: C_EMBEDDED }, depth: 3 },
+            { name: '嵌入式:直连物理表 (47)', itemStyle: { color: C_EMBEDDED }, depth: 3 },
+
+            // Layer 4: 原生字段
+            { name: '原生字段 (7,839)', itemStyle: { color: C_HEALTHY }, depth: 4 },
+            { name: '僵尸原生字段 (6,462)', itemStyle: { color: C_ORPHAN }, depth: 4 },
             
-            // Layer 5: Fields (Calculated)
-            { name: '计算字段:被使用 (1,126)', itemStyle: { color: C_HEALTHY }, depth: 4 },
-            { name: '计算僵尸字段 (3,089)', itemStyle: { color: C_ORPHAN }, depth: 4 },
+            // Layer 5: 计算字段
+            { name: '计算字段 (4,929)', itemStyle: { color: C_HEALTHY }, depth: 5 },
+            { name: '僵尸计算字段 (3,089)', itemStyle: { color: C_ORPHAN }, depth: 5 },
 
-            // Layer 6: Workbooks
-            { name: '工作簿 (80)', itemStyle: { color: C_HEALTHY }, depth: 5 },
+            // Layer 6: 工作簿
+            { name: '工作簿 (80)', itemStyle: { color: C_HEALTHY }, depth: 6 },
 
-            // Layer 7: Views
-            { name: '视图 (1,594)', itemStyle: { color: C_HEALTHY }, depth: 6 }
+            // Layer 7: 视图
+            { name: '视图 (1,594)', itemStyle: { color: C_HEALTHY }, depth: 7 }
         ];
 
         const links = [
-            // DB -> Tables
-            { source: '数据库 (6)', target: '已关联表 (34)', value: 34 },
-            { source: '数据库 (6)', target: '孤立表 (2)', value: 2 },
+            // Layer 0→1: 数据库 → 表
+            { source: '数据库 (6)', target: '非嵌入式表 (36)', value: 36 },
+            { source: '数据库 (6)', target: '嵌入式表 (446)', value: 446 },
+            { source: '数据库 (6)', target: '孤立表 (309)', value: 309 },
 
-            // Tables -> Datasources
-            { source: '已关联表 (34)', target: '正常发布数据源 (21)', value: 21 },
-            { source: '已关联表 (34)', target: '嵌入式数据源 (47)', value: 47 },
-            { source: '已关联表 (34)', target: '孤立数据源 (30)', value: 30 },
+            // Layer 1→2: 非嵌入式表 → 已发布数据源
+            { source: '非嵌入式表 (36)', target: '正常发布数据源 (21)', value: 21 },
+            { source: '非嵌入式表 (36)', target: '孤立发布数据源 (30)', value: 30 },
             
-            // Custom SQL 没有上游表连线（独立节点）
-
-            // Datasources -> Fields (简化：按比例分配)
-            { source: '正常发布数据源 (21)', target: '原生字段:用于计算 (1,073)', value: 357 },
-            { source: '正常发布数据源 (21)', target: '原生字段:直接展示 (485)', value: 161 },
-            { source: '正常发布数据源 (21)', target: '原生僵尸字段 (6,462)', value: 1615 },
+            // Layer 1→3: 嵌入式表 → 嵌入式数据源(直连型)
+            { source: '嵌入式表 (446)', target: '嵌入式:直连物理表 (47)', value: 47 },
             
-            { source: '嵌入式数据源 (47)', target: '原生字段:用于计算 (1,073)', value: 715 },
-            { source: '嵌入式数据源 (47)', target: '原生字段:直接展示 (485)', value: 323 },
-            { source: '嵌入式数据源 (47)', target: '原生僵尸字段 (6,462)', value: 4846 },
+            // Layer 2→3: 已发布数据源 → 嵌入式数据源(引用型) 
+            { source: '正常发布数据源 (21)', target: '嵌入式:引用已发布 (68)', value: 68 },
 
-            // Native -> Calculated
-            { source: '原生字段:用于计算 (1,073)', target: '计算字段:被使用 (1,126)', value: 1126 },
-            { source: '原生字段:用于计算 (1,073)', target: '计算僵尸字段 (3,089)', value: 1544 },
+            // Layer 2→4: 已发布数据源 → 原生字段
+            { source: '正常发布数据源 (21)', target: '原生字段 (7,839)', value: 2613 },
+            { source: '正常发布数据源 (21)', target: '僵尸原生字段 (6,462)', value: 2154 },
+            
+            // Layer 3→4: 嵌入式数据源 → 原生字段
+            { source: '嵌入式:引用已发布 (68)', target: '原生字段 (7,839)', value: 2613 },
+            { source: '嵌入式:直连物理表 (47)', target: '原生字段 (7,839)', value: 2613 },
+            { source: '嵌入式:引用已发布 (68)', target: '僵尸原生字段 (6,462)', value: 2154 },
+            { source: '嵌入式:直连物理表 (47)', target: '僵尸原生字段 (6,462)', value: 2154 },
 
-            // Fields -> Workbook
-            { source: '原生字段:直接展示 (485)', target: '工作簿 (80)', value: 485 },
-            { source: '计算字段:被使用 (1,126)', target: '工作簿 (80)', value: 1126 },
+            // Layer 4→5: 原生字段 → 计算字段
+            { source: '原生字段 (7,839)', target: '计算字段 (4,929)', value: 4929 },
+            { source: '原生字段 (7,839)', target: '僵尸计算字段 (3,089)', value: 3089 },
 
-            // Workbook -> Views
+            // Layer 4→6 & 5→6: 字段 → 工作簿
+            { source: '原生字段 (7,839)', target: '工作簿 (80)', value: 3919 },
+            { source: '计算字段 (4,929)', target: '工作簿 (80)', value: 4929 },
+
+            // Layer 6→7: 工作簿 → 视图
             { source: '工作簿 (80)', target: '视图 (1,594)', value: 1594 }
         ];
 
@@ -345,12 +353,12 @@
                     type: 'sankey',
                     data: data,
                     links: links,
-                    top: 40,
-                    bottom: 40,
-                    left: 60,
-                    right: 200,
-                    nodeWidth: 20,
-                    nodeGap: 14,
+                    top: 60,
+                    bottom: 60,
+                    left: 80,
+                    right: 180,
+                    nodeWidth: 18,
+                    nodeGap: 24,
                     emphasis: {
                         focus: 'adjacency',
                         itemStyle: {

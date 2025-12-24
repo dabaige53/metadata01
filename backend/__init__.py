@@ -2,6 +2,7 @@
 Tableau 元数据治理平台 - Flask 应用
 """
 from flask import Flask, g
+from flask_cors import CORS
 from backend.config import Config
 from backend.models import get_engine, get_session
 
@@ -10,6 +11,9 @@ def create_app(config_class=Config):
     """应用工厂函数"""
     app = Flask(__name__)
     app.config.from_object(config_class)
+    
+    # 启用 CORS 支持
+    CORS(app, origins=["http://localhost:3100", "http://127.0.0.1:3100"])
     
     # 创建数据库引擎和会话
     engine = get_engine(config_class.DATABASE_PATH)

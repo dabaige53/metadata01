@@ -47,15 +47,29 @@ export default function TableCard({ table, onClick }: TableCardProps) {
   const createdAt = table.created_at ?? table.createdAt;
   const updatedAt = table.updated_at ?? table.updatedAt;
 
-  // 智能状态判断
+  // 智能状态判断 - 嵌入式表使用不同逻辑
   let statusText = '使用中';
   let statusColor: 'green' | 'orange' | 'red' = 'green';
-  if (workbookCount === 0 && datasourceCount > 0) {
-    statusText = '仅关联';
-    statusColor = 'orange';
-  } else if (workbookCount === 0 && datasourceCount === 0) {
-    statusText = '孤立';
-    statusColor = 'red';
+
+  if (isEmbedded) {
+    // 嵌入式表：只有通过元数据关联才能追溯工作簿
+    // 由于 Tableau API 限制，大部分嵌入式表无法追溯关联，所以状态标记不同
+    if (datasourceCount > 0) {
+      statusText = '已关联';
+      statusColor = 'green';
+    } else {
+      statusText = '待关联';
+      statusColor = 'orange';
+    }
+  } else {
+    // 非嵌入式表：正常判断
+    if (workbookCount === 0 && datasourceCount > 0) {
+      statusText = '仅关联';
+      statusColor = 'orange';
+    } else if (workbookCount === 0 && datasourceCount === 0) {
+      statusText = '孤立';
+      statusColor = 'red';
+    }
   }
 
   // 构建徽章
@@ -84,7 +98,7 @@ export default function TableCard({ table, onClick }: TableCardProps) {
     });
   }
 
-  // 构建详情信息
+  // 构建详情信息 - 嵌入式表隐藏不准确的关联统计
   const details = [
     {
       label: '数据库',
@@ -98,32 +112,52 @@ export default function TableCard({ table, onClick }: TableCardProps) {
       label: 'Tableau字段',
       value: `${fieldCount} 个`,
     },
-    {
+  ];
+
+  // 非嵌入式表才显示数据源和工作簿关联
+  if (!isEmbedded) {
+    details.push({
       label: '数据源',
       value: `${datasourceCount} 个`,
       highlight: datasourceCount > 0,
-    },
-    {
+    } as any);
+    details.push({
       label: '工作簿',
       value: `${workbookCount} 个`,
       highlight: workbookCount > 0,
-    },
-    createdAt && {
+    } as any);
+  } else if (datasourceCount > 0) {
+    // 嵌入式表只在有关联时才显示
+    details.push({
+      label: '关联数据源',
+      value: `${datasourceCount} 个`,
+      highlight: true,
+    } as any);
+  }
+
+  if (createdAt) {
+    details.push({
       label: '创建',
       value: formatDateWithRelative(createdAt),
-    },
-    updatedAt && {
+    } as any);
+  }
+
+  if (updatedAt) {
+    details.push({
       label: '更新',
       value: formatDateWithRelative(updatedAt),
       highlight: isRecent(updatedAt),
-    },
-  ].filter((item): item is { label: string; value: string; highlight?: boolean } =>
+    } as any);
+  }
+
+  const filteredDetails = details.filter((item): item is { label: string; value: string; highlight?: boolean } =>
     Boolean(item && item.value !== undefined && item.value !== null && item.value !== ''));
 
   // 构建标签
   const tags = [];
 
-  if (datasourceCount === 0 && workbookCount === 0) {
+  // 非嵌入式孤立表警告
+  if (!isEmbedded && datasourceCount === 0 && workbookCount === 0) {
     tags.push({
       label: '孤立表',
       color: 'gray' as const,
@@ -137,7 +171,6 @@ export default function TableCard({ table, onClick }: TableCardProps) {
     });
   }
 
-  // 添加预览字段标签
   // 添加预览字段标签 (兼容数组模式和对象摘要模式)
   // API 返回的是 { measures: ['度量 (N个)'], dimensions: ['维度 (M个)'] }
   // 或者旧版返回的是 [{ role: 'measure' }, ...]
@@ -186,7 +219,7 @@ export default function TableCard({ table, onClick }: TableCardProps) {
       icon={<Table2 className="w-5 h-5" />}
       title={table.name}
       badges={badges}
-      details={details}
+      details={filteredDetails}
       tags={tags}
       onClick={onClick}
     />

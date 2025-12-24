@@ -37,7 +37,7 @@ interface DatasourceItem {
 
 function DatasourcesContent() {
     const { openDrawer } = useDrawer();
-    const [activeTab, setActiveTab] = useState<'list' | 'uncertified' | 'orphan'>('list');
+    const [activeTab, setActiveTab] = useState<'published' | 'embedded' | 'uncertified' | 'orphan'>('published');
 
     // 数据状态
     const [data, setData] = useState<DatasourceItem[]>([]);
@@ -47,7 +47,8 @@ function DatasourcesContent() {
 
     // 各 Tab 统计数量
     const [tabCounts, setTabCounts] = useState<{ [key: string]: number }>({
-        list: 0,
+        published: 0,
+        embedded: 0,
         uncertified: 0,
         orphan: 0
     });
@@ -72,7 +73,12 @@ function DatasourcesContent() {
             setTotal(result.total || 0);
             setFacetsData(result.facets || null);
             // 同步列表页数量
-            setTabCounts(prev => ({ ...prev, list: result.total || 0 }));
+            // 同步列表页数量
+            if (params.is_embedded === '1') {
+                setTabCounts(prev => ({ ...prev, embedded: result.total || 0 }));
+            } else if (params.is_embedded === '0') {
+                setTabCounts(prev => ({ ...prev, published: result.total || 0 }));
+            }
         } catch (error) {
             console.error('Failed to fetch datasources:', error);
         } finally {
@@ -117,18 +123,35 @@ function DatasourcesContent() {
         totalOverride: total,
         facetsOverride: facetsData,
         onParamsChange: (params) => {
-            if (activeTab === 'list') {
-                fetchDatasources(params);
+            if (activeTab === 'published' || activeTab === 'embedded') {
+                fetchDatasources({ ...params, is_embedded: activeTab === 'embedded' ? '1' : '0' });
             }
         },
     });
 
     // 同步列表页数量 (如果有筛选)
+    // 监听 Tab 切换，重新获取数据
     useEffect(() => {
-        if (activeTab === 'list') {
-            handleTabCountUpdate('list', paginationState.total);
+        if (activeTab === 'published' || activeTab === 'embedded') {
+            // 切换 Tab 时，重置为第一页，并获取对应的数据
+            fetchDatasources({
+                page: 1,
+                page_size: paginationState.pageSize,
+                is_embedded: activeTab === 'embedded' ? '1' : '0'
+            });
+            // 如果不在第一页，更新页码状态
+            if (paginationState.page !== 1) {
+                handlePageChange(1);
+            }
         }
-    }, [paginationState.total, activeTab, handleTabCountUpdate]);
+    }, [activeTab]);
+
+    // 同步列表页数量 (如果有筛选) - 仅在总数变化时更新
+    useEffect(() => {
+        if (activeTab === 'published' || activeTab === 'embedded') {
+            handleTabCountUpdate(activeTab, paginationState.total);
+        }
+    }, [paginationState.total, handleTabCountUpdate]);
 
     // 排序选项
     const sortOptions = [
@@ -140,8 +163,9 @@ function DatasourcesContent() {
 
     // 获取当前 Tab 的统计信息
     const stats = {
-        label: activeTab === 'list' ? '数据源' :
-            activeTab === 'uncertified' ? '未认证数据源' : '孤立数据源',
+        label: activeTab === 'published' ? '已发布数据源' :
+            activeTab === 'embedded' ? '嵌入式数据源' :
+                activeTab === 'uncertified' ? '未认证数据源' : '孤立数据源',
         total: total,
         count: tabCounts[activeTab] || 0
     };
@@ -166,18 +190,27 @@ function DatasourcesContent() {
                 {/* 标签页切换 */}
                 <div className="flex p-1 bg-gray-100/80 rounded-lg">
                     <button
-                        onClick={() => setActiveTab('list')}
-                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'list'
+                        onClick={() => setActiveTab('published')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'published'
                             ? 'bg-white text-indigo-600 shadow-sm'
                             : 'text-gray-500 hover:text-gray-700'
                             }`}
                     >
-                        数据源列表
+                        已发布
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('embedded')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'embedded'
+                            ? 'bg-white text-blue-600 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        嵌入式
                     </button>
                     <button
                         onClick={() => setActiveTab('uncertified')}
                         className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'uncertified'
-                            ? 'bg-white text-indigo-600 shadow-sm'
+                            ? 'bg-white text-amber-600 shadow-sm'
                             : 'text-gray-500 hover:text-gray-700'
                             }`}
                     >
@@ -186,7 +219,7 @@ function DatasourcesContent() {
                     <button
                         onClick={() => setActiveTab('orphan')}
                         className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'orphan'
-                            ? 'bg-white text-indigo-600 shadow-sm'
+                            ? 'bg-white text-red-600 shadow-sm'
                             : 'text-gray-500 hover:text-gray-700'
                             }`}
                     >
@@ -200,13 +233,12 @@ function DatasourcesContent() {
                 <div className="text-sm text-gray-600">
                     <span className="inline-flex items-center gap-1">
                         <span>{stats.label}</span>
-                        <span className="font-semibold text-gray-800">{stats.total.toLocaleString()}</span>
-                        <span>项 中的</span>
                         <span className="font-bold text-indigo-600">{stats.count.toLocaleString()}</span>
+                        <span>项</span>
                     </span>
                 </div>
 
-                {activeTab === 'list' ? (
+                {(activeTab === 'published' || activeTab === 'embedded') ? (
                     <SortButtons
                         sortOptions={sortOptions}
                         currentSort={sortState}
@@ -222,7 +254,7 @@ function DatasourcesContent() {
             </div>
 
             {/* 工具栏: 左下筛选 + 右下搜索 */}
-            {activeTab === 'list' && (
+            {(activeTab === 'published' || activeTab === 'embedded') && (
                 <div className="flex items-center justify-between gap-4">
                     <FacetFilterBar
                         facets={facets}
@@ -247,7 +279,7 @@ function DatasourcesContent() {
                 </div>
             )}
 
-            {activeTab === 'list' ? (
+            {(activeTab === 'published' || activeTab === 'embedded') ? (
                 <>
                     {/* 横向卡片列表 */}
                     <div className="space-y-3 min-h-[400px] relative">

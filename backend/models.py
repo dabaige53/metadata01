@@ -281,6 +281,11 @@ class Field(Base):
     metric_usage_count = Column(Integer, default=0)  # 被指标引用次数
     last_used_at = Column(DateTime)  # 最后使用时间
     
+    # ========== 嵌入式字段→已发布数据源字段关联 ==========
+    # 如果是嵌入式数据源中的字段，指向其来源的已发布数据源字段
+    remote_field_id = Column(String(255), ForeignKey('fields.id'), nullable=True)
+    remote_field_name = Column(String(255), nullable=True)  # 原始已发布数据源中的字段名
+    
     # 关系
     table = relationship('DBTable', back_populates='fields')
     datasource = relationship('Datasource', back_populates='fields')
@@ -313,9 +318,12 @@ class Field(Base):
             'defaultFormat': self.default_format,
             'isHidden': self.is_hidden,
             'folderName': self.folder_name,
-            'usageCount': self.usage_count or 0,  # 使用预计算字段
-            'metricUsageCount': self.metric_usage_count or 0,  # 使用预计算字段
-            'realUsageCount': len(self.views) if self.views else 0, # 保留实时计算用于参考
+            'usageCount': self.usage_count or 0,
+            'metricUsageCount': self.metric_usage_count or 0,
+            'realUsageCount': len(self.views) if self.views else 0,
+            # 嵌入式字段→已发布数据源字段关联
+            'remoteFieldId': self.remote_field_id,
+            'remoteFieldName': self.remote_field_name,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }
@@ -377,6 +385,10 @@ class Datasource(Base):
     field_count = Column(Integer, default=0)
     metric_count = Column(Integer, default=0)
     
+    # ========== 嵌入式数据源→已发布数据源关联 ==========
+    # 如果是嵌入式数据源，指向其来源的已发布数据源
+    source_published_datasource_id = Column(String(255), ForeignKey('datasources.id'), nullable=True)
+    
     # 关系
     tables = relationship('DBTable', secondary=table_to_datasource, back_populates='datasources')
     fields = relationship('Field', back_populates='datasource')
@@ -400,6 +412,8 @@ class Datasource(Base):
             'containsUnsupportedCustomSql': self.contains_unsupported_custom_sql,
             'hasActiveWarning': self.has_active_warning,
             'isEmbedded': self.is_embedded,
+            # 嵌入式数据源→已发布数据源关联
+            'sourcePublishedDatasourceId': self.source_published_datasource_id,
             'tableCount': self.table_count or 0,
             'workbookCount': self.workbook_count or 0,
             'fieldCount': self.field_count or 0,

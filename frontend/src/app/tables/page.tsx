@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useCallback } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 import { Loader2, Table2, Search } from 'lucide-react';
 import FacetFilterBar from '@/components/data-table/FacetFilterBar';
@@ -9,7 +9,6 @@ import Pagination from '@/components/data-table/Pagination';
 import TableCard from '@/components/cards/TableCard';
 import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 import UnusedTablesAnalysis from '@/components/tables/UnusedTablesAnalysis';
-import { useCallback } from 'react';
 
 interface TableItem {
     id: string;
@@ -24,6 +23,7 @@ interface TableItem {
     datasource_count?: number;
     workbook_count?: number;
     isEmbedded?: boolean;
+    is_embedded?: boolean;
     preview_fields?: {
         measures?: string[];
         dimensions?: string[];
@@ -36,8 +36,20 @@ function TablesContent() {
     const [total, setTotal] = useState(0);
     const [facetsData, setFacetsData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'list' | 'analysis'>('list');
+    const [activeTab, setActiveTab] = useState<'published' | 'embedded' | 'analysis'>('published');
     const { openDrawer } = useDrawer();
+
+    // 各 Tab 统计数量
+    const [tabCounts, setTabCounts] = useState<{ [key: string]: number }>({
+        published: 0,
+        embedded: 0,
+        analysis: 0
+    });
+
+    // 处理子组件回传的统计数量
+    const handleTabCountUpdate = useCallback((tab: string, count: number) => {
+        setTabCounts(prev => ({ ...prev, [tab]: count }));
+    }, []);
 
     const fetchTables = async (params: Record<string, any>) => {
         setLoading(true);
@@ -53,23 +65,19 @@ function TablesContent() {
             setData(result.items || []);
             setTotal(result.total || 0);
             setFacetsData(result.facets || null);
+
+            // 同步列表页数量
+            if (params.is_embedded === '1') {
+                setTabCounts(prev => ({ ...prev, embedded: result.total || 0 }));
+            } else if (params.is_embedded === '0') {
+                setTabCounts(prev => ({ ...prev, published: result.total || 0 }));
+            }
         } catch (error) {
             console.error('Failed to fetch tables:', error);
         } finally {
             setLoading(false);
         }
     };
-
-    // 各 Tab 统计数量
-    const [tabCounts, setTabCounts] = useState<{ [key: string]: number }>({
-        list: 0,
-        analysis: 0
-    });
-
-    // 处理子组件回传的统计数量
-    const handleTabCountUpdate = useCallback((tab: string, count: number) => {
-        setTabCounts(prev => ({ ...prev, [tab]: count }));
-    }, []);
 
     // 治理 Tab 的排序配置与状态
     const [govSortConfig, setGovSortConfig] = useState<{
@@ -109,8 +117,8 @@ function TablesContent() {
         totalOverride: total,
         facetsOverride: facetsData,
         onParamsChange: (params) => {
-            if (activeTab === 'list') {
-                fetchTables(params);
+            if (activeTab === 'published' || activeTab === 'embedded') {
+                fetchTables({ ...params, is_embedded: activeTab === 'embedded' ? '1' : '0' });
             }
         },
     });
@@ -122,12 +130,28 @@ function TablesContent() {
         }
     };
 
+    // 监听 Tab 切换，重新获取数据
+    useEffect(() => {
+        if (activeTab === 'published' || activeTab === 'embedded') {
+            // 切换 Tab 时，重置为第一页，并获取对应的数据
+            fetchTables({
+                page: 1,
+                page_size: paginationState.pageSize,
+                is_embedded: activeTab === 'embedded' ? '1' : '0'
+            });
+            // 如果不在第一页，更新页码状态
+            if (paginationState.page !== 1) {
+                handlePageChange(1);
+            }
+        }
+    }, [activeTab]);
+
     // 同步列表页数量
     useEffect(() => {
-        if (activeTab === 'list') {
-            handleTabCountUpdate('list', paginationState.total);
+        if (activeTab === 'published' || activeTab === 'embedded') {
+            handleTabCountUpdate(activeTab, paginationState.total);
         }
-    }, [paginationState.total, activeTab, handleTabCountUpdate]);
+    }, [paginationState.total, handleTabCountUpdate]);
 
     // 排序选项
     const sortOptions = [
@@ -137,12 +161,13 @@ function TablesContent() {
 
     // 获取当前 Tab 的统计信息
     const stats = {
-        label: activeTab === 'list' ? '数据表' : '表治理分析',
+        label: activeTab === 'published' ? '已发布数据表' :
+            activeTab === 'embedded' ? '嵌入式数据表' : '表治理分析',
         total: total,
         count: tabCounts[activeTab] || 0
     };
 
-    if (loading) {
+    if (loading && data.length === 0) {
         return (
             <div className="flex justify-center py-20">
                 <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
@@ -162,18 +187,27 @@ function TablesContent() {
                 {/* 标签页切换 */}
                 <div className="flex p-1 bg-gray-100/80 rounded-lg">
                     <button
-                        onClick={() => setActiveTab('list')}
-                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'list'
+                        onClick={() => setActiveTab('published')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'published'
                             ? 'bg-white text-indigo-600 shadow-sm'
                             : 'text-gray-500 hover:text-gray-700'
                             }`}
                     >
-                        数据表列表
+                        已发布
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('embedded')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'embedded'
+                            ? 'bg-white text-blue-600 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        嵌入式
                     </button>
                     <button
                         onClick={() => setActiveTab('analysis')}
                         className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'analysis'
-                            ? 'bg-white text-indigo-600 shadow-sm'
+                            ? 'bg-white text-amber-600 shadow-sm'
                             : 'text-gray-500 hover:text-gray-700'
                             }`}
                     >
@@ -187,13 +221,12 @@ function TablesContent() {
                 <div className="text-sm text-gray-600">
                     <span className="inline-flex items-center gap-1">
                         <span>{stats.label}</span>
-                        <span className="font-semibold text-gray-800">{stats.total.toLocaleString()}</span>
-                        <span>项 中的</span>
                         <span className="font-bold text-indigo-600">{stats.count.toLocaleString()}</span>
+                        <span>项</span>
                     </span>
                 </div>
 
-                {activeTab === 'list' ? (
+                {(activeTab === 'published' || activeTab === 'embedded') ? (
                     <SortButtons
                         sortOptions={sortOptions}
                         currentSort={sortState}
@@ -209,7 +242,7 @@ function TablesContent() {
             </div>
 
             {/* 工具栏: 左下筛选 + 右下搜索 */}
-            {activeTab === 'list' && (
+            {(activeTab === 'published' || activeTab === 'embedded') && (
                 <div className="flex items-center justify-between gap-4">
                     <FacetFilterBar
                         facets={facets}
@@ -235,7 +268,7 @@ function TablesContent() {
                 </div>
             )}
 
-            {activeTab === 'list' ? (
+            {(activeTab === 'published' || activeTab === 'embedded') ? (
                 <>
                     {/* 横向卡片列表 */}
                     <div className="space-y-3 min-h-[400px] relative">

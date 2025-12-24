@@ -578,19 +578,18 @@ class TableauMetadataClient:
                         name
                         description
                         ... on ColumnField {{
-                            dataType
                             role
                             isHidden
                             upstreamColumns {{
                                 id
                                 name
+                                remoteType
                                 table {{
                                     id
                                 }}
                             }}
                         }}
                         ... on CalculatedField {{
-                            dataType
                             role
                             isHidden
                             formula
@@ -614,9 +613,28 @@ class TableauMetadataClient:
                             }}
                         }}
                         ... on GroupField {{
-                            dataType
                             role
                             isHidden
+                        }}
+                        ... on DatasourceField {{
+                            remoteField {{
+                                id
+                                name
+                                description
+                                datasource {{
+                                    id
+                                    name
+                                    __typename
+                                }}
+                            }}
+                            upstreamColumns {{
+                                id
+                                name
+                                table {{
+                                    id
+                                    name
+                                }}
+                            }}
                         }}
                     }}
                 }}
@@ -1129,9 +1147,9 @@ class MetadataSync:
                 if not table_data or not table_data.get("id"):
                     continue
                 
-                # 过滤掉嵌入式表 (已经在存量清理中处理过，这里确保同步也不拉取/更新它们)
-                if table_data.get("isEmbedded"):
-                    continue
+                # 不再跳过嵌入式表，因为字段的 upstream_column_id 可能引用嵌入式表的列
+                # 标记 is_embedded 以便在 UI 中区分
+                is_embedded = table_data.get("isEmbedded", False)
                 
                 current_ids.append(table_data["id"])
                 table = self.session.query(DBTable).filter_by(id=table_data["id"]).first()
@@ -1152,7 +1170,7 @@ class MetadataSync:
                 
                 table.table_type = table_data.get("tableType")
                 table.description = table_data.get("description")
-                table.is_embedded = False # 明确设置为False，因为我们过滤掉了嵌入式表
+                table.is_embedded = is_embedded  # 正确标记嵌入式表
                 table.is_certified = table_data.get("isCertified", False)
                 table.certification_note = table_data.get("certificationNote")
                 table.project_name = table_data.get("projectName")
@@ -1313,8 +1331,8 @@ class MetadataSync:
             print(f"  ❌ 同步失败: {e}")
             return 0
             
-    def _save_embedded_datasource(self, ds_data: Dict, workbook_id: str):
-        """保存独立的嵌入式数据源 (用于直连场景)"""
+    def _save_embedded_datasource(self, ds_data: Dict, workbook_id: str, source_published_ds_id: str = None):
+        """保存嵌入式数据源 (包括直连场景和引用已发布数据源场景)"""
         try:
             ds_id = ds_data["id"]
             ds = self.session.query(Datasource).filter_by(id=ds_id).first()
@@ -1325,6 +1343,10 @@ class MetadataSync:
             ds.name = ds_data.get("name") or "Embedded Datasource"
             ds.is_embedded = True
             ds.project_name = "(Embedded)" # 嵌入式源通常没有独立的项目归属，因为它属于工作簿
+            
+            # 🆕 设置源已发布数据源ID（血缘关系）
+            if source_published_ds_id:
+                ds.source_published_datasource_id = source_published_ds_id
             
             # 建立上游表关联 (直连源的关键血缘)
             upstream_tables = ds_data.get("upstreamTables", [])
@@ -1424,6 +1446,11 @@ class MetadataSync:
                             if up_ds and up_ds.get("id"):
                                 self._link_datasource_to_workbook(up_ds["id"], wb_data["id"])
                         upstream_ds_id = upstream_published[0]["id"]
+                        
+                        # 🆕 场景1也保存嵌入式数据源记录，并设置 source_published_datasource_id
+                        self._save_embedded_datasource(eds, wb_data["id"], source_published_ds_id=upstream_ds_id)
+                        # 🔧 修复：场景1也需要建立嵌入式数据源到工作簿的关联
+                        self._link_datasource_to_workbook(eds["id"], wb_data["id"])
                     else:
                         # 场景2：完全独立的嵌入式直连源 (保留模式)
                         # 保存该嵌入式数据源，标记 is_embedded=True
@@ -1754,6 +1781,43 @@ class MetadataSync:
                         if db_col and db_col.remote_type:
                             field.remote_type = db_col.remote_type
                     
+                    table_info = first_col.get("table")
+                    if table_info:
+                        field.table_id = table_info.get("id")
+        elif typename == "DatasourceField":
+            # 处理 DatasourceField（通常是嵌入式数据源中引用已发布数据源的字段）
+            field.data_type = f_data.get("dataType") or ""
+            field.role = (f_data.get("role") or "").lower()
+            field.is_hidden = f_data.get("isHidden") or False
+            
+            # 解析 remoteField（指向已发布数据源中的原始字段）
+            remote_field = f_data.get("remoteField")
+            if remote_field:
+                field.remote_field_id = remote_field.get("id")
+                field.remote_field_name = remote_field.get("name")
+                
+                # 如果有 remoteField，尝试获取其数据源信息用于追溯
+                remote_ds = remote_field.get("datasource")
+                if remote_ds:
+                    remote_ds_id = remote_ds.get("id")
+                    # 检查 remoteField 的数据源是否为已发布数据源
+                    remote_ds_type = remote_ds.get("__typename")
+                    if remote_ds_type == "PublishedDatasource":
+                        # 更新当前字段所属的嵌入式数据源的 source_published_datasource_id
+                        # 使用 parent_datasource_id 而不是 ds_id，因为 ds_id 可能已被血缘穿透
+                        parent_ds_id = f_data.get("parent_datasource_id")
+                        if parent_ds_id:
+                            current_ds = self.session.query(Datasource).filter_by(id=parent_ds_id).first()
+                            if current_ds and current_ds.is_embedded and not current_ds.source_published_datasource_id:
+                                current_ds.source_published_datasource_id = remote_ds_id
+            
+            # 关联上游表和列
+            upstream_cols = f_data.get("upstreamColumns") or []
+            if upstream_cols and len(upstream_cols) > 0:
+                first_col = upstream_cols[0]
+                if first_col:
+                    field.upstream_column_id = first_col.get("id")
+                    field.upstream_column_name = first_col.get("name")
                     table_info = first_col.get("table")
                     if table_info:
                         field.table_id = table_info.get("id")
@@ -2545,13 +2609,18 @@ def main():
     print("Tableau Metadata 同步工具")
     print("=" * 60)
     
-    # 配置
-    BASE_URL = "http://tbi.juneyaoair.com"
-    USERNAME = "huangguanru"
-    PASSWORD = "Admin123"
+    # 从 Config 读取配置
+    BASE_URL = Config.TABLEAU_BASE_URL.replace('http://', 'https://')  # 强制使用 HTTPS
+    PAT_NAME = Config.TABLEAU_PAT_NAME
+    PAT_SECRET = Config.TABLEAU_PAT_SECRET
+    USERNAME = Config.TABLEAU_USERNAME
+    PASSWORD = Config.TABLEAU_PASSWORD
     
-    # 创建客户端
-    client = TableauMetadataClient(BASE_URL, USERNAME, PASSWORD)
+    # 创建客户端 (优先使用 PAT)
+    if PAT_NAME and PAT_SECRET:
+        client = TableauMetadataClient(BASE_URL, pat_name=PAT_NAME, pat_secret=PAT_SECRET)
+    else:
+        client = TableauMetadataClient(BASE_URL, username=USERNAME, password=PASSWORD)
     
     # 登录
     if not client.sign_in():

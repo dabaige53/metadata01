@@ -680,6 +680,7 @@ def get_tables():
     schema_filter = request.args.get('schema', '')
     sort = request.args.get('sort', '')
     order = request.args.get('order', 'asc')
+    is_embedded = request.args.get('is_embedded', None)  # 新增: 嵌入式筛选
     
     # 分页参数
     page = request.args.get('page', 1, type=int)
@@ -697,6 +698,11 @@ def get_tables():
         selectinload(DBTable.datasources),
         selectinload(DBTable.database)
     )
+    
+    # 嵌入式筛选
+    if is_embedded is not None:
+        is_emb = is_embedded == '1' or is_embedded.lower() == 'true'
+        query = query.filter(DBTable.is_embedded == is_emb)
     
     if search: 
         query = query.filter(DBTable.name.ilike(f'%{search}%'))
@@ -974,6 +980,7 @@ def get_datasources():
     search = request.args.get('search', '')
     sort = request.args.get('sort', '')
     order = request.args.get('order', 'asc')
+    is_embedded = request.args.get('is_embedded', None)  # 新增: 嵌入式筛选
     
     from sqlalchemy.orm import selectinload
     from sqlalchemy import text
@@ -984,6 +991,11 @@ def get_datasources():
         selectinload(Datasource.fields),
         selectinload(Datasource.workbooks)
     )
+    
+    # 嵌入式筛选
+    if is_embedded is not None:
+        is_emb = is_embedded == '1' or is_embedded.lower() == 'true'
+        query = query.filter(Datasource.is_embedded == is_emb)
     
     if search: 
         query = query.filter(Datasource.name.ilike(f'%{search}%'))
@@ -1098,6 +1110,30 @@ def get_datasource_detail(ds_id):
             'view_count': len(wb.views) if wb.views else 0
         })
     data['workbooks'] = workbooks_data
+
+    # 下游：由此衍生的嵌入式数据源副本 (v2.1 新增)
+    # 仅当当前数据源为“已发布数据源”时才查询
+    if not ds.is_embedded:
+        embedded_copies = session.query(Datasource).filter(
+            Datasource.source_published_datasource_id == ds.id,
+            Datasource.is_embedded == True
+        ).all()
+        
+        embedded_data = []
+        for emb in embedded_copies:
+            # 尝试找到关联的工作簿
+            wb_info = {}
+            if emb.workbooks and len(emb.workbooks) > 0:
+                wb = emb.workbooks[0]
+                wb_info = {'id': wb.id, 'name': wb.name}
+                
+            embedded_data.append({
+                'id': emb.id,
+                'name': emb.name,
+                'workbook': wb_info,
+                'field_count': len(emb.fields)
+            })
+        data['embedded_datasources'] = embedded_data
 
     # 字段列表（性能优化：限制返回数量，精简数据格式）
     # 注意：对于大数据源，完整字段列表通过分页 API 获取

@@ -29,6 +29,10 @@ def fetch_lineage_stats(db_path: str) -> dict:
         stats['tables_total'] = conn.execute(text("SELECT COUNT(*) FROM tables")).scalar()
         stats['columns'] = conn.execute(text("SELECT COUNT(*) FROM db_columns")).scalar()
         
+        # 表类型统计
+        stats['tables_embedded'] = conn.execute(text("SELECT COUNT(*) FROM tables WHERE is_embedded = 1")).scalar()
+        stats['tables_non_embedded'] = stats['tables_total'] - stats['tables_embedded']
+        
         # 孤立表（未被任何数据源引用）
         stats['tables_orphaned'] = conn.execute(text("""
             SELECT COUNT(*) FROM tables t
@@ -37,10 +41,25 @@ def fetch_lineage_stats(db_path: str) -> dict:
         """)).scalar()
         stats['tables_connected'] = stats['tables_total'] - stats['tables_orphaned']
         
+        # 🆕 嵌入式表关联到嵌入式数据源
+        stats['embedded_tables_connected'] = conn.execute(text("""
+            SELECT COUNT(DISTINCT t.id) FROM tables t
+            JOIN table_to_datasource td ON t.id = td.table_id
+            JOIN datasources ds ON td.datasource_id = ds.id
+            WHERE t.is_embedded = 1 AND ds.is_embedded = 1
+        """)).scalar()
+        
         # ===== Layer 2: 数据源层 =====
         stats['datasources_total'] = conn.execute(text("SELECT COUNT(*) FROM datasources")).scalar()
         stats['datasources_embedded'] = conn.execute(text("SELECT COUNT(*) FROM datasources WHERE is_embedded = 1")).scalar()
         stats['datasources_published'] = conn.execute(text("SELECT COUNT(*) FROM datasources WHERE is_embedded = 0 OR is_embedded IS NULL")).scalar()
+        
+        # 🆕 嵌入式数据源到已发布数据源的血缘关系
+        stats['embedded_with_source_published'] = conn.execute(text("""
+            SELECT COUNT(*) FROM datasources 
+            WHERE is_embedded = 1 AND source_published_datasource_id IS NOT NULL
+        """)).scalar()
+        stats['embedded_direct_connect'] = stats['datasources_embedded'] - stats['embedded_with_source_published']
         
         # 已发布但孤立的数据源（有表但未被工作簿使用）
         stats['datasources_pub_orphaned'] = conn.execute(text("""
@@ -220,12 +239,12 @@ def generate_html(stats: dict) -> str:
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }}
         
-        /* 图表容器 - 固定高度 */
+        /* 图表容器 - 增大高度减少重叠 */
         #sankey-chart {{ 
             flex: 1;
             width: 100%; 
-            min-height: 700px;
-            height: 700px;
+            min-height: 900px;
+            height: 900px;
         }}
 
         /* 术语定义 */
@@ -387,65 +406,73 @@ def generate_html(stats: dict) -> str:
         const C_BROKEN = '#f59e0b';   // 柑橙色
 
         const data = [
-            // Layer 1: Databases
+            // Layer 0: 数据库
             {{ name: '数据库 ({fmt(stats["databases"])})', itemStyle: {{ color: C_HEALTHY }}, depth: 0 }},
             
-            // Layer 2: Tables
-            {{ name: '已关联表 ({fmt(stats["tables_connected"])})', itemStyle: {{ color: C_HEALTHY }}, depth: 1 }},
+            // Layer 1: 数据表
+            {{ name: '非嵌入式表 ({fmt(stats["tables_non_embedded"])})', itemStyle: {{ color: C_HEALTHY }}, depth: 1 }},
+            {{ name: '嵌入式表 ({fmt(stats["tables_embedded"])})', itemStyle: {{ color: C_EMBEDDED }}, depth: 1 }},
             {{ name: '孤立表 ({fmt(stats["tables_orphaned"])})', itemStyle: {{ color: C_ORPHAN }}, depth: 1 }},
 
-            // Layer 3: Datasources
+            // Layer 2: 已发布数据源
             {{ name: '正常发布数据源 ({fmt(stats["datasources_pub_healthy"])})', itemStyle: {{ color: C_HEALTHY }}, depth: 2 }},
-            {{ name: '嵌入式数据源 ({fmt(stats["datasources_embedded"])})', itemStyle: {{ color: C_EMBEDDED }}, depth: 2 }},
-            {{ name: '孤立数据源 ({fmt(stats["datasources_pub_orphaned"])})', itemStyle: {{ color: C_ORPHAN }}, depth: 2 }},
-            {{ name: 'Custom SQL 数据源 ({fmt(stats["datasources_broken"])})', itemStyle: {{ color: C_BROKEN }}, depth: 2 }},
+            {{ name: '孤立发布数据源 ({fmt(stats["datasources_pub_orphaned"])})', itemStyle: {{ color: C_ORPHAN }}, depth: 2 }},
+            {{ name: 'CustomSQL数据源 ({fmt(stats["datasources_broken"])})', itemStyle: {{ color: C_BROKEN }}, depth: 2 }},
 
-            // Layer 4: Fields (Native)
-            {{ name: '原生字段:用于计算 ({fmt(stats["fields_native_used_in_calc"])})', itemStyle: {{ color: C_HEALTHY }}, depth: 3 }},
-            {{ name: '原生字段:直接展示 ({fmt(stats["fields_native_used_in_view"])})', itemStyle: {{ color: C_HEALTHY }}, depth: 3 }},
-            {{ name: '原生僵尸字段 ({fmt(stats["fields_native_unused"])})', itemStyle: {{ color: C_ORPHAN }}, depth: 3 }},
+            // Layer 3: 嵌入式数据源
+            {{ name: '嵌入式:引用已发布 ({fmt(stats["embedded_with_source_published"])})', itemStyle: {{ color: C_EMBEDDED }}, depth: 3 }},
+            {{ name: '嵌入式:直连物理表 ({fmt(stats["embedded_direct_connect"])})', itemStyle: {{ color: C_EMBEDDED }}, depth: 3 }},
+
+            // Layer 4: 原生字段
+            {{ name: '原生字段 ({fmt(stats["fields_native"])})', itemStyle: {{ color: C_HEALTHY }}, depth: 4 }},
+            {{ name: '僵尸原生字段 ({fmt(stats["fields_native_unused"])})', itemStyle: {{ color: C_ORPHAN }}, depth: 4 }},
             
-            // Layer 5: Fields (Calculated)
-            {{ name: '计算字段:被使用 ({fmt(stats["fields_calc_used"])})', itemStyle: {{ color: C_HEALTHY }}, depth: 4 }},
-            {{ name: '计算僵尸字段 ({fmt(stats["fields_calc_unused"])})', itemStyle: {{ color: C_ORPHAN }}, depth: 4 }},
+            // Layer 5: 计算字段
+            {{ name: '计算字段 ({fmt(stats["fields_calculated"])})', itemStyle: {{ color: C_HEALTHY }}, depth: 5 }},
+            {{ name: '僵尸计算字段 ({fmt(stats["fields_calc_unused"])})', itemStyle: {{ color: C_ORPHAN }}, depth: 5 }},
 
-            // Layer 6: Workbooks
-            {{ name: '工作簿 ({fmt(stats["workbooks"])})', itemStyle: {{ color: C_HEALTHY }}, depth: 5 }},
+            // Layer 6: 工作簿
+            {{ name: '工作簿 ({fmt(stats["workbooks"])})', itemStyle: {{ color: C_HEALTHY }}, depth: 6 }},
 
-            // Layer 7: Views
-            {{ name: '视图 ({fmt(stats["views"])})', itemStyle: {{ color: C_HEALTHY }}, depth: 6 }}
+            // Layer 7: 视图
+            {{ name: '视图 ({fmt(stats["views"])})', itemStyle: {{ color: C_HEALTHY }}, depth: 7 }}
         ];
 
         const links = [
-            // DB -> Tables
-            {{ source: '数据库 ({fmt(stats["databases"])})', target: '已关联表 ({fmt(stats["tables_connected"])})', value: {stats["tables_connected"]} }},
+            // Layer 0→1: 数据库 → 表
+            {{ source: '数据库 ({fmt(stats["databases"])})', target: '非嵌入式表 ({fmt(stats["tables_non_embedded"])})', value: {stats["tables_non_embedded"]} }},
+            {{ source: '数据库 ({fmt(stats["databases"])})', target: '嵌入式表 ({fmt(stats["tables_embedded"])})', value: {stats["tables_embedded"]} }},
             {{ source: '数据库 ({fmt(stats["databases"])})', target: '孤立表 ({fmt(stats["tables_orphaned"])})', value: {max(1, stats["tables_orphaned"])} }},
 
-            // Tables -> Datasources
-            {{ source: '已关联表 ({fmt(stats["tables_connected"])})', target: '正常发布数据源 ({fmt(stats["datasources_pub_healthy"])})', value: {stats["datasources_pub_healthy"]} }},
-            {{ source: '已关联表 ({fmt(stats["tables_connected"])})', target: '嵌入式数据源 ({fmt(stats["datasources_embedded"])})', value: {stats["datasources_embedded"]} }},
-            {{ source: '已关联表 ({fmt(stats["tables_connected"])})', target: '孤立数据源 ({fmt(stats["datasources_pub_orphaned"])})', value: {stats["datasources_pub_orphaned"]} }},
+            // Layer 1→2: 非嵌入式表 → 已发布数据源
+            {{ source: '非嵌入式表 ({fmt(stats["tables_non_embedded"])})', target: '正常发布数据源 ({fmt(stats["datasources_pub_healthy"])})', value: {stats["datasources_pub_healthy"]} }},
+            {{ source: '非嵌入式表 ({fmt(stats["tables_non_embedded"])})', target: '孤立发布数据源 ({fmt(stats["datasources_pub_orphaned"])})', value: {max(1, stats["datasources_pub_orphaned"])} }},
             
-            // Custom SQL 没有上游表连线（独立节点）
-
-            // Datasources -> Fields (简化：按比例分配)
-            {{ source: '正常发布数据源 ({fmt(stats["datasources_pub_healthy"])})', target: '原生字段:用于计算 ({fmt(stats["fields_native_used_in_calc"])})', value: {max(1, stats["fields_native_used_in_calc"] // 3)} }},
-            {{ source: '正常发布数据源 ({fmt(stats["datasources_pub_healthy"])})', target: '原生字段:直接展示 ({fmt(stats["fields_native_used_in_view"])})', value: {max(1, stats["fields_native_used_in_view"] // 3)} }},
-            {{ source: '正常发布数据源 ({fmt(stats["datasources_pub_healthy"])})', target: '原生僵尸字段 ({fmt(stats["fields_native_unused"])})', value: {max(1, stats["fields_native_unused"] // 4)} }},
+            // Layer 1→3: 嵌入式表 → 嵌入式数据源(直连型)
+            {{ source: '嵌入式表 ({fmt(stats["tables_embedded"])})', target: '嵌入式:直连物理表 ({fmt(stats["embedded_direct_connect"])})', value: {max(1, stats["embedded_direct_connect"])} }},
             
-            {{ source: '嵌入式数据源 ({fmt(stats["datasources_embedded"])})', target: '原生字段:用于计算 ({fmt(stats["fields_native_used_in_calc"])})', value: {max(1, stats["fields_native_used_in_calc"] * 2 // 3)} }},
-            {{ source: '嵌入式数据源 ({fmt(stats["datasources_embedded"])})', target: '原生字段:直接展示 ({fmt(stats["fields_native_used_in_view"])})', value: {max(1, stats["fields_native_used_in_view"] * 2 // 3)} }},
-            {{ source: '嵌入式数据源 ({fmt(stats["datasources_embedded"])})', target: '原生僵尸字段 ({fmt(stats["fields_native_unused"])})', value: {max(1, stats["fields_native_unused"] * 3 // 4)} }},
+            // Layer 2→3: 已发布数据源 → 嵌入式数据源(引用型) 
+            {{ source: '正常发布数据源 ({fmt(stats["datasources_pub_healthy"])})', target: '嵌入式:引用已发布 ({fmt(stats["embedded_with_source_published"])})', value: {max(1, stats["embedded_with_source_published"])} }},
 
-            // Native -> Calculated
-            {{ source: '原生字段:用于计算 ({fmt(stats["fields_native_used_in_calc"])})', target: '计算字段:被使用 ({fmt(stats["fields_calc_used"])})', value: {max(1, stats["fields_calc_used"])} }},
-            {{ source: '原生字段:用于计算 ({fmt(stats["fields_native_used_in_calc"])})', target: '计算僵尸字段 ({fmt(stats["fields_calc_unused"])})', value: {max(1, stats["fields_calc_unused"] // 2)} }},
+            // Layer 2→4: 已发布数据源 → 原生字段
+            {{ source: '正常发布数据源 ({fmt(stats["datasources_pub_healthy"])})', target: '原生字段 ({fmt(stats["fields_native"])})', value: {max(1, stats["fields_native"] // 3)} }},
+            {{ source: '正常发布数据源 ({fmt(stats["datasources_pub_healthy"])})', target: '僵尸原生字段 ({fmt(stats["fields_native_unused"])})', value: {max(1, stats["fields_native_unused"] // 3)} }},
+            
+            // Layer 3→4: 嵌入式数据源 → 原生字段
+            {{ source: '嵌入式:引用已发布 ({fmt(stats["embedded_with_source_published"])})', target: '原生字段 ({fmt(stats["fields_native"])})', value: {max(1, stats["fields_native"] // 3)} }},
+            {{ source: '嵌入式:直连物理表 ({fmt(stats["embedded_direct_connect"])})', target: '原生字段 ({fmt(stats["fields_native"])})', value: {max(1, stats["fields_native"] // 3)} }},
+            {{ source: '嵌入式:引用已发布 ({fmt(stats["embedded_with_source_published"])})', target: '僵尸原生字段 ({fmt(stats["fields_native_unused"])})', value: {max(1, stats["fields_native_unused"] // 3)} }},
+            {{ source: '嵌入式:直连物理表 ({fmt(stats["embedded_direct_connect"])})', target: '僵尸原生字段 ({fmt(stats["fields_native_unused"])})', value: {max(1, stats["fields_native_unused"] // 3)} }},
 
-            // Fields -> Workbook
-            {{ source: '原生字段:直接展示 ({fmt(stats["fields_native_used_in_view"])})', target: '工作簿 ({fmt(stats["workbooks"])})', value: {max(1, stats["fields_native_used_in_view"])} }},
-            {{ source: '计算字段:被使用 ({fmt(stats["fields_calc_used"])})', target: '工作簿 ({fmt(stats["workbooks"])})', value: {max(1, stats["fields_calc_used"])} }},
+            // Layer 4→5: 原生字段 → 计算字段
+            {{ source: '原生字段 ({fmt(stats["fields_native"])})', target: '计算字段 ({fmt(stats["fields_calculated"])})', value: {max(1, stats["fields_calculated"])} }},
+            {{ source: '原生字段 ({fmt(stats["fields_native"])})', target: '僵尸计算字段 ({fmt(stats["fields_calc_unused"])})', value: {max(1, stats["fields_calc_unused"])} }},
 
-            // Workbook -> Views
+            // Layer 4→6 & 5→6: 字段 → 工作簿
+            {{ source: '原生字段 ({fmt(stats["fields_native"])})', target: '工作簿 ({fmt(stats["workbooks"])})', value: {max(1, stats["fields_native"] // 2)} }},
+            {{ source: '计算字段 ({fmt(stats["fields_calculated"])})', target: '工作簿 ({fmt(stats["workbooks"])})', value: {max(1, stats["fields_calculated"])} }},
+
+            // Layer 6→7: 工作簿 → 视图
             {{ source: '工作簿 ({fmt(stats["workbooks"])})', target: '视图 ({fmt(stats["views"])})', value: {stats["views"]} }}
         ];
 
@@ -468,12 +495,12 @@ def generate_html(stats: dict) -> str:
                     type: 'sankey',
                     data: data,
                     links: links,
-                    top: 40,
-                    bottom: 40,
-                    left: 60,
-                    right: 200,
-                    nodeWidth: 20,
-                    nodeGap: 14,
+                    top: 60,
+                    bottom: 60,
+                    left: 80,
+                    right: 180,
+                    nodeWidth: 18,
+                    nodeGap: 24,
                     emphasis: {{
                         focus: 'adjacency',
                         itemStyle: {{

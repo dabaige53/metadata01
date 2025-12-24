@@ -32,6 +32,11 @@ check_item "数据源未归属项目" "发布数据源 (is_embedded=0) 未关联
 "curl -s $BASE_URL/api/datasources | jq '.items[] | select(.project_name==null)'"
 curl -s "$BASE_URL/api/datasources" | jq '.items[] | select(.project_name==null)'
 
+# 2a. 嵌入式数据源统计验证
+check_item "嵌入式数据源统计验证" "验证 is_embedded 筛选参数是否工作" \
+"curl -s $BASE_URL/api/datasources?is_embedded=1 | jq '{embedded_count: .total}'"
+curl -s "$BASE_URL/api/datasources?is_embedded=1" | jq '{embedded_count: .total}'
+
 # 3. 工作簿未归属项目
 check_item "工作簿未归属项目" "工作簿未关联 Project" \
 "curl -s $BASE_URL/api/workbooks | jq '.items[] | select(.project_name==null)'"

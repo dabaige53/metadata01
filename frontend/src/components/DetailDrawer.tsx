@@ -287,6 +287,10 @@ export default function DetailDrawer() {
             if (data.workbooks && data.workbooks.length > 0) {
                 tabs.push({ id: 'workbooks', label: `关联工作簿 (${data.workbooks.length})`, icon: BookOpen });
             }
+            // 嵌入式副本 Tab - 针对已发布数据源
+            if (data.embedded_datasources && data.embedded_datasources.length > 0) {
+                tabs.push({ id: 'embedded', label: `嵌入式副本 (${data.embedded_datasources.length})`, icon: Copy });
+            }
         }
 
         if (type === 'workbooks') {
@@ -1372,6 +1376,12 @@ export default function DetailDrawer() {
                 return renderAssetSection('包含/使用的字段', Columns, fieldItems, 'fields', 'blue');
             case 'metrics':
                 return renderAssetSection('包含/使用的指标', FunctionSquare, data.metrics || data.used_metrics || [], 'metrics', 'amber');
+            case 'embedded':
+                const embItems = (data.embedded_datasources || []).map((ds: any) => ({
+                    ...ds,
+                    subtitle: ds.workbook?.name ? `位于: ${ds.workbook.name}` : undefined
+                }));
+                return renderAssetSection('以此为源的嵌入式数据源', Copy, embItems, 'datasources', 'blue');
 
             default: return null;
         }
@@ -1390,7 +1400,17 @@ export default function DetailDrawer() {
 
         // 使用 currentItem 信息作为兜底，实现立即渲染
         const displayId = safeData?.id || currentItem?.id || '-';
-        const displayName = safeData?.name || currentItem?.name || '资产详情';
+        let displayName = safeData?.name || currentItem?.name || '资产详情';
+        let displaySubtitle = '';
+
+        // 针对字段：优先显示物理列名，显示别名作为副标题
+        if (safeData && (currentItem?.type === 'fields' || data?.type === 'fields')) {
+            const upstreamName = safeData.upstream_column_info?.name || safeData.upstream_column_name;
+            if (upstreamName && upstreamName !== displayName) {
+                displaySubtitle = `别名: ${displayName}`;
+                displayName = upstreamName;
+            }
+        }
 
         const nameIsTruncated = isTruncated(displayName);
 
@@ -1424,7 +1444,7 @@ export default function DetailDrawer() {
                                 <Icon className="w-8 h-8" />
                             </div>
                             <div>
-                                <h2 className="text-xl font-bold text-gray-900 leading-tight mb-2 flex items-center gap-2">
+                                <h2 className="text-xl font-bold text-gray-900 leading-tight mb-1 flex items-center gap-2">
                                     <span className="break-all line-clamp-2" title={displayName}>{displayName}</span>
                                     {nameIsTruncated && (
                                         <span className="flex-shrink-0 text-[10px] bg-red-50 text-red-600 border border-red-100 px-1.5 py-0.5 rounded font-normal" title="Tableau API 返回的名称已被截断">
@@ -1432,6 +1452,11 @@ export default function DetailDrawer() {
                                         </span>
                                     )}
                                 </h2>
+                                {displaySubtitle && (
+                                    <div className="text-sm text-gray-500 mb-2 font-medium">
+                                        {displaySubtitle}
+                                    </div>
+                                )}
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <div className="group flex items-center gap-1 font-mono text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
                                         <span className="select-all break-all">{displayId}</span>
