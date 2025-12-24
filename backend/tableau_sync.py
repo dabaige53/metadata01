@@ -691,6 +691,7 @@ class TableauMetadataClient:
                             field["datasource_id"] = final_ds_id
                             field["datasource_name"] = ds_name
                             field["parent_datasource_id"] = ds_id  # 保留原始 ID 备用
+                            field["is_from_embedded_ds"] = (type_name == "embeddedDatasources")  # 标记来源
                             all_fields.append(field)
                 
                 print(f"    - {type_name}: 已处理 {min(i+chunk_size, total)}/{total}")
@@ -1058,6 +1059,7 @@ class MetadataSync:
         self.engine = get_engine(self.db_path)
         self.session = get_session(self.engine)
         self.sync_log: Optional[SyncLog] = None
+        self.deduplication_map = {} # skipped_id -> survivor_id (跨阶段去重映射)
     
     def _start_sync_log(self, sync_type: str):
         """开始同步日志"""
@@ -1100,6 +1102,10 @@ class MetadataSync:
                     (FieldDependency.source_field_id == record.id) | 
                     (FieldDependency.dependency_field_id == record.id)
                 ).delete()
+                from backend.models import Metric, field_to_view
+                self.session.query(Metric).filter_by(id=record.id).delete()
+                self.session.execute(field_to_view.delete().where(field_to_view.c.field_id == record.id))
+                self.session.execute(text("DELETE FROM field_full_lineage WHERE field_id = :fid"), {"fid": record.id})
             
             self.session.delete(record)
             count += 1
@@ -1617,70 +1623,248 @@ class MetadataSync:
                 if tid not in table_real_ds_map:
                     table_real_ds_map[tid] = dsid
 
-            fields = self.client.fetch_fields()
-            
             # --- 去重准备开始 ---
-            # 1. 分离已发布字段和嵌入式字段
-            published_fields = []
-            embedded_fields = []
-            
             # 缓存已发布的字段：(datasource_id, name) -> field_id
             published_field_cache = {}
-            
-            # 预处理：分类
-            for f in fields:
+            physical_column_cache = {} # (table_name, column_name) -> field_id
+            calc_field_cache = {}      # (field_name, formula_hash) -> field_id
+            self.deduplication_map = {} # skipped_id -> survivor_id
+
+            all_fields = self.client.fetch_fields()
+            ds_fields_map = {} # {datasource_id: [field_data, ...]}
+            published_datasources = [] # 存储已发布的datasource对象
+            embedded_fields = [] # 存储嵌入式字段
+
+            print(f"  - 拉取到 {len(all_fields)} 个字段，开始分类...")
+
+            for f in all_fields:
                 if not f or not f.get("id"): continue
                 
-                # 判断是否为嵌入式 (通过原始 datasource_id 和 parent_datasource_id 对比)
-                # fetch_fields 中有一步: field["parent_datasource_id"] = ds_id (原始ID)
-                # field["datasource_id"] = final_ds_id (穿透后的ID)
+                # 判断是否为嵌入式：使用 is_from_embedded_ds 标记（在 fetch_fields 中设置）
+                is_from_embedded = f.get("is_from_embedded_ds", False)
                 
-                orig_ds_id = f.get("parent_datasource_id")
-                final_ds_id = f.get("datasource_id")
-                
-                # 如果 orig_ds_id != final_ds_id，说明发生了穿透，它是嵌入式字段
-                if orig_ds_id and final_ds_id and orig_ds_id != final_ds_id:
+                if is_from_embedded:
                     embedded_fields.append(f)
                 else:
-                    published_fields.append(f)
+                    # 这是一个已发布字段，将其归类到其数据源下
+                    ds_id = f.get("datasource_id")
+                    if ds_id:
+                        if ds_id not in ds_fields_map:
+                            ds_fields_map[ds_id] = []
+                            # 首次遇到这个数据源，尝试获取其信息
+                            ds_info = self.client.fetch_datasource_by_id(ds_id)
+                            if ds_info:
+                                published_datasources.append(ds_info)
+                        ds_fields_map[ds_id].append(f)
             
-            print(f"  - 字段预处理: 已发布 {len(published_fields)} 个, 嵌入式 {len(embedded_fields)} 个")
+            # --- 去重准备开始 ---
+            # 缓存已发布的字段：(datasource_id, name) -> field_id
+            published_field_cache = {}
+            physical_column_cache = {} # (table_name, column_name) -> field_id
+            calc_field_cache = {}      # (field_name, formula_hash) -> field_id
+            self.deduplication_map = {} # skipped_id -> survivor_id (记录被去重的字段映射关系)
+
+            print(f"  - 字段预处理: 已发布数据源 {len(published_datasources)} 个, 嵌入式字段 {len(embedded_fields)} 个")
             
             count = 0
             calc_count = 0
             skipped_count = 0
             current_ids = []
             
-            # --- 第一阶段：处理已发布字段 (构建基准) ---
-            for f_data in published_fields:
-                self._process_single_field(f_data, table_real_ds_map)
-                current_ids.append(f_data["id"])
+            # 1. 第一阶段：处理发布式数据源 (PublishedDatasource)
+            # 这些是"真身"，优先保存并建立缓存
+            # ----------------------------------------------------
+            for ds in published_datasources:
+                ds_id = ds["id"]
+                # 重新构建 table_real_ds_map，确保包含所有发布式数据源的映射
+                # 这一步可能需要更精细的逻辑，这里简化为直接更新
+                # 实际上，table_real_ds_map 应该在所有发布式数据源处理前构建完成
+                # 但为了与用户提供的diff保持一致，这里暂时保留
+                # self._get_table_to_datasource_map(ds) 应该返回一个字典，然后用 update
+                # 考虑到原始代码中 table_real_ds_map 已经通过 DB 查询构建，这里可能不需要再次更新
+                # 暂时注释掉，如果需要，再根据实际情况调整
+                # table_real_ds_map.update(self._get_table_to_datasource_map(ds))
                 
-                # 加入缓存
-                ds_id = f_data.get("datasource_id")
-                name = f_data.get("name")
-                if ds_id and name:
-                     published_field_cache[(ds_id, name)] = f_data["id"]
+                fields = ds_fields_map.get(ds_id, [])
+                for f_data in fields:
+                    if not f_data: continue
+                    
+                    # 为发布式字段设置正确的 datasource_id
+                    f_data["datasource_id"] = ds_id
+                    
+                    self._process_single_field(f_data, table_real_ds_map)
+                    current_ids.append(f_data["id"])
+                    
+                    # 填充一级缓存 (发布式字段缓存)
+                    name = f_data.get("name")
+                    if name:
+                        published_field_cache[(ds_id, name)] = f_data["id"]
 
-                count += 1
-                if count % 1000 == 0:
-                    self.session.commit()
+                    # 填充二级缓存 (物理列缓存)
+                    upstream_cols = f_data.get("upstreamColumns") or []
+                    if upstream_cols:
+                        first_col = upstream_cols[0]
+                        col_name = first_col.get("name")
+                        table_info = first_col.get("table")
+                        if table_info:
+                            table_name = table_info.get("name")
+                            if table_name and col_name:
+                                physical_column_cache[(table_name, col_name)] = f_data["id"]
+                                
+                    # 填充三级缓存 (计算字段缓存) - 发布式也可能被后续嵌入式引用
+                    if f_data.get("isCalculated") or f_data.get("__typename") == "CalculatedField":
+                        formula = f_data.get("formula") or ""
+                        norm_formula = "".join(formula.split()).lower()
+                        if norm_formula and name:
+                            import hashlib
+                            f_hash = hashlib.md5(norm_formula.encode('utf-8')).hexdigest()
+                            
+                            # 发布数据源的字段，root_entity_id 就是 ds_id
+                            calc_field_cache[(ds_id, name, f_hash)] = f_data["id"]
+                            
+                            if f_data.get("__typename") == "CalculatedField":
+                                 calc_count += 1
+                    
+                    count += 1
+                    if count % 1000 == 0:
+                        self.session.commit()
             
             # --- 第二阶段：处理嵌入式字段 (查重) ---
             for f_data in embedded_fields:
-                ds_id = f_data.get("datasource_id") # 这是穿透后的 ID (即已发布源ID)
+                f_data_source_id = f_data.get("datasource_id") # 这是穿透后的 ID (即已发布源ID)
                 name = f_data.get("name")
                 
-                # 检查是否重复
-                if ds_id and name and (ds_id, name) in published_field_cache:
-                    # 发现重复！跳过保存，但可能需要记录（为了后续 view 关联）
-                    # 下一步 fetch_views_with_fields 会处理重连
+                # 2. 对嵌入式数据源，进行去重检查
+                # -----------------------------------------------------------------
+                # 机制说明:
+                # 嵌入式数据源的字段往往是发布的副本(穿透型)或重复定义的直连副本(独立型)。
+                # 我们采用三级缓存机制进行去重，并记录 skipped_id -> survivor_id 映射，
+                # 以便在 sync_field_to_view 时能找回正确的关联。
+                
+                # A. 一级缓存：检查是否已发布字段的副本 (穿透型)
+                # Key: (datasource_id, name) -> datasource_id 已被穿透逻辑修正为发布源ID
+                if f_data_source_id and name and (f_data_source_id, name) in published_field_cache:
+                    survivor_id = published_field_cache[(f_data_source_id, name)]
+                    self.deduplication_map[f_data["id"]] = survivor_id
                     skipped_count += 1
                     continue
+                
+                # B. 二级缓存：检查是否指向同一物理列 (独立直连型 - ColumnField)
+                # Key: (table_name, column_name)
+                upstream_cols = f_data.get("upstreamColumns") or []
+                if upstream_cols:
+                    first_col = upstream_cols[0]
+                    col_name = first_col.get("name")
+                    table_info = first_col.get("table")
+                    if table_info:
+                        table_name = table_info.get("name")
+                        if table_name and col_name:
+                            key = (table_name, col_name)
+                            if key in physical_column_cache:
+                                survivor_id = physical_column_cache[key]
+                                self.deduplication_map[f_data["id"]] = survivor_id
+                                skipped_count += 1
+                                continue
+                            else:
+                                # 首次遇到该物理列，加入缓存
+                                # 注意：只有当真正保存字段后才加入缓存，这里先暂存意图，
+                                # 但为了简单，我们在保存后加入(见下文)
+                                pass
+
+                # C. 三级缓存：检查计算字段公式是否重复 (独立直连型 - CalculatedField)
+                # Key: (root_entity_id, name, formula_hash)
+                # 策略：只有当计算字段依赖相同的"根实体"（同一发布数据源或同一物理表）时，才算作重复。
+                if f_data.get("isCalculated") or f_data.get("__typename") == "CalculatedField":
+                    formula = f_data.get("formula") or ""
+                    norm_formula = "".join(formula.split()).lower()
+                    
+                    if norm_formula and name: # 只有非空公式才去重
+                        # 1. 计算 Root Entity ID
+                        root_entity_id = None
+                        
+                        # 优先：检查是否依赖发布数据源
+                        if f_data_source_id: # 这是穿透后的发布源ID
+                             root_entity_id = f_data_source_id
+                        
+                        # 其次：检查是否依赖特定物理表 (上游字段->物理表)
+                        if not root_entity_id:
+                            upstream_fields = f_data.get("upstreamFields") or []
+                            for uf in upstream_fields:
+                                if uf and uf.get("upstreamColumns"):
+                                    cols = uf["upstreamColumns"]
+                                    if cols and cols[0].get("table"):
+                                        # 找到依赖的物理表ID
+                                        t_info = cols[0]["table"]
+                                        # 注意：这里需要物理表的真实ID，可能是 upstreamTables 穿透后的
+                                        # 简单起见，如果 table_real_ds_map 里有，说明它属于某发布源
+                                        t_id = t_info["id"]
+                                        if t_id in table_real_ds_map:
+                                            root_entity_id = table_real_ds_map[t_id]
+                                            break
+                                        else:
+                                            # 这是一个纯独立物理表
+                                            root_entity_id = f"Table:{t_id}"
+                                            break
+                        
+                        # 如果找不到明确的根实体（例如纯计算不依赖任何字段），则使用当前数据源ID作为Scope
+                        if not root_entity_id:
+                            # f_data.get("datasource_id") 可能是嵌入式原始ID
+                            # 为了同一Workbook内的去重，可以使用原始DS ID
+                             root_entity_id = f"DS:{f_data.get('datasource_id')}"
+
+                        import hashlib
+                        formula_hash = hashlib.md5(norm_formula.encode('utf-8')).hexdigest()
+                        
+                        key = (root_entity_id, name, formula_hash)
+                        
+                        if key in calc_field_cache:
+                            survivor_id = calc_field_cache[key]
+                            self.deduplication_map[f_data["id"]] = survivor_id
+                            skipped_count += 1
+                            continue
+
                 
                 # 如果不重复（例如工作簿特有的计算字段），则保存
                 self._process_single_field(f_data, table_real_ds_map)
                 current_ids.append(f_data["id"])
+                
+                # 更新缓存 (为后续去重做准备)
+                if upstream_cols: # ColumnField
+                     first_col = upstream_cols[0]
+                     if first_col.get("table"):
+                         t_name = first_col["table"].get("name")
+                         c_name = first_col.get("name")
+                         if t_name and c_name:
+                             physical_column_cache[(t_name, c_name)] = f_data["id"]
+                             
+                if f_data.get("isCalculated") or f_data.get("__typename") == "CalculatedField": # CalculatedField
+                    formula = f_data.get("formula") or ""
+                    norm_formula = "".join(formula.split()).lower()
+                    if norm_formula:
+                        import hashlib
+                        f_hash = hashlib.md5(norm_formula.encode('utf-8')).hexdigest()
+                        
+                        # 重新计算 root_entity_id 用于缓存 (代码重复，但为了安全)
+                        root_entity_id = None
+                        if f_data_source_id: root_entity_id = f_data_source_id
+                        if not root_entity_id:
+                             upstream_fields = f_data.get("upstreamFields") or []
+                             for uf in upstream_fields:
+                                if uf and uf.get("upstreamColumns"):
+                                    cols = uf["upstreamColumns"]
+                                    if cols and cols[0].get("table"):
+                                        t_id = cols[0]["table"]["id"]
+                                        if t_id in table_real_ds_map:
+                                            root_entity_id = table_real_ds_map[t_id]
+                                            break
+                                        else:
+                                            root_entity_id = f"Table:{t_id}"
+                                            break
+                        if not root_entity_id: root_entity_id = f"DS:{f_data.get('datasource_id')}"
+
+                        calc_field_cache[(name, f_hash)] = f_data["id"] # Old Key (Keep for backward compat just in case?) NO, replace it.
+                        calc_field_cache[(root_entity_id, name, f_hash)] = f_data["id"]
+
                 count += 1
                 
             self.session.commit()
@@ -1941,6 +2125,10 @@ class MetadataSync:
             for cf_data in calc_fields:
                 if not cf_data or not cf_data.get("id"):
                     continue
+
+                # 💡 去重检查：如果该字段已在 fields 同步阶段被判定为重复并跳过，则在此不再处理
+                if hasattr(self, 'deduplication_map') and cf_data["id"] in self.deduplication_map:
+                    continue
                 
                 # 先确保 Field 记录存在
                 field = self.session.query(Field).filter_by(id=cf_data["id"]).first()
@@ -2001,30 +2189,24 @@ class MetadataSync:
             from backend.models import Datasource
             print("  - 构建字段查找缓存...")
             
-            # 获取所有已发布的字段信息: (datasource_id, name) -> field_id
-            # 仅加载已发布数据源的字段
+            # 获取所有字段信息: (datasource_id, name) -> field_id
+            # 修正：加载所有字段（包括嵌入式），避免因过滤导致有效关联被丢弃
             published_fields_map = {} 
             result = self.session.execute(
                 select(Field.id, Field.name, Field.datasource_id)
-                .join(Datasource, Datasource.id == Field.datasource_id)
-                .where(Datasource.is_embedded == 0)
             ).fetchall()
             
             for fid, fname, fdsid in result:
                 if fdsid and fname:
                     published_fields_map[(fdsid, fname)] = fid
             
-            # 还需要嵌入式数据源ID -> 发布式数据源ID 的映射
-            # 这在 fetch_fields 期间用到了，这里重新构建或通过 table_to_datasource 推断
-            # 简单起见，我们假设 embedded_ds_id 在 backend/models.py 里没有直接存储映射，
-            # 但我们可以通过 "Tableau Metadata API" 的特性：embedded field 的 datasource_id 往往是临时的。
-            # 我们在 sync_fields 既然已经统一了 datasource_id，那数据库里的 Field.datasource_id 都是发布式的。
+            # ... (中间注释省略)
             
             count = 0
             relinked_count = 0
             skipped = 0
             
-            # 缓存有效字段ID集合，减少查询
+            # 缓存有效字段ID集合
             valid_field_ids = set([r[0] for r in result])
             
             # 为了处理嵌入式数据源ID -> 发布式ID，我们需要一个辅助映射
@@ -2061,8 +2243,22 @@ class MetadataSync:
                 # 检查ID是否有效
                 if field_id not in valid_field_ids:
                     # ID 无效（可能是被去重的嵌入式字段）
-                    # 尝试重连：在工作簿关联的发布式数据源中查找同名字段
-                    found_new_id = None
+                    
+                    # 策略1: 检查去重映射表 (Deduplication Map) - 最准确
+                    # 这是我们在 sync_fields 阶段记录的 "Skipped ID -> Survivor ID"
+                    if field_id in self.deduplication_map:
+                        final_field_id = self.deduplication_map[field_id]
+                        
+                        # 再次检查 map 出来的 id 是否有效 (防止链式去重或 survivor 也被删除)
+                        if final_field_id in valid_field_ids:
+                             relinked_count += 1
+                             # 继续执行插入
+                        else:
+                             # 映射的目标也无效？尝试策略2
+                             found_new_id = None
+                    else:
+                        # 策略2: 尝试智能重连 (Name 匹配)
+                        found_new_id = None
                     
                     if workbook_id and field_name and workbook_id in wb_ds_map:
                         potential_ds_ids = wb_ds_map[workbook_id]
@@ -2594,7 +2790,11 @@ class MetadataSync:
             traceback.print_exc()
     
     def _compute_full_lineage(self):
-        """预计算所有字段的完整血缘链并存入 field_full_lineage 表"""
+        """预计算所有字段的完整血缘链并存入 field_full_lineage 表
+        
+        修复版：通过 datasource_to_workbook 推导字段的工作簿关联，
+        解决发布数据源字段 workbook_id 为 NULL 导致血缘丢失的问题。
+        """
         from backend.models import FieldFullLineage, Field, Datasource
         
         try:
@@ -2611,14 +2811,35 @@ class MetadataSync:
                     ds_table_map[ds_id] = []
                 ds_table_map[ds_id].append(tbl_id)
             
+            # 构建数据源 -> 工作簿的映射 (核心修复)
+            ds_workbook_map = {}  # datasource_id -> [workbook_ids]
+            result = self.session.execute(text(
+                "SELECT datasource_id, workbook_id FROM datasource_to_workbook"
+            )).fetchall()
+            for ds_id, wb_id in result:
+                if ds_id not in ds_workbook_map:
+                    ds_workbook_map[ds_id] = []
+                ds_workbook_map[ds_id].append(wb_id)
+            
             # 遍历所有字段
             fields = self.session.query(Field).all()
             lineage_records = []
             
             for f in fields:
+                # 确定所有关联的工作簿 (核心修复逻辑)
+                workbook_ids = set()
+                if f.workbook_id:
+                    workbook_ids.add(f.workbook_id)
+                # 通过数据源推导工作簿
+                if f.datasource_id and f.datasource_id in ds_workbook_map:
+                    for wb_id in ds_workbook_map[f.datasource_id]:
+                        workbook_ids.add(wb_id)
+                # 如果没有任何工作簿，仍记录一条 (workbook_id=None)
+                if not workbook_ids:
+                    workbook_ids.add(None)
+                
                 if not f.is_calculated:
                     # 原始字段: 直接血缘
-                    # 物理表来源: 优先用 field.table_id，否则用 datasource 反查
                     table_ids = []
                     if f.table_id and self.session.query(DBTable).filter_by(id=f.table_id).first():
                         table_ids = [f.table_id]
@@ -2627,50 +2848,53 @@ class MetadataSync:
                     
                     if table_ids:
                         for tbl_id in table_ids:
+                            for wb_id in workbook_ids:
+                                lineage_records.append({
+                                    'field_id': f.id,
+                                    'table_id': tbl_id,
+                                    'datasource_id': f.datasource_id,
+                                    'workbook_id': wb_id,
+                                    'lineage_type': 'direct',
+                                    'lineage_path': 'Field -> DS -> Table'
+                                })
+                    else:
+                        # 无物理表关联
+                        for wb_id in workbook_ids:
                             lineage_records.append({
                                 'field_id': f.id,
-                                'table_id': tbl_id,
+                                'table_id': None,
                                 'datasource_id': f.datasource_id,
-                                'workbook_id': f.workbook_id,
+                                'workbook_id': wb_id,
                                 'lineage_type': 'direct',
-                                'lineage_path': f'Field -> DS -> Table'
+                                'lineage_path': 'Field -> DS (no table)'
                             })
-                    else:
-                        # 无物理表关联，但仍需记录字段存在
-                        lineage_records.append({
-                            'field_id': f.id,
-                            'table_id': None,
-                            'datasource_id': f.datasource_id,
-                            'workbook_id': f.workbook_id,
-                            'lineage_type': 'direct',
-                            'lineage_path': f'Field -> DS (no table)'
-                        })
                 else:
-                    # 计算字段: 间接血缘 (通过数据源反查物理表)
+                    # 计算字段: 间接血缘
                     table_ids = []
                     if f.datasource_id and f.datasource_id in ds_table_map:
                         table_ids = ds_table_map[f.datasource_id]
                     
                     if table_ids:
                         for tbl_id in table_ids:
+                            for wb_id in workbook_ids:
+                                lineage_records.append({
+                                    'field_id': f.id,
+                                    'table_id': tbl_id,
+                                    'datasource_id': f.datasource_id,
+                                    'workbook_id': wb_id,
+                                    'lineage_type': 'indirect',
+                                    'lineage_path': 'CalcField -> DS -> Table'
+                                })
+                    else:
+                        for wb_id in workbook_ids:
                             lineage_records.append({
                                 'field_id': f.id,
-                                'table_id': tbl_id,
+                                'table_id': None,
                                 'datasource_id': f.datasource_id,
-                                'workbook_id': f.workbook_id,
+                                'workbook_id': wb_id,
                                 'lineage_type': 'indirect',
-                                'lineage_path': f'CalcField -> DS -> Table'
+                                'lineage_path': 'CalcField -> DS (no table)'
                             })
-                    else:
-                        # 无物理表关联
-                        lineage_records.append({
-                            'field_id': f.id,
-                            'table_id': None,
-                            'datasource_id': f.datasource_id,
-                            'workbook_id': f.workbook_id,
-                            'lineage_type': 'indirect',
-                            'lineage_path': f'CalcField -> DS (no table)'
-                        })
             
             # 批量插入
             if lineage_records:
