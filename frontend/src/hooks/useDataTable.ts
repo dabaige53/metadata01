@@ -79,6 +79,15 @@ export function useDataTable<T extends Record<string, any>>({
     setSearchTerm(initialSearch);
   }, [initialSearch]);
 
+  // 修改：添加防抖逻辑
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setAppliedSearchTerm(searchTerm);
+    }, 500); // 500ms 防抖
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   // 计算 Facets
   const facets = useMemo<FacetConfig>(() => {
     if (serverSide && facetsOverride) return facetsOverride;
@@ -236,7 +245,7 @@ export function useDataTable<T extends Record<string, any>>({
   const handleClearAllFilters = useCallback(() => {
     setActiveFilters({});
     setSearchTerm('');
-    setAppliedSearchTerm('');
+    // setAppliedSearchTerm(''); // 由防抖 Effect 处理
     setCurrentPage(1);
   }, []);
 

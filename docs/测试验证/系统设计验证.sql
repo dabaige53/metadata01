@@ -322,6 +322,26 @@ ORDER BY COUNT(*) DESC
 LIMIT 5;
 
 
+-- 7.6 物理表列信息缺失(B1)
+-- 问题: 物理表 (is_embedded=0) 必须包含至少一个列信息，否则字段无法追溯到列级。
+SELECT 
+    '物理表列信息缺失(B1)' as 验证内容,
+    COUNT(*) as 异常数,
+    '物理表必须包含列信息' as 规则
+FROM tables t
+WHERE t.is_embedded = 0
+  AND NOT EXISTS (SELECT 1 FROM db_columns c WHERE c.table_id = t.id);
+
+-- 7.7 表引用字段无关联(D)
+-- 问题: 表引用类型字段 (如"日期表") 必须关联到对应的数据表。
+SELECT 
+    '表引用字段无关联(D)' as 验证内容,
+    COUNT(*) as 异常数,
+    '表引用字段必须关联表' as 规则
+FROM fields f
+WHERE f.name IN ('日期表', '航司表', 'DIM-进港', '春运日期表')
+  AND table_id IS NULL;
+
 -- ================================================================
 -- 8. 字段归属完整性验证 (Field Container Integrity)
 -- 目的: 验证字段是否正确归属于数据源或工作簿

@@ -586,13 +586,9 @@ class TableauMetadataClient:
                                 remoteType
                                 table {{
                                     id
+                                    name
                                     __typename
-                                    ... on EmbeddedTable {{
-                                        upstreamTables {{
-                                            id
-                                            name
-                                        }}
-                                    }}
+
                                     ... on CustomSQLTable {{
                                         upstreamTables {{
                                             id
@@ -621,12 +617,7 @@ class TableauMetadataClient:
                                             id
                                             name
                                             __typename
-                                            ... on EmbeddedTable {{
-                                                upstreamTables {{
-                                                    id
-                                                    name
-                                                }}
-                                            }}
+
                                             ... on CustomSQLTable {{
                                                 upstreamTables {{
                                                     id
@@ -660,12 +651,7 @@ class TableauMetadataClient:
                                     id
                                     name
                                     __typename
-                                    ... on EmbeddedTable {{
-                                        upstreamTables {{
-                                            id
-                                            name
-                                        }}
-                                    }}
+
                                     ... on CustomSQLTable {{
                                         upstreamTables {{
                                             id
@@ -1716,6 +1702,8 @@ class MetadataSync:
 
     def _process_single_field(self, f_data, table_real_ds_map):
         """辅助：处理单个字段的保存逻辑"""
+        from backend.models import DBTable, DBColumn
+
         # 获取/创建 Field 记录
         field = self.session.query(Field).filter_by(id=f_data["id"]).first()
         if not field:
@@ -1813,10 +1801,45 @@ class MetadataSync:
                     field.upstream_column_id = first_col.get("id")
                     field.upstream_column_name = first_col.get("name")
                     
-                    # 从本地 DBColumn 获取 Remote Type (避免 API schema 错误)
+                    # B1 Fix: 尝试补全缺失的物理列
                     if field.upstream_column_id:
-                        from backend.models import DBColumn
                         db_col = self.session.query(DBColumn).filter_by(id=field.upstream_column_id).first()
+                        
+                        # 如果本地没有该列，但我们知道它属于某张表，则创建该表和列
+                        if not db_col and first_col.get("table") and first_col["table"].get("id"):
+                            try:
+                                real_table_id = first_col["table"]["id"]
+                                # 确保表存在
+                                real_table_id = first_col["table"]["id"]
+                                table_typename = first_col["table"].get("__typename")
+                                
+                                # 确保表存在，如果不存在则创建
+                                real_table = self.session.query(DBTable).filter_by(id=real_table_id).first()
+                                new_name = first_col["table"].get("name")
+                                
+                                if not real_table:
+                                    real_table = DBTable(id=real_table_id)
+                                    real_table.name = new_name or "Unknown Table"
+                                    # 如果是 DatabaseTable，则认为是物理表；否则 (EmbeddedTable等) 为嵌入表
+                                    real_table.is_embedded = (table_typename != "DatabaseTable")
+                                    self.session.add(real_table)
+                                    print(f"    🔨 补全缺失表: {real_table.name} (Type: {table_typename})")
+                                elif real_table.name == "Unknown Table" and new_name:
+                                    real_table.name = new_name
+                                    print(f"    🔨 更新缺失表名: {real_table.name}")
+
+                                # 创建补全列
+                                new_col = DBColumn(id=field.upstream_column_id)
+                                new_col.name = field.upstream_column_name
+                                new_col.remote_type = first_col.get("remoteType")
+                                new_col.table_id = real_table_id
+                                self.session.add(new_col)
+                                self.session.flush() # 立即提交
+                                print(f"    🔨 修复缺失物理列: {new_col.name} -> {real_table.name}")
+                                db_col = new_col
+                            except Exception as e:
+                                print(f"    ⚠️ 修复物理列/表失败: {e}")
+
                         if db_col and db_col.remote_type:
                             field.remote_type = db_col.remote_type
                     
@@ -1872,6 +1895,17 @@ class MetadataSync:
             
             calc_field.name = f_data.get("name") or ""
             calc_field.formula = f_data.get("formula") or ""
+
+        # D Fix: 如果此时还没有 table_id，尝试通过名称匹配物理表
+        if not field.table_id and field.name:
+            # 仅当字段名与现有物理表名完全一致时关联
+            # 排除常见的通用名称
+            ignored_names = [":Measure Names", "Measure Values", "Number of Records", "记录数"]
+            if field.name not in ignored_names:
+                matched_table = self.session.query(DBTable).filter_by(name=field.name).first()
+                if matched_table:
+                    field.table_id = matched_table.id
+                    print(f"    🔨 修复无关联表字段: {field.name} -> 关联到表 {matched_table.name}")
 
     def _get_physical_table_id(self, table_info):
         """尝试从 Table 对象（可能是 EmbeddedTable 或 CustomSQLTable）中提取物理 Table ID"""

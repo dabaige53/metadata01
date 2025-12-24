@@ -715,7 +715,14 @@ def get_tables():
         query = query.order_by(DBTable.name.desc() if order == 'desc' else DBTable.name.asc())
     elif sort == 'schema':
         query = query.order_by(DBTable.schema.desc() if order == 'desc' else DBTable.schema.asc())
-    
+    elif sort == 'field_count':
+        # 使用子查询或 Join 进行排序
+        query = query.outerjoin(Field, DBTable.id == Field.table_id).group_by(DBTable.id)
+        if order == 'desc':
+            query = query.order_by(func.count(Field.id).desc())
+        else:
+            query = query.order_by(func.count(Field.id).asc())
+
     # 总数和分页
     total_count = query.count()
     tables = query.limit(page_size).offset(offset).all()
@@ -796,10 +803,6 @@ def get_tables():
             'dimensions': [f'维度字段 ({dimension_count}个)'] if dimension_count > 0 else []
         }
         results.append(data)
-
-    # 内存排序 field_count
-    if sort == 'field_count':
-        results.sort(key=lambda x: x.get('field_count', 0), reverse=(order == 'desc'))
 
     return jsonify({
         'items': results,
@@ -1010,6 +1013,16 @@ def get_datasources():
         query = query.order_by(Datasource.name.desc() if order == 'desc' else Datasource.name.asc())
     elif sort == 'project_name':
         query = query.order_by(Datasource.project_name.desc() if order == 'desc' else Datasource.project_name.asc())
+    elif sort == 'table_count':
+        query = query.order_by(Datasource.table_count.desc() if order == 'desc' else Datasource.table_count.asc())
+    elif sort == 'workbook_count':
+        query = query.order_by(Datasource.workbook_count.desc() if order == 'desc' else Datasource.workbook_count.asc())
+    elif sort == 'last_refresh':
+        query = query.order_by(Datasource.extract_last_refresh_time.desc() if order == 'desc' else Datasource.extract_last_refresh_time.asc())
+    else:
+        # 默认排序
+        query = query.order_by(Datasource.name.asc())
+
     total_count = query.count()
     offset = (page - 1) * page_size
     
@@ -1031,13 +1044,14 @@ def get_datasources():
         view_map = {row[0]: row[1] for row in view_stats}
     else:
         view_map = {}
-
+ 
     results = []
     for ds in datasources:
         data = ds.to_dict()
-        data['table_count'] = len(ds.tables)
-        data['field_count'] = len(ds.fields)
-        data['workbook_count'] = len(ds.workbooks)
+        # 使用预计算字段
+        data['table_count'] = ds.table_count or 0
+        data['field_count'] = ds.field_count or 0
+        data['workbook_count'] = ds.workbook_count or 0
         data['view_count'] = view_map.get(ds.id, 0)
         # 优化：不返回完整的关联对象列表，仅返回数量以减少 payload
         # 如果前端需要详情，应使用详情接口
@@ -1265,12 +1279,27 @@ def get_workbooks():
     """获取工作簿列表 - 增加动态统计"""
     session = g.db_session
     search = request.args.get('search', '')
-    sort = request.args.get('sort', 'name')
+    sort = request.args.get('sort', 'name') # 默认按名称排序
     order = request.args.get('order', 'asc')
     
     query = session.query(Workbook)
     if search: query = query.filter(Workbook.name.ilike(f'%{search}%'))
     
+    # SQL 级别排序
+    if sort == 'viewCount':
+        if order == 'desc':
+            query = query.order_by(Workbook.view_count.desc())
+        else:
+            query = query.order_by(Workbook.view_count.asc())
+    elif sort == 'name':
+        if order == 'desc':
+            query = query.order_by(Workbook.name.desc())
+        else:
+            query = query.order_by(Workbook.name.asc())
+    else:
+        # 默认排序
+        query = query.order_by(Workbook.name.asc())
+
     # 分页参数
     page = request.args.get('page', 1, type=int)
     page_size = request.args.get('page_size', 50, type=int)
@@ -1283,15 +1312,9 @@ def get_workbooks():
     for wb in workbooks:
         data = wb.to_dict()
         data['upstream_datasources'] = [ds.name for ds in wb.datasources]
-        # 直接使用预计算字段（由 tableau_sync.py 的 calculate_stats 写入）
         results.append(data)
-
         
-    # 内存排序，支持 viewCount（视图数已经在 to_dict 里或者被赋值过，但这里需要确保排序逻辑）
-    if sort == 'viewCount':
-        results.sort(key=lambda x: x.get('viewCount', 0), reverse=(order == 'desc'))
-    elif sort == 'name':
-        results.sort(key=lambda x: x.get('name', ''), reverse=(order == 'desc'))
+    # 移除之前的内存排序逻辑 (已改为 SQL 排序)
 
     # Facets 统计
     from sqlalchemy import text
@@ -1596,12 +1619,17 @@ def get_views():
         
     total = query.count()
     
-    # 排序：默认按 ID 排序，也可以按名称
-    # 仪表盘在前?
-    if include_standalone == 'true':
-        # 优先显示仪表盘，然后是独立视图
-        from sqlalchemy import desc
-        query = query.order_by(View.view_type.asc(), View.name.asc()) # dashboard < sheet (alphabetically d < s)
+    # 排序
+    sort = request.args.get('sort', '')
+    order = request.args.get('order', 'asc')
+
+    if sort == 'total_view_count':
+        query = query.order_by(View.total_view_count.desc() if order == 'desc' else View.total_view_count.asc())
+    elif sort == 'name':
+         query = query.order_by(View.name.desc() if order == 'desc' else View.name.asc())
+    elif include_standalone == 'true':
+        # 默认：优先显示仪表盘，然后是独立视图
+        query = query.order_by(View.view_type.asc(), View.name.asc()) # dashboard < sheet
     else:
         query = query.order_by(View.name.asc())
     
