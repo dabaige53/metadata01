@@ -223,9 +223,16 @@ export default function DetailDrawer() {
             if (data.full_fields && data.full_fields.length > 0) {
                 tabs.push({ id: 'fields', label: `包含字段 (${data.full_fields.length})`, icon: Columns });
             }
-            // 关联数据源 - 只有有数据源时才显示
-            if (data.datasources && data.datasources.length > 0) {
-                tabs.push({ id: 'datasources', label: `关联数据源 (${data.datasources.length})`, icon: Layers });
+            // 关联数据源 - 按嵌入式/非嵌入式拆分为两个Tab
+            const dsList = data.datasources || [];
+            const publishedDs = dsList.filter((ds: any) => !ds.is_embedded);
+            const embeddedDs = dsList.filter((ds: any) => ds.is_embedded);
+
+            if (publishedDs.length > 0) {
+                tabs.push({ id: 'datasources', label: `数据源 (${publishedDs.length})`, icon: Layers });
+            }
+            if (embeddedDs.length > 0) {
+                tabs.push({ id: 'embedded_datasources', label: `嵌入式数据源 (${embeddedDs.length})`, icon: Copy });
             }
             // 关联工作簿 - 针对表直接关联的工作簿（包含直连和通过数据源关联）
             if (data.workbooks && data.workbooks.length > 0) {
@@ -252,10 +259,23 @@ export default function DetailDrawer() {
                 tabs.push({ id: 'deps', label: `依赖字段 (${deps.length})`, icon: Columns });
             }
 
-            // 所属数据源 - 使用聚合的所有同名字段数据源
+            // 所属数据源 - 按嵌入式/已发布拆分
             const allDs = data.all_datasources || data.related_datasources || [];
-            const dsCount = allDs.length > 0 ? allDs.length : (data.datasource_info ? 1 : 0);
-            tabs.push({ id: 'datasources', label: `所属数据源 (${dsCount})`, icon: Layers });
+            const fldPublishedDs = allDs.filter((ds: any) => !ds.is_embedded);
+            const fldEmbeddedDs = allDs.filter((ds: any) => ds.is_embedded);
+
+            // 如果 allDs 为空，尝试从单条 datasource_info 补充
+            const hasDirectDs = data.datasource_info;
+            const isDirectDsEmbedded = data.datasource_info?.is_embedded;
+
+            if (fldPublishedDs.length > 0 || (hasDirectDs && !isDirectDsEmbedded)) {
+                const pubCount = fldPublishedDs.length > 0 ? fldPublishedDs.length : 1;
+                tabs.push({ id: 'datasources', label: `数据源 (${pubCount})`, icon: Layers });
+            }
+            if (fldEmbeddedDs.length > 0 || (hasDirectDs && isDirectDsEmbedded)) {
+                const embCount = fldEmbeddedDs.length > 0 ? fldEmbeddedDs.length : 1;
+                tabs.push({ id: 'embedded_datasources', label: `嵌入式数据源 (${embCount})`, icon: Copy });
+            }
 
             // 影响指标 - 始终显示（仅对普通字段有意义，计算字段一般不被其他指标引用）
             const m_down = data.used_by_metrics || [];
@@ -277,9 +297,16 @@ export default function DetailDrawer() {
         }
 
         if (type === 'datasources') {
-            // 原始表 - 只有有关联表时才显示
-            if (data.tables && data.tables.length > 0) {
-                tabs.push({ id: 'tables', label: `原始表 (${data.tables.length})`, icon: Table2 });
+            // 原始表 - 按嵌入式/非嵌入式拆分为两个Tab
+            const tablesList = data.tables || [];
+            const physicalTables = tablesList.filter((t: any) => !t.is_embedded);
+            const embeddedTables = tablesList.filter((t: any) => t.is_embedded);
+
+            if (physicalTables.length > 0) {
+                tabs.push({ id: 'tables', label: `数据表 (${physicalTables.length})`, icon: Table2 });
+            }
+            if (embeddedTables.length > 0) {
+                tabs.push({ id: 'embedded_tables', label: `嵌入式表 (${embeddedTables.length})`, icon: Copy });
             }
             // 包含字段 - 只有有字段时才显示
             if (data.full_fields && data.full_fields.length > 0) {
@@ -304,13 +331,28 @@ export default function DetailDrawer() {
             if (data.views && data.views.length > 0) {
                 tabs.push({ id: 'views', label: `视图/看板 (${data.views.length})`, icon: Layout });
             }
-            // 使用数据源 - 只有有上游数据源时才显示
-            if (data.datasources && data.datasources.length > 0) {
-                tabs.push({ id: 'datasources', label: `使用数据源 (${data.datasources.length})`, icon: Layers });
+            // 使用数据源 - 按嵌入式/已发布拆分
+            const wbDsList = data.datasources || [];
+            const wbPublishedDs = wbDsList.filter((ds: any) => !ds.is_embedded);
+            const wbEmbeddedDs = wbDsList.filter((ds: any) => ds.is_embedded);
+
+            if (wbPublishedDs.length > 0) {
+                tabs.push({ id: 'datasources', label: `数据源 (${wbPublishedDs.length})`, icon: Layers });
             }
-            // 关联数据表 - 针对工作簿直接或间接使用的物理表
-            if (data.tables && data.tables.length > 0) {
-                tabs.push({ id: 'tables', label: `关联数据表 (${data.tables.length})`, icon: Table2 });
+            if (wbEmbeddedDs.length > 0) {
+                tabs.push({ id: 'embedded_datasources', label: `嵌入式数据源 (${wbEmbeddedDs.length})`, icon: Copy });
+            }
+
+            // 关联数据表 - 按物理/嵌入式拆分
+            const wbTablesList = data.tables || [];
+            const wbPhysicalTables = wbTablesList.filter((t: any) => !t.is_embedded);
+            const wbEmbeddedTables = wbTablesList.filter((t: any) => t.is_embedded);
+
+            if (wbPhysicalTables.length > 0) {
+                tabs.push({ id: 'tables', label: `数据表 (${wbPhysicalTables.length})`, icon: Table2 });
+            }
+            if (wbEmbeddedTables.length > 0) {
+                tabs.push({ id: 'embedded_tables', label: `嵌入式表 (${wbEmbeddedTables.length})`, icon: Copy });
             }
             // 使用字段 - 只有有字段使用时才显示
             if (data.used_fields && data.used_fields.length > 0) {
@@ -1312,8 +1354,14 @@ export default function DetailDrawer() {
             case 'usage': return renderUsageTab();
 
             // 数据库相关
-            case 'tables':
-                return renderAssetSection(activeTab === 'tables' ? '包含的数据表' : '来源物理表', Table2, data.tables || [], 'tables', 'blue');
+            case 'tables': {
+                const physicalTables = (data.tables || []).filter((t: any) => !t.is_embedded);
+                return renderAssetSection('数据表', Table2, physicalTables, 'tables', 'blue');
+            }
+            case 'embedded_tables': {
+                const embeddedTables = (data.tables || []).filter((t: any) => t.is_embedded);
+                return renderAssetSection('嵌入式表', Copy, embeddedTables, 'tables', 'purple');
+            }
 
             // 表相关
             case 'db':
@@ -1380,8 +1428,18 @@ export default function DetailDrawer() {
                 return renderAssetSection('所属工作簿', BookOpen, data.workbook_info ? [data.workbook_info] : [], 'workbooks', 'red');
 
             // 架构容器相关
-            case 'datasources':
-                return renderAssetSection('关联数据源', Layers, data.datasources || [], 'datasources', 'indigo');
+            case 'datasources': {
+                const pubDsItems = (data.datasources || data.all_datasources || data.related_datasources || []).filter((ds: any) => !ds.is_embedded);
+                // 兜底单体 datasource_info
+                const items = pubDsItems.length > 0 ? pubDsItems : (data.datasource_info && !data.datasource_info.is_embedded ? [data.datasource_info] : []);
+                return renderAssetSection('数据源', Layers, items, 'datasources', 'indigo');
+            }
+            case 'embedded_datasources': {
+                const embDsItems = (data.datasources || data.all_datasources || data.related_datasources || []).filter((ds: any) => ds.is_embedded);
+                // 兜底单体 datasource_info
+                const items = embDsItems.length > 0 ? embDsItems : (data.datasource_info && data.datasource_info.is_embedded ? [data.datasource_info] : []);
+                return renderAssetSection('嵌入式数据源', Copy, items, 'datasources', 'purple');
+            }
             case 'fields':
                 const fieldItems = (data.full_fields || data.used_fields || []).map((f: any) => ({
                     ...f,

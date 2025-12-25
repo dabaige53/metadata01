@@ -164,7 +164,8 @@ def get_datasource_detail(ds_id):
             'full_name': t.full_name,
             'database_id': t.database_id,
             'database_name': t.database.name if t.database else None,
-            'column_count': len(t.columns) if t.columns else 0
+            'column_count': len(t.columns) if t.columns else 0,
+            'is_embedded': t.is_embedded
         })
     data['tables'] = tables_data
 

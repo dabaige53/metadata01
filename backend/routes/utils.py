@@ -17,7 +17,9 @@ from ..config import Config
 
 def build_tableau_url(asset_type: str, path: Optional[str] = None, uri: Optional[str] = None, 
                       luid: Optional[str] = None, asset_id: Optional[str] = None, 
-                      vizportal_url_id: Optional[str] = None) -> Optional[str]:
+                      vizportal_url_id: Optional[str] = None, 
+                      is_embedded: bool = False,
+                      datasource_vizportal_url_id: Optional[str] = None) -> Optional[str]:
     """
     构建 Tableau Server 在线查看 URL
     
@@ -28,6 +30,8 @@ def build_tableau_url(asset_type: str, path: Optional[str] = None, uri: Optional
         luid: 资产的 LUID
         asset_id: 资产 ID
         vizportal_url_id: Vizportal URL ID (最准确的 ID，优先使用)
+        is_embedded: 是否为嵌入式资产（如嵌入式表、自定义SQL查询）
+        datasource_vizportal_url_id: 关联数据源的 Vizportal URL ID（用于嵌入式表）
     
     返回:
         Tableau Server 在线查看 URL，或 None
@@ -65,7 +69,17 @@ def build_tableau_url(asset_type: str, path: Optional[str] = None, uri: Optional
             return f"{base_url}/#/catalog/databases/{db_id}/tables"
     
     if asset_type == 'table':
-        table_id = asset_id or luid
+        # 嵌入式表（如自定义SQL查询）在Tableau Catalog中没有独立页面
+        # 需要通过其关联的数据源来访问
+        if is_embedded:
+            # 如果有关联的数据源，链接到数据源页面
+            if datasource_vizportal_url_id:
+                return f"{base_url}/#/datasources/{datasource_vizportal_url_id}/askData"
+            # 嵌入式表没有关联数据源时，无法生成有效链接
+            return None
+        
+        # 普通表使用 luid，如果没有 luid 则使用 asset_id
+        table_id = luid or asset_id
         if table_id:
             return f"{base_url}/#/catalog/tables/{table_id}/columns"
     

@@ -304,7 +304,8 @@ def get_table_detail(table_id):
                 'project_name': ds.project_name,
                 'owner': ds.owner,
                 'is_certified': ds.is_certified,
-                'has_extract': ds.has_extract
+                'has_extract': ds.has_extract,
+                'is_embedded': ds.is_embedded
             })
             seen_ds_ids.add(ds.id)
     data['datasources'] = datasources_data
@@ -352,7 +353,21 @@ def get_table_detail(table_id):
         'workbook_count': len(workbooks_data)
     }
     
-    data['tableau_url'] = build_tableau_url('table', asset_id=table.id, luid=table.luid)
+    # 获取关联数据源的 vizportal_url_id（用于嵌入式表的 URL 构建）
+    ds_vizportal_url_id = None
+    if table.is_embedded and table.datasources:
+        for ds in table.datasources:
+            if ds.vizportal_url_id:
+                ds_vizportal_url_id = ds.vizportal_url_id
+                break
+    
+    data['tableau_url'] = build_tableau_url(
+        'table', 
+        asset_id=table.id, 
+        luid=table.luid,
+        is_embedded=table.is_embedded or False,
+        datasource_vizportal_url_id=ds_vizportal_url_id
+    )
 
     return jsonify(data)
 

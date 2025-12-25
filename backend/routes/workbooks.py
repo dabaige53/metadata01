@@ -190,7 +190,8 @@ def get_workbook_detail(wb_id):
                 'project_name': ds.project_name,
                 'owner': ds.owner,
                 'is_certified': ds.is_certified,
-                'has_extract': ds.has_extract
+                'has_extract': ds.has_extract,
+                'is_embedded': ds.is_embedded
             })
             seen_ds_ids.add(ds.id)
     data['datasources'] = datasources_data
@@ -207,7 +208,8 @@ def get_workbook_detail(wb_id):
                     'id': tbl.id,
                     'name': tbl.name,
                     'schema': tbl.schema,
-                    'connection_type': 'published'
+                    'connection_type': 'published',
+                    'is_embedded': tbl.is_embedded
                 })
                 seen_table_ids.add(tbl.id)
                 
@@ -223,7 +225,8 @@ def get_workbook_detail(wb_id):
                     'id': tbl.id,
                     'name': tbl.name,
                     'schema': tbl.schema,
-                    'connection_type': 'embedded'
+                    'connection_type': 'embedded',
+                    'is_embedded': tbl.is_embedded
                 })
                 seen_table_ids.add(tbl.id)
                 
