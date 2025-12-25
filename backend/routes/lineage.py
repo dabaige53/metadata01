@@ -74,7 +74,14 @@ def get_lineage(item_type, item_id):
             for wb in ds.workbooks:
                 downstream.append({'type': 'workbook', 'name': wb.name})
     
-    return jsonify({'upstream': upstream, 'downstream': downstream})
+    return jsonify({
+        'upstream': upstream, 
+        'downstream': downstream,
+        'labels': {
+            'lineage_source': field.lineage_source if item_type == 'field' and field else None,
+            'penetration_status': field.penetration_status if item_type == 'field' and field else None
+        }
+    })
 
 
 # ==================== 全局搜索接口 ====================

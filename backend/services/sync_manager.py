@@ -317,7 +317,9 @@ class MetadataSync:
                                 table_to_datasource.insert().values(
                                     table_id=tbl["id"],
                                     datasource_id=ds_data["id"],
-                                    relationship_type="upstream"
+                                    relationship_type="upstream",
+                                    lineage_source="api",
+                                    created_at=datetime.utcnow()
                                 )
                             )
                         except:
@@ -375,7 +377,9 @@ class MetadataSync:
                             table_to_datasource.insert().values(
                                 table_id=tbl["id"],
                                 datasource_id=ds_id,
-                                relationship_type="upstream"
+                                relationship_type="upstream",
+                                lineage_source="api",
+                                created_at=datetime.utcnow()
                             )
                         )
                     except:
@@ -551,7 +555,9 @@ class MetadataSync:
                                      self.session.execute(
                                          dashboard_to_sheet.insert().values(
                                              dashboard_id=dashboard["id"],
-                                             sheet_id=sheet_id
+                                             sheet_id=sheet_id,
+                                             lineage_source="api",
+                                             created_at=datetime.utcnow()
                                          )
                                      )
                                  except Exception as e:
@@ -809,6 +815,30 @@ class MetadataSync:
 
         field.datasource_id = ds_id
 
+        # ========== 设置血缘标签 ==========
+        field.lineage_source = "api"  # 默认为 API 直接返回
+        
+        # 设置穿透状态
+        if typename == "ColumnField":
+            if table_info:
+                table_typename = table_info.get("__typename", "")
+                if table_typename == "DatabaseTable":
+                    # 物理表，无需穿透
+                    field.penetration_status = "not_applicable"
+                elif table_typename in ("EmbeddedTable", "CustomSQLTable", "VirtualConnectionTable"):
+                    # 嵌入式表，判断穿透是否成功
+                    upstream_tables = table_info.get("upstreamTables") or []
+                    if upstream_tables and target_table_id != table_info.get("id"):
+                        field.penetration_status = "success"
+                    else:
+                        field.penetration_status = "failed"
+                else:
+                    field.penetration_status = "not_applicable"
+            else:
+                field.penetration_status = "not_applicable"
+        else:
+            # 计算字段等无需穿透
+            field.penetration_status = "not_applicable"
         
         # 默认值
         field.data_type = ""
@@ -1155,12 +1185,18 @@ class MetadataSync:
                             continue
                 
                 # 插入关联 (批量插入优化可留待后续，目前单条插入并忽略错误)
+                # 根据是否经过智能重连设置不同的 lineage_source
+                is_relinked = (final_field_id != field_id)
+                lineage_source_value = "derived" if is_relinked else "api"
+                
                 try:
                     self.session.execute(
                         field_to_view.insert().values(
                             field_id=final_field_id,
                             view_id=view_id,
-                            used_in_formula=False
+                            used_in_formula=False,
+                            lineage_source=lineage_source_value,
+                            created_at=datetime.utcnow()
                         )
                     )
                     count += 1
@@ -1350,7 +1386,9 @@ class MetadataSync:
                 self.session.execute(
                     datasource_to_workbook.insert().values(
                         datasource_id=datasource_id,
-                        workbook_id=workbook_id
+                        workbook_id=workbook_id,
+                        lineage_source="api",
+                        created_at=datetime.utcnow()
                     )
                 )
             except:

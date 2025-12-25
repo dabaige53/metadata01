@@ -20,14 +20,18 @@ table_to_datasource = Table(
     Base.metadata,
     Column('table_id', String(255), ForeignKey('tables.id'), primary_key=True),
     Column('datasource_id', String(255), ForeignKey('datasources.id'), primary_key=True),
-    Column('relationship_type', String(50))
+    Column('relationship_type', String(50)),
+    Column('lineage_source', String(20)),  # 'api' / 'derived' / 'computed'
+    Column('created_at', DateTime, default=datetime.utcnow)
 )
 
 datasource_to_workbook = Table(
     'datasource_to_workbook',
     Base.metadata,
     Column('datasource_id', String(255), ForeignKey('datasources.id'), primary_key=True),
-    Column('workbook_id', String(255), ForeignKey('workbooks.id'), primary_key=True)
+    Column('workbook_id', String(255), ForeignKey('workbooks.id'), primary_key=True),
+    Column('lineage_source', String(20)),  # 'api' / 'derived' / 'computed'
+    Column('created_at', DateTime, default=datetime.utcnow)
 )
 
 field_to_view = Table(
@@ -35,7 +39,9 @@ field_to_view = Table(
     Base.metadata,
     Column('field_id', String(255), ForeignKey('fields.id'), primary_key=True),
     Column('view_id', String(255), ForeignKey('views.id'), primary_key=True),
-    Column('used_in_formula', Boolean, default=False)
+    Column('used_in_formula', Boolean, default=False),
+    Column('lineage_source', String(20)),  # 'api' / 'derived' (智能重连)
+    Column('created_at', DateTime, default=datetime.utcnow)
 )
 
 # ==================== 分表重构：新关联表 ====================
@@ -58,7 +64,9 @@ dashboard_to_sheet = Table(
     'dashboard_to_sheet',
     Base.metadata,
     Column('dashboard_id', String(255), ForeignKey('views.id'), primary_key=True),
-    Column('sheet_id', String(255), ForeignKey('views.id'), primary_key=True)
+    Column('sheet_id', String(255), ForeignKey('views.id'), primary_key=True),
+    Column('lineage_source', String(20)),  # 'api'
+    Column('created_at', DateTime, default=datetime.utcnow)
 )
 
 
@@ -302,6 +310,10 @@ class Field(Base):
     remote_field_id = Column(String(255), ForeignKey('fields.id'), nullable=True)
     remote_field_name = Column(String(255), nullable=True)  # 原始已发布数据源中的字段名
     
+    # ========== 血缘标签字段 ==========
+    lineage_source = Column(String(20))  # 'api' / 'derived' / 'computed'
+    penetration_status = Column(String(20))  # 'success' / 'failed' / 'not_applicable'
+    
     # 关系
     table = relationship('DBTable', back_populates='fields')
     datasource = relationship('Datasource', back_populates='fields')
@@ -340,6 +352,9 @@ class Field(Base):
             # 嵌入式字段→已发布数据源字段关联
             'remoteFieldId': self.remote_field_id,
             'remoteFieldName': self.remote_field_name,
+            # 血缘标签
+            'lineageSource': self.lineage_source,
+            'penetrationStatus': self.penetration_status,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }
@@ -440,6 +455,10 @@ class RegularField(Base):
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
     
+    # ========== 血缘标签字段 ==========
+    lineage_source = Column(String(20))  # 'api' / 'derived' / 'computed'
+    penetration_status = Column(String(20))  # 'success' / 'failed' / 'not_applicable'
+    
     # 关系
     unique_field = relationship('UniqueRegularField', back_populates='instances')
     table = relationship('DBTable', foreign_keys=[table_id])
@@ -459,6 +478,9 @@ class RegularField(Base):
             'isCalculated': False,
             'role': self.role,
             'isHidden': self.is_hidden,
+            # 血缘标签
+            'lineageSource': self.lineage_source,
+            'penetrationStatus': self.penetration_status,
             'createdAt': self.created_at.isoformat() if self.created_at else None
         }
 

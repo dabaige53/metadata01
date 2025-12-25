@@ -728,7 +728,10 @@ def get_field_detail(field_id):
             urf.id, urf.name, urf.description, urf.remote_type,
             urf.table_id, urf.upstream_column_id, urf.created_at,
             t.name as table_name, t.schema as table_schema,
-            db.name as database_name, db.id as database_id
+            db.name as database_name, db.id as database_id,
+            -- 获取一个实例的血缘标签
+            (SELECT rf.lineage_source FROM regular_fields rf WHERE rf.unique_id = urf.id LIMIT 1) as lineage_source,
+            (SELECT rf.penetration_status FROM regular_fields rf WHERE rf.unique_id = urf.id LIMIT 1) as penetration_status
         FROM unique_regular_fields urf
         LEFT JOIN tables t ON urf.table_id = t.id
         LEFT JOIN databases db ON t.database_id = db.id
@@ -783,6 +786,9 @@ def get_field_detail(field_id):
             'datasourceName': '多数据源聚合',
             'workbookId': None,
             'workbookName': None,
+            # 血缘标签
+            'lineageSource': unique_row.lineage_source if hasattr(unique_row, 'lineage_source') else None,
+            'penetrationStatus': unique_row.penetration_status if hasattr(unique_row, 'penetration_status') else None,
         }
         
     else:
@@ -793,6 +799,7 @@ def get_field_detail(field_id):
                 rf.role, rf.aggregation, rf.is_hidden, rf.usage_count,
                 rf.upstream_column_id, rf.table_id, rf.datasource_id, rf.workbook_id,
                 rf.unique_id, rf.created_at, rf.updated_at,
+                rf.lineage_source, rf.penetration_status,
                 d.name as datasource_name, d.project_name as ds_project_name, d.owner as ds_owner, 
                 d.is_certified as ds_certified, d.vizportal_url_id,
                 t.name as table_name, t.schema as table_schema,
@@ -833,7 +840,10 @@ def get_field_detail(field_id):
             'workbookName': field_row.workbook_name,
             'hasDescription': bool(field_row.description and field_row.description.strip()),
             'createdAt': str(field_row.created_at) if field_row.created_at else None,
-            'updatedAt': str(field_row.updated_at) if field_row.updated_at else None
+            'updatedAt': str(field_row.updated_at) if field_row.updated_at else None,
+            # 血缘标签
+            'lineageSource': field_row.lineage_source,
+            'penetrationStatus': field_row.penetration_status,
         }
         
         if field_row.datasource_id:

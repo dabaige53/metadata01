@@ -1371,8 +1371,41 @@ export default function DetailDrawer() {
             field: '#3b82f6', metric: '#f59e0b', table: '#7c3aed',
             datasource: '#10b981', workbook: '#e11d48', view: '#6366f1'
         };
+
+        // 血缘标签映射
+        const sourceLabels: Record<string, { text: string; color: string }> = {
+            'api': { text: 'API 直返', color: 'bg-blue-100 text-blue-700' },
+            'derived': { text: '智能重连', color: 'bg-amber-100 text-amber-700' },
+            'computed': { text: '预计算', color: 'bg-purple-100 text-purple-700' }
+        };
+        const penetrationLabels: Record<string, { text: string; color: string }> = {
+            'success': { text: '穿透成功', color: 'bg-green-100 text-green-700' },
+            'failed': { text: '穿透失败', color: 'bg-red-100 text-red-700' },
+            'not_applicable': { text: '无需穿透', color: 'bg-gray-100 text-gray-600' }
+        };
+
         return (
             <div className="space-y-4">
+                {/* 血缘标签信息 */}
+                {lineageData.labels && (lineageData.labels.lineage_source || lineageData.labels.penetration_status) && (
+                    <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-100">
+                        <span className="text-[11px] text-gray-500 font-medium">血缘来源:</span>
+                        {lineageData.labels.lineage_source && (
+                            <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${sourceLabels[lineageData.labels.lineage_source]?.color || 'bg-gray-100 text-gray-600'}`}>
+                                {sourceLabels[lineageData.labels.lineage_source]?.text || lineageData.labels.lineage_source}
+                            </span>
+                        )}
+                        {lineageData.labels.penetration_status && lineageData.labels.penetration_status !== 'not_applicable' && (
+                            <>
+                                <span className="text-gray-300">|</span>
+                                <span className="text-[11px] text-gray-500 font-medium">穿透状态:</span>
+                                <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${penetrationLabels[lineageData.labels.penetration_status]?.color || 'bg-gray-100 text-gray-600'}`}>
+                                    {penetrationLabels[lineageData.labels.penetration_status]?.text || lineageData.labels.penetration_status}
+                                </span>
+                            </>
+                        )}
+                    </div>
+                )}
                 <div className="bg-gray-50 rounded-lg border p-4 overflow-auto">
                     <div className="text-xs font-bold text-gray-700 mb-2">Mermaid 血缘图</div>
                     <pre className="text-[10px] font-mono bg-white p-2 rounded border overflow-x-auto">{lineageData.mermaid}</pre>
@@ -1734,6 +1767,52 @@ export default function DetailDrawer() {
                         <div className="bg-gradient-to-br from-purple-50 to-white rounded-lg border border-purple-100 p-4 text-center">
                             <div className="text-2xl font-bold text-purple-700">{data.workbooks?.length || 0}</div>
                             <div className="text-[10px] text-gray-500 mt-1">拥有的工作簿</div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ========== 血缘标签信息卡片 ========== */}
+                {(data.lineage_source || data.lineageSource || data.penetration_status || data.penetrationStatus) && (
+                    <div className="bg-gradient-to-r from-blue-50 via-purple-50 to-indigo-50 rounded-lg border border-blue-100 p-4">
+                        <div className="text-xs font-bold text-gray-700 mb-3 flex items-center gap-2">
+                            <GitBranch className="w-3.5 h-3.5 text-purple-600" />
+                            血缘标签
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                            {/* 血缘来源 */}
+                            {(data.lineage_source || data.lineageSource) && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] text-gray-500">来源方式:</span>
+                                    <span className={`text-[10px] px-2 py-1 rounded font-medium ${(data.lineage_source || data.lineageSource) === 'api' ? 'bg-blue-100 text-blue-700' :
+                                            (data.lineage_source || data.lineageSource) === 'derived' ? 'bg-amber-100 text-amber-700' :
+                                                'bg-purple-100 text-purple-700'
+                                        }`}>
+                                        {(data.lineage_source || data.lineageSource) === 'api' ? '🔗 API 直接返回' :
+                                            (data.lineage_source || data.lineageSource) === 'derived' ? '🔄 智能重连推导' :
+                                                '📊 预计算存储'}
+                                    </span>
+                                </div>
+                            )}
+                            {/* 穿透状态 */}
+                            {(data.penetration_status || data.penetrationStatus) && (data.penetration_status || data.penetrationStatus) !== 'not_applicable' && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] text-gray-500">穿透状态:</span>
+                                    <span className={`text-[10px] px-2 py-1 rounded font-medium ${(data.penetration_status || data.penetrationStatus) === 'success' ? 'bg-green-100 text-green-700' :
+                                            'bg-red-100 text-red-700'
+                                        }`}>
+                                        {(data.penetration_status || data.penetrationStatus) === 'success' ? '✅ 穿透成功' : '❌ 穿透失败'}
+                                    </span>
+                                </div>
+                            )}
+                            {/* 无需穿透时显示物理表标识 */}
+                            {(data.penetration_status || data.penetrationStatus) === 'not_applicable' && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] text-gray-500">表类型:</span>
+                                    <span className="text-[10px] px-2 py-1 rounded font-medium bg-gray-100 text-gray-600">
+                                        📋 物理表 (无需穿透)
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}

@@ -1,0 +1,75 @@
+编号,血缘关系,关系来源,关系目标,关系方向,建立方式,数据库表/字段,API接口,前端页面路径,前端页面功能,前端组件路径,组件功能,标签字段,标签值,备注
+1,数据库→数据表,Database,Table,下游,直接外键,tables.database_id,/databases/<id>,app/databases/page.tsx,数据库列表页面,components/DetailDrawer.tsx → renderOverviewTab(),概览Tab显示表数量,无,无,表同步时设置 database_id
+2,数据表→数据库,Table,Database,上游,直接外键,tables.database_id,/tables/<id>,app/tables/page.tsx,数据表列表页面,components/DetailDrawer.tsx → renderOverviewTab(),概览Tab显示所属数据库,无,无,通过 database_id 反查
+3,数据表→数据源,Table,Datasource,下游,关联表,table_to_datasource,/tables/<id>/datasources,app/tables/page.tsx,数据表详情抽屉,components/DetailDrawer.tsx → renderDatasourcesTab(),数据源Tab列表展示,relationship_type,upstream/source,数据源同步时建立
+4,数据表→工作簿,Table,Workbook,下游,推导查询,table→datasource→workbook,/tables/<id>/workbooks,app/tables/page.tsx,数据表详情抽屉,components/DetailDrawer.tsx → renderAssetSection(),工作簿Tab列表展示,无,无,多表JOIN推导
+5,数据表→字段,Table,Field,下游,直接外键,fields.table_id,/tables/<id>/fields,app/tables/page.tsx,数据表详情抽屉,components/DetailDrawer.tsx → renderFieldsGroupedByColumn(),按列分组展示字段,无,无,字段同步时设置
+6,嵌入式表标识,Table,null,属性,API返回,tables.is_embedded,/tables,app/tables/page.tsx,数据表列表页面,components/cards/TableCard.tsx,卡片显示嵌入标记徽章,is_embedded,0/1,区分物理表和嵌入表
+7,表类型标识,Table,null,属性,API返回,tables.table_type,/tables/<id>,app/tables/page.tsx,数据表详情抽屉,components/DetailDrawer.tsx → renderOverviewTab(),概览Tab显示表类型,__typename,DatabaseTable/EmbeddedTable/CustomSQLTable,Tableau返回类型
+8,原始列→数据表,DBColumn,Table,上游,直接外键,db_columns.table_id,/columns/<id>,无独立页面,通过表详情访问,components/DetailDrawer.tsx → renderColumnsGroupedByTable(),原始列Tab分组展示,无,无,表同步时一起保存列
+9,原始列→字段,DBColumn,Field,下游,直接外键,fields.upstream_column_id,/fields/<id>,app/fields/page.tsx,字段详情抽屉,components/DetailDrawer.tsx → renderOverviewTab(),概览Tab显示上游列名,无,无,字段同步时设置
+10,列数据类型,DBColumn,null,属性,API返回,db_columns.remote_type,/columns/<id>,无独立页面,通过表详情访问,components/DetailDrawer.tsx,列信息显示数据类型,remote_type,VARCHAR/NUMBER/DATE等,数据库原生类型
+11,数据源→数据表,Datasource,Table,上游,关联表,table_to_datasource,/datasources/<id>,app/datasources/page.tsx,数据源详情抽屉,components/DetailDrawer.tsx → renderAssetSection(),表Tab列表展示,无,无,数据源同步时建立
+12,数据源→工作簿,Datasource,Workbook,下游,关联表,datasource_to_workbook,/datasources/<id>/workbooks,app/datasources/page.tsx,数据源详情抽屉,components/DetailDrawer.tsx → renderAssetSection(),工作簿Tab列表展示,无,无,工作簿同步时建立
+13,数据源→字段,Datasource,Field,下游,直接外键,fields.datasource_id,/datasources/<id>/fields,app/datasources/page.tsx,数据源详情抽屉,components/DetailDrawer.tsx → renderFieldsGroupedByTable(),按表分组展示字段,无,无,字段同步时设置
+14,嵌入式数据源标识,Datasource,null,属性,API返回,datasources.is_embedded,/datasources,app/datasources/page.tsx,数据源列表页面,components/cards/DatasourceCard.tsx,卡片显示嵌入式/发布式徽章,is_embedded,0/1,区分发布和嵌入式
+15,穿透型嵌入源→发布源,EmbeddedDS,PublishedDS,上游,直接外键,datasources.source_published_datasource_id,/datasources/<id>,app/datasources/page.tsx,数据源详情抽屉,components/DetailDrawer.tsx → renderOverviewTab(),概览Tab显示上游发布源,无,无,穿透到上游发布源
+16,数据源认证状态,Datasource,null,属性,API返回,datasources.is_certified,/datasources,app/datasources/page.tsx,数据源列表页面,components/cards/DatasourceCard.tsx,卡片显示认证徽章(ShieldCheck图标),is_certified,0/1,Tableau认证标识
+17,工作簿→数据源,Workbook,Datasource,上游,关联表,datasource_to_workbook,/workbooks/<id>/datasources,app/workbooks/page.tsx,工作簿详情抽屉,components/DetailDrawer.tsx → renderDatasourcesTab(),数据源Tab列表展示,无,无,工作簿同步时建立
+18,工作簿→视图,Workbook,View,下游,直接外键,views.workbook_id,/workbooks/<id>/views,app/workbooks/page.tsx,工作簿详情抽屉,components/DetailDrawer.tsx → renderAssetSection(),视图Tab列表展示,无,无,工作簿同步时保存视图
+19,工作簿→数据表,Workbook,Table,上游,推导查询,workbook→datasource→table,/workbooks/<id>/tables,app/workbooks/page.tsx,工作簿详情抽屉,components/DetailDrawer.tsx → renderAssetSection(),表Tab列表展示,无,无,多表JOIN推导
+20,工作簿→字段,Workbook,Field,上游,直接/推导,fields.workbook_id或推导,/workbooks/<id>/fields,app/workbooks/page.tsx,工作簿详情抽屉,components/DetailDrawer.tsx → renderAssetSection(),字段Tab列表展示,无,无,嵌入式字段直接设置
+21,视图→工作簿,View,Workbook,上游,直接外键,views.workbook_id,/views/<id>,app/views/page.tsx,视图详情抽屉,components/DetailDrawer.tsx → renderOverviewTab(),概览Tab显示所属工作簿,无,无,工作簿同步时设置
+22,视图类型标识,View,null,属性,API返回,views.view_type,/views,app/views/page.tsx,视图列表页面,components/cards/ViewCard.tsx,卡片显示sheet/dashboard徽章,view_type,sheet/dashboard,区分图表和仪表板
+23,仪表板→图表,Dashboard,Sheet,下游,关联表,dashboard_to_sheet,/views/<id>,app/views/page.tsx,视图详情抽屉,components/DetailDrawer.tsx → renderAssetSection(),包含图表Tab展示,无,无,工作簿同步时建立
+24,视图→字段,View,Field,上游,关联表,field_to_view,/views/<id>/fields,app/views/page.tsx,视图详情抽屉,components/DetailDrawer.tsx → renderAssetSection(),使用字段Tab展示,无,无,视图字段关联同步
+25,视图访问统计,View,History,下游,直接表,view_usage_history,/views/<id>/usage-stats,app/views/page.tsx,视图详情抽屉,components/DetailDrawer.tsx → renderUsageTab(),访问统计Tab(折线图),无,无,REST API同步
+26,字段→数据源,Field,Datasource,上游,直接外键,fields.datasource_id,/fields/<id>,app/fields/page.tsx,字段详情抽屉,components/DetailDrawer.tsx → renderOverviewTab(),概览Tab显示所属数据源,无,无,字段同步时设置
+27,字段→数据表,Field,Table,上游,直接外键,fields.table_id,/fields/<id>,app/fields/page.tsx,字段详情抽屉,components/DetailDrawer.tsx → renderOverviewTab(),概览Tab显示上游表,无,无,从upstreamColumns获取
+28,字段→原始列,Field,DBColumn,上游,直接外键,fields.upstream_column_id,/fields/<id>,app/fields/page.tsx,字段详情抽屉,components/DetailDrawer.tsx → renderOverviewTab(),概览Tab显示物理列名,无,无,从upstreamColumns获取
+29,字段→工作簿,Field,Workbook,上游,直接/推导,fields.workbook_id,/fields/<id>,app/fields/page.tsx,字段详情抽屉,components/DetailDrawer.tsx → renderOverviewTab(),概览Tab显示所属工作簿,无,无,嵌入式字段直接设置
+30,字段类型标识,Field,null,属性,API返回,__typename,/fields/<id>,app/fields/page.tsx,字段列表页面,components/cards/FieldCard.tsx,卡片显示字段类型(隐式),__typename,ColumnField/CalculatedField/GroupField,Tableau返回类型
+31,计算字段标识,Field,null,属性,API返回,fields.is_calculated,/fields,app/fields/page.tsx,字段列表页面,components/cards/FieldCard.tsx,卡片显示计算字段徽章(紫色),is_calculated,0/1,区分普通和计算字段
+32,字段角色标识,Field,null,属性,API返回,fields.role,/fields,app/fields/page.tsx,字段列表页面,components/cards/FieldCard.tsx,卡片显示度量/维度徽章(绿/蓝色),role,dimension/measure,区分维度和度量
+33,字段隐藏标识,Field,null,属性,API返回,fields.is_hidden,/fields/<id>,app/fields/page.tsx,字段详情抽屉,components/DetailDrawer.tsx → renderOverviewTab(),概览Tab显示隐藏状态,is_hidden,0/1,是否隐藏
+34,字段→视图,Field,View,下游,关联表,field_to_view,/fields/<id>,app/fields/page.tsx,字段详情抽屉,components/DetailDrawer.tsx → renderAssetSection(),使用视图Tab展示,无,无,视图字段关联同步
+35,嵌入字段→发布字段,EmbeddedField,PublishedField,上游,直接外键,fields.remote_field_id,/fields/<id>,app/fields/page.tsx,字段详情抽屉,components/DetailDrawer.tsx,概览Tab显示来源字段,无,无,嵌入式字段穿透
+36,字段完整血缘,Field,Table+DS+WB,全链路,预计算表,field_full_lineage,/lineage/graph/field/<id>,app/fields/page.tsx,字段详情抽屉,components/DetailDrawer.tsx → renderLineageTab(),血缘图Tab(Mermaid可视化),lineage_type,direct/indirect,预计算完整链路
+37,计算字段→依赖字段,CalcField,Field,上游,关联表,field_dependencies,/metrics/<id>,app/metrics/page.tsx,指标详情抽屉,components/DetailDrawer.tsx → renderAssetSection(),依赖分析Tab展示,dependency_type,formula/filter/parameter,血缘同步时建立
+38,计算字段→计算字段,CalcField,CalcField,上游,关联表,field_dependencies,/metrics/<id>,app/metrics/page.tsx,指标详情抽屉,components/DetailDrawer.tsx,依赖分析Tab嵌套展示,dependency_type,formula,嵌套依赖
+39,计算字段扩展信息,Field,CalculatedField,扩展,扩展表,calculated_fields,/metrics/<id>,app/metrics/page.tsx,指标详情抽屉,components/DetailDrawer.tsx → renderOverviewTab(),概览Tab显示公式详情,无,无,保存公式复杂度等
+40,公式哈希重复检测,CalcField,CalcField,双向,哈希匹配,calculated_fields.formula_hash,/quality/duplicates,app/page.tsx,首页问题卡片,components/metrics/DuplicateMetricsAnalysis.tsx,重复指标分析组件,has_duplicates,0/1,识别相同公式
+41,指标状态标识,Metric,null,属性,治理规则,metrics.status,/metrics/<id>,app/metrics/page.tsx,指标列表页面,components/cards/MetricCard.tsx,卡片显示状态徽章,status,active/review/deprecated/duplicate,生命周期状态
+42,指标类型标识,Metric,null,属性,治理规则,metrics.metric_type,/metrics/<id>,app/metrics/page.tsx,指标列表页面,components/cards/MetricCard.tsx,卡片显示类型徽章,metric_type,KPI/Calculated/Ratio,业务类型分类
+43,重复检测方式,Metric,Metric,双向,治理规则,metric_duplicates,/quality/duplicates,app/page.tsx,首页问题卡片,components/DetailDrawer.tsx → renderDuplicatesTab(),相同定义Tab展示,detection_method,hash/semantic/manual,检测方式标签
+44,分表-常规字段实例→去重,RegularField,UniqueRegularField,上游,去重逻辑,regular_fields.unique_id,/fields/<id>,app/fields/page.tsx,字段详情,components/DetailDrawer.tsx,隐式-通过unique_id聚合,无,无,分表架构去重
+45,分表-计算字段实例→去重,CalcField,UniqueCalcField,上游,去重逻辑,calculated_fields.unique_id,/metrics/<id>,app/metrics/page.tsx,指标详情,components/DetailDrawer.tsx,隐式-通过unique_id聚合,无,无,分表架构去重
+46,分表-常规字段血缘,RegularField,全链路,全链路,预计算表,regular_field_full_lineage,/fields/<id>,app/fields/page.tsx,字段详情抽屉,components/DetailDrawer.tsx → renderLineageTab(),血缘图Tab,lineage_type,direct/indirect,分表完整血缘
+47,分表-计算字段血缘,CalcField,全链路,全链路,预计算表,calc_field_full_lineage,/metrics/<id>,app/metrics/page.tsx,指标详情抽屉,components/DetailDrawer.tsx → renderLineageTab(),血缘图Tab,lineage_type,direct/indirect,分表完整血缘
+48,分表-计算字段依赖,CalcField,RegularField,上游,关联表,calc_field_dependencies,/metrics/<id>,app/metrics/page.tsx,指标详情抽屉,components/DetailDrawer.tsx → getTabs(),依赖字段Tab,dependency_type,formula,分表依赖关系
+49,血缘图可视化,任意元素,任意元素,全链路,API接口,内存计算,/lineage/graph/<type>/<id>,所有详情页面,血缘Tab通用,components/DetailDrawer.tsx → renderLineageTab() + loadLineageGraph(),Mermaid代码渲染+节点列表,无,无,返回Mermaid代码
+50,全局搜索,null,多类型,查询,API接口,内存查询,/search,app/search/page.tsx,全局搜索页面,app/search/page.tsx,搜索结果分类展示,无,无,跨类型搜索
+51,统计概览,null,全局,查询,API接口,聚合查询,/stats,app/page.tsx,首页仪表盘,app/page.tsx → buildDimCard(),统计卡片组件,无,无,各类元素计数
+52,质量分析,null,全局,查询,API接口,聚合查询,/dashboard/analysis,app/page.tsx,首页仪表盘,app/page.tsx → buildCoverageBar() + buildDistChart(),覆盖率条+分布图,无,无,健康评分和问题统计
+53,未使用表治理,Table,null,治理,API接口,聚合查询,/tables/governance/unused,app/tables/page.tsx,表治理Tab,components/tables/UnusedTablesAnalysis.tsx,未使用表分析组件,无,无,识别未被引用的表
+54,宽表治理,Table,null,治理,API接口,聚合查询,/tables/governance/wide,app/tables/page.tsx,表治理Tab,待开发,宽表分析组件(待开发),无,无,识别列数过多的表
+55,零访问视图治理,View,null,治理,API接口,聚合查询,/views/governance/zero-access,app/views/page.tsx,视图治理Tab,components/views/ZeroAccessViewsAnalysis.tsx,零访问视图分析组件,无,无,识别无访问的视图
+56,热门视图治理,View,null,治理,API接口,聚合查询,/views/governance/hot,app/views/page.tsx,视图治理Tab,components/views/HotViewsAnalysis.tsx,热门视图分析组件,无,无,识别高访问视图
+57,空工作簿治理,Workbook,null,治理,API接口,聚合查询,/workbooks/governance/empty,app/workbooks/page.tsx,工作簿治理Tab,components/workbooks/EmptyWorkbooksAnalysis.tsx,空工作簿分析组件,无,无,识别无视图工作簿
+58,单源工作簿治理,Workbook,null,治理,API接口,聚合查询,/workbooks/governance/single-source,app/workbooks/page.tsx,工作簿治理Tab,待开发,单数据源分析组件(待开发),无,无,识别单数据源工作簿
+59,术语表,Glossary,null,治理,API接口,glossary表,/glossary,app/glossary/page.tsx,术语表页面,app/glossary/page.tsx,术语列表+新增+搜索,无,无,术语定义管理
+60,项目管理,Project,null,层级,API接口,projects表,/projects,app/projects/page.tsx,项目列表页面,components/DetailDrawer.tsx,项目详情抽屉,无,无,项目层级管理
+61,用户管理,User,null,属性,API接口,tableau_users表,/users,app/users/page.tsx,用户列表页面,components/DetailDrawer.tsx,用户详情抽屉,无,无,用户信息管理
+62,数据源健康检查,Datasource,null,治理,API接口,聚合查询,/health/datasources,app/page.tsx,首页问题卡片,components/datasources/OrphanDatasourcesAnalysis.tsx,孤立数据源分析,无,无,数据源健康状态
+63,字段描述缺失,Field,null,质量,API接口,聚合查询,/quality/uncovered-fields,app/page.tsx,首页问题卡片,components/fields/NoDescriptionFieldsAnalysis.tsx,缺少描述字段分析,无,无,质量问题检测
+64,未认证数据源,Datasource,null,质量,API接口,聚合查询,/quality/uncertified-datasources,app/page.tsx,首页问题卡片,components/datasources/UncertifiedDatasourcesAnalysis.tsx,未认证数据源分析,无,无,质量问题检测
+65,重复指标检测,CalcField,CalcField,质量,API接口,formula_hash比对,/quality/duplicates,app/page.tsx,首页问题卡片,components/metrics/DuplicateMetricsAnalysis.tsx,重复指标对比分析,无,无,公式重复检测
+66,字段使用统计,Field,View,统计,预计算,fields.usage_count,/fields,app/fields/page.tsx,字段列表页面,components/cards/FieldCard.tsx,卡片显示热度次数,无,无,被视图使用次数
+67,字段指标引用统计,Field,CalcField,统计,预计算,fields.metric_usage_count,/fields/<id>,app/fields/page.tsx,字段列表/详情,components/cards/FieldCard.tsx,卡片显示指标依赖数,无,无,被计算字段引用次数
+68,数据源表数统计,Datasource,Table,统计,预计算,datasources.table_count,/datasources,app/datasources/page.tsx,数据源列表,components/cards/DatasourceCard.tsx,卡片显示表数量,无,无,预计算表数量
+69,数据源工作簿数统计,Datasource,Workbook,统计,预计算,datasources.workbook_count,/datasources,app/datasources/page.tsx,数据源列表,components/cards/DatasourceCard.tsx,卡片显示工作簿数,无,无,预计算工作簿数
+70,工作簿视图数统计,Workbook,View,统计,预计算,workbooks.view_count,/workbooks,app/workbooks/page.tsx,工作簿列表,components/cards/WorkbookCard.tsx,卡片显示视图数,无,无,预计算视图数
+71,工作簿数据源数统计,Workbook,Datasource,统计,预计算,workbooks.datasource_count,/workbooks,app/workbooks/page.tsx,工作簿列表,components/cards/WorkbookCard.tsx,卡片显示数据源数,无,无,预计算数据源数
+72,数据库表数统计,Database,Table,统计,推导查询,动态计算,/databases,app/databases/page.tsx,数据库列表,components/DetailDrawer.tsx,详情显示表数量,无,无,动态统计表数量
+73,表字段数统计,Table,Field,统计,预计算/推导,表字段计数,/tables,app/tables/page.tsx,数据表列表,components/cards/TableCard.tsx,卡片显示字段数,无,无,统计字段数量
+74,表列数统计,Table,DBColumn,统计,预计算/推导,表列计数,/tables,app/tables/page.tsx,数据表列表,components/cards/TableCard.tsx,卡片显示列数,无,无,统计原始列数量
