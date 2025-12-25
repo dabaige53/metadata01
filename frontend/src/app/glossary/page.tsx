@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { Search, BookText } from 'lucide-react';
+import { Search, BookText, RefreshCw } from 'lucide-react';
 
 interface TermEnum {
     id: number;
@@ -36,17 +36,31 @@ const ELEMENTS = [
 export default function GlossaryPage() {
     const [items, setItems] = useState<GlossaryItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const [syncing, setSyncing] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeElement, setActiveElement] = useState('all');
 
+    // Pagination state
+    const [page, setPage] = useState(1);
+    const [total, setTotal] = useState(0);
+    const pageSize = 50;
+
+    useEffect(() => {
+        setPage(1); // Reset page when filter changes
+    }, [activeElement, searchQuery]);
+
     useEffect(() => {
         fetchData();
-    }, [activeElement]);
+    }, [activeElement, page]); // Fetch when filter or page changes
 
-    // Add debounced search effect
+    // Debounce search
     useEffect(() => {
         const timer = setTimeout(() => {
-            fetchData();
+            if (page !== 1) {
+                setPage(1); // will trigger fetch via dependency
+            } else {
+                fetchData();
+            }
         }, 500);
         return () => clearTimeout(timer);
     }, [searchQuery]);
@@ -54,14 +68,30 @@ export default function GlossaryPage() {
     async function fetchData() {
         setLoading(true);
         try {
-            // @ts-ignore - API method might not be typed yet in api.ts
-            const res = await fetch(`/api/glossary?search=${encodeURIComponent(searchQuery)}&element=${activeElement}`);
+            const res = await fetch(`/api/glossary?search=${encodeURIComponent(searchQuery)}&element=${activeElement}&page=${page}&page_size=${pageSize}`);
             const data = await res.json();
             setItems(data.items || []);
+            setTotal(data.total || 0);
         } catch (error) {
             console.error('Failed to fetch glossary:', error);
         } finally {
             setLoading(false);
+        }
+    }
+
+    async function handleSync() {
+        if (syncing) return;
+        setSyncing(true);
+        try {
+            const res = await fetch('/api/glossary/sync', { method: 'POST' });
+            const result = await res.json();
+            if (result.status === 'success') {
+                fetchData(); // Reload data
+            }
+        } catch (error) {
+            console.error('Sync failed:', error);
+        } finally {
+            setSyncing(false);
         }
     }
 
@@ -100,15 +130,28 @@ export default function GlossaryPage() {
                         </p>
                     </div>
 
-                    <div className="relative w-72">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="搜索术语..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                        />
+                    <div className="flex items-center gap-3">
+                        <div className="relative w-72">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <input
+                                type="text"
+                                placeholder="搜索术语..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                            />
+                        </div>
+                        <button
+                            onClick={handleSync}
+                            disabled={syncing}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${syncing
+                                ? 'bg-indigo-50 text-indigo-400 cursor-wait'
+                                : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                                }`}
+                        >
+                            <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+                            {syncing ? '同步中...' : '同步术语'}
+                        </button>
                     </div>
                 </div>
 
@@ -168,6 +211,62 @@ export default function GlossaryPage() {
                                 )}
                             </div>
                         ))}
+                    </div>
+                )}
+
+                {/* Pagination Controls */}
+                {total > 0 && (
+                    <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6 rounded-xl mt-4">
+                        <div className="flex flex-1 justify-between sm:hidden">
+                            <button
+                                onClick={() => setPage(p => Math.max(1, p - 1))}
+                                disabled={page === 1}
+                                className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                                上一页
+                            </button>
+                            <button
+                                onClick={() => setPage(p => p + 1)}
+                                disabled={page * pageSize >= total}
+                                className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                                下一页
+                            </button>
+                        </div>
+                        <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                            <div>
+                                <p className="text-sm text-gray-700">
+                                    显示 <span className="font-medium">{(page - 1) * pageSize + 1}</span> 到 <span className="font-medium">{Math.min(page * pageSize, total)}</span> 条，共 <span className="font-medium">{total}</span> 条
+                                </p>
+                            </div>
+                            <div>
+                                <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                                    <button
+                                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                                        disabled={page === 1}
+                                        className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
+                                    >
+                                        <span className="sr-only">Previous</span>
+                                        <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                            <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
+                                        </svg>
+                                    </button>
+                                    <span className="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 focus:outline-offset-0">
+                                        {page}
+                                    </span>
+                                    <button
+                                        onClick={() => setPage(p => p + 1)}
+                                        disabled={page * pageSize >= total}
+                                        className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
+                                    >
+                                        <span className="sr-only">Next</span>
+                                        <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                            <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+                                        </svg>
+                                    </button>
+                                </nav>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>

@@ -370,6 +370,24 @@ def migrate_lineage(session):
     
     print("  ✅ 血缘数据迁移完成")
 
+    print("\n[4.5/4] 补全所有权血缘 (Ownership Lineage)...")
+    # 修复：对于没有使用的字段，也需要记录其归属的工作簿/数据源血缘
+    # 这样在查询血缘时，即使 usage_count=0，也能看到它属于哪个工作簿
+    session.execute(text("""
+        INSERT INTO regular_field_full_lineage (
+            field_id, datasource_id, workbook_id, lineage_type, lineage_path
+        )
+        SELECT 
+            rf.id, rf.datasource_id, rf.workbook_id, 'direct', 'Ownership'
+        FROM regular_fields rf
+        WHERE rf.workbook_id IS NOT NULL 
+          AND NOT EXISTS (
+              SELECT 1 FROM regular_field_full_lineage fl 
+              WHERE fl.field_id = rf.id AND fl.workbook_id = rf.workbook_id
+          )
+    """))
+    print("  ✅ 所有权血缘补全完成")
+
 def verify_no_duplicates(session):
     """验证去重后无残留重复"""
     print("\n🔍 验证去重效果...")

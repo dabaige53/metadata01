@@ -798,6 +798,9 @@ class Metric(Base):
     description = Column(Text)
     formula = Column(Text)
     formula_hash = Column(String(64))  # 用于去重
+
+
+
     metric_type = Column(String(50))  # KPI, Calculated, Ratio
     owner = Column(String(255))
     status = Column(String(50), default='active')  # active/review/deprecated/duplicate

@@ -30,6 +30,7 @@ from . import workbooks
 from . import views
 from . import fields
 from . import metrics
+from . import glossary
 from . import lineage
 
 # 导入原 api_legacy.py 中剩余的路由
