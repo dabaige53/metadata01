@@ -181,10 +181,10 @@ def get_fields_hot():
 @api_bp.route('/fields/catalog')
 def get_fields_catalog():
     """
-    获取字段目录 - 按物理列聚合去重
+    获取字段目录 - 基于 unique_regular_fields
     
-    聚合规则：按 (upstream_column_name OR name) + table_id 分组
-    返回：canonical_name, table_name, role, data_type, instance_count, total_usage, datasources
+    此接口已重构，直接查询 unique_regular_fields 表（标准资产），
+    而不是从 fields 表动态聚合。这确保了列表数量与侧边栏统计（也是基于 unique 表）完全一致。
     """
     session = g.db_session
     from sqlalchemy import text
@@ -201,56 +201,69 @@ def get_fields_catalog():
     order = request.args.get('order', 'desc')
     
     # 构建动态条件
-    conditions = ["(f.is_calculated = 0 OR f.is_calculated IS NULL)"]
+    conditions = []
     params = {}
     
+    # 1. 搜索 (针对标准字段属性)
     if search:
-        conditions.append("(COALESCE(f.upstream_column_name, f.name) LIKE :search)")
+        # 支持搜索标准名称或标准描述
+        conditions.append("(urf.name LIKE :search OR urf.description LIKE :search)")
         params['search'] = f'%{search}%'
     
+    # 2. 角色筛选 (针对实例属性 - 只要有一个实例匹配即可)
+    # 注意：这需要在 JOIN regular_fields 后应用，或者在 WHERE 中
     if role_filter:
-        conditions.append("f.role = :role")
+        conditions.append("rf.role = :role")
         params['role'] = role_filter
+        
+    where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
     
-    where_clause = "WHERE " + " AND ".join(conditions)
+    # 构建 SQL
+    # 使用 CTE 预先计算统计信息可能会更快，但直接 JOIN 也是可行的
+    # 注意：GROUP_CONCAT 去重依赖于 DISTINCT
     
-    # 聚合查询 - 使用 CTE 进行精准聚合
     base_sql = f"""
-        WITH field_groups AS (
-            SELECT 
-                COALESCE(upstream_column_name, name) as canonical_name,
-                table_id,
-                COUNT(DISTINCT id) as instance_count,
-                COALESCE(SUM(usage_count), 0) as total_usage,
-                MAX(role) as role,
-                MAX(data_type) as data_type,
-                MAX(remote_type) as remote_type,
-                MAX(description) as description,
-                MIN(id) as representative_id,
-                GROUP_CONCAT(DISTINCT id) as member_ids
-            FROM fields f
-            {where_clause}
-            GROUP BY COALESCE(upstream_column_name, name), table_id
-        )
         SELECT 
-            gs.*,
+            urf.id as representative_id,
+            urf.name as canonical_name,
+            urf.table_id,
             t.name as table_name,
             t.schema as table_schema,
             db.name as database_name,
+            urf.description as description,
+            
+            -- 从实例聚合属性 (取出现次数最多的或者非空的)
+            MAX(rf.role) as role, 
+            MAX(rf.data_type) as data_type,
+            MAX(rf.remote_type) as remote_type,
+            
+            -- 统计信息
+            COUNT(DISTINCT rf.id) as instance_count,
+            COALESCE(SUM(rf.usage_count), 0) as total_usage,
+            
+            -- 血缘信息
             GROUP_CONCAT(DISTINCT CASE WHEN rfl.datasource_id IS NOT NULL THEN rfl.datasource_id || '|' || COALESCE(d.name, 'Unknown') END) as datasource_info,
             GROUP_CONCAT(DISTINCT CASE WHEN rfl.workbook_id IS NOT NULL THEN rfl.workbook_id || '|' || COALESCE(w.name, 'Unknown') END) as workbook_info
-        FROM field_groups gs
-        LEFT JOIN tables t ON gs.table_id = t.id
+
+        FROM unique_regular_fields urf
+        LEFT JOIN tables t ON urf.table_id = t.id
         LEFT JOIN databases db ON t.database_id = db.id
-        JOIN fields f ON gs.canonical_name = COALESCE(f.upstream_column_name, f.name) AND gs.table_id = f.table_id
-        LEFT JOIN regular_field_full_lineage rfl ON f.id = rfl.field_id
+
+        -- 关联实例表
+        LEFT JOIN regular_fields rf ON rf.unique_id = urf.id 
+        
+        -- 关联血缘表
+        LEFT JOIN regular_field_full_lineage rfl ON rfl.field_id = rf.id
         LEFT JOIN datasources d ON rfl.datasource_id = d.id
         LEFT JOIN workbooks w ON rfl.workbook_id = w.id
-        GROUP BY gs.canonical_name, gs.table_id
-    """
 
+        {where_clause}
+
+        GROUP BY urf.id
+    """
     
-    # 统计总数
+    # 统计总数 (在外层统计，因为内层有 GROUP BY)
+    # 注意：如果筛选了 role，那么没有匹配 role 实例的 urf 将被过滤
     count_sql = f"SELECT COUNT(*) FROM ({base_sql}) sub"
     total = session.execute(text(count_sql), params).scalar() or 0
     total_pages = (total + page_size - 1) // page_size if total > 0 else 0
@@ -277,7 +290,7 @@ def get_fields_catalog():
     # 构建结果
     items = []
     for row in rows:
-        # 解析数据源列表（新格式：id|name,id|name,...）
+        # 解析数据源列表
         datasources = []
         if row.datasource_info:
             for ds_pair in row.datasource_info.split(','):
@@ -285,7 +298,7 @@ def get_fields_catalog():
                     ds_id, ds_name = ds_pair.split('|', 1)
                     datasources.append({'id': ds_id, 'name': ds_name})
 
-        # 解析工作簿列表（新格式：id|name,id|name,...）
+        # 解析工作簿列表
         workbooks = []
         if row.workbook_info:
             for wb_pair in row.workbook_info.split(','):
@@ -315,14 +328,22 @@ def get_fields_catalog():
     
     # Facets 统计
     facets = {}
+    
+    # Role 统计 - 直接查询 unique 表关联实例表，统计各角色下的 unique field 数量
+    # 注意：这里逻辑有点微妙。如果一个 unique field 既有 Dimension 又有 Measure 实例，它应该算哪边？
+    # 上面的列表查询里用了 MAX(role)。为了保持一致，这里也应该用 MAX(role) 或者类似的聚合。
+    # 为了简化且保持一致，我们复用类似的 CTE 逻辑
+    
     role_sql = f"""
         SELECT sub.role, COUNT(*) FROM (
-            SELECT MAX(f.role) as role
-            FROM fields f
+            SELECT MAX(rf.role) as role
+            FROM unique_regular_fields urf
+            LEFT JOIN regular_fields rf ON rf.unique_id = urf.id
             {where_clause}
-            GROUP BY COALESCE(f.upstream_column_name, f.name), f.table_id
+            GROUP BY urf.id
         ) sub GROUP BY sub.role
     """
+    
     role_counts = session.execute(text(role_sql), params).fetchall()
     facets['role'] = {str(r or 'unknown'): c for r, c in role_counts}
     

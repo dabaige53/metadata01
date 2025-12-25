@@ -67,26 +67,26 @@ export function useDataTable<T extends Record<string, any>>({
   const [searchTerm, setSearchTerm] = useState(initialSearch); // UI 输入状态
   const [appliedSearchTerm, setAppliedSearchTerm] = useState(initialSearch); // 实际搜索生效状态
 
-  // 手动触发搜索
-  const handleSearch = useCallback(() => {
-    setAppliedSearchTerm(searchTerm);
+  // 手动触发搜索（支持可选的新搜索词参数，用于清空场景）
+  const handleSearch = useCallback((newSearchTerm?: string) => {
+    const termToApply = newSearchTerm !== undefined ? newSearchTerm : searchTerm;
+    setSearchTerm(termToApply);
+    setAppliedSearchTerm(termToApply);
     setCurrentPage(1); // 搜索时重置页码
   }, [searchTerm]);
+
+  // 清空搜索（清空输入框并立即刷新）
+  const clearSearch = useCallback(() => {
+    setSearchTerm('');
+    setAppliedSearchTerm('');
+    setCurrentPage(1);
+  }, []);
 
   // 监听初始 URL 参数变化同步到 appliedSearchTerm
   useEffect(() => {
     setAppliedSearchTerm(initialSearch);
     setSearchTerm(initialSearch);
   }, [initialSearch]);
-
-  // 修改：添加防抖逻辑
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setAppliedSearchTerm(searchTerm);
-    }, 500); // 500ms 防抖
-
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
 
   // 计算 Facets
   const facets = useMemo<FacetConfig>(() => {
@@ -305,6 +305,7 @@ export function useDataTable<T extends Record<string, any>>({
     searchTerm,
     setSearchTerm,
     handleSearch, // 暴露手动触发搜索的方法
+    clearSearch,  // 清空搜索并刷新
     setPageSize,
   };
 }

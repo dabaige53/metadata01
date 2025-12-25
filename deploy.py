@@ -81,18 +81,33 @@ def get_process_info(pid):
 
 
 def is_safe_to_kill(pid):
-    """判断进程是否可以安全地自动终止"""
+    """判断进程是否可以安全地自动终止
+    
+    只有当进程明确属于本项目时才返回 True，避免误杀 IDE 服务
+    """
     name, args = get_process_info(pid)
     name = name.lower()
     args = args.lower()
     
-    # 安全名称列表
-    safe_names = ['python', 'node', 'npm', 'next-server', 'flask']
-    if any(sn in name for sn in safe_names):
+    # 获取项目根目录路径（用于匹配）
+    project_root = os.path.dirname(os.path.abspath(__file__)).lower()
+    
+    # 本项目特定的关键词列表
+    project_keywords = [
+        'run_backend.py', 
+        'dev.py', 
+        'deploy.py',
+        'next dev', 
+        'next start',
+        'next-router-worker',
+        'metadata分析',  # 项目目录名
+        'metadata-analysis'
+    ]
+    
+    # 只有命令行参数包含本项目路径或特定关键词时才允许杀死
+    if project_root in args:
         return True
     
-    # 检查命令行
-    project_keywords = ['run_backend.py', 'deploy.py', 'next start', 'next-router-worker']
     if any(kw in args for kw in project_keywords):
         return True
         
@@ -125,43 +140,33 @@ def kill_process_gracefully(pid):
 
 
 def stop_services():
-    """停止所有服务"""
+    """停止所有服务（仅停止 PID 文件记录的进程）"""
     print("🛑 正在停止服务...")
     
     stopped = False
+    # 只通过 PID 文件停止进程
     for pid_file, name in [(BACKEND_PID_FILE, "后端"), (FRONTEND_PID_FILE, "前端")]:
         pid = read_pid(pid_file)
-        if pid and is_process_running(pid):
-            try:
-                os.killpg(os.getpgid(pid), signal.SIGTERM)
-                print(f"✓ 已停止{name}服务 (PID: {pid})")
-                stopped = True
-            except:
-                pass
+        if pid:
+            if is_process_running(pid):
+                # hex: 增加安全检查
+                if not is_safe_to_kill(pid):
+                    print(f"⚠️  PID {pid} 不是本项目服务，跳过终止")
+                else:
+                    if kill_process_gracefully(pid):
+                        print(f"✓ 已停止{name}服务 (PID: {pid})")
+                        stopped = True
+                    else:
+                        print(f"⚠️  无法停止{name} (PID: {pid})")
+            
+            # 清理 PID 文件
             try:
                 os.remove(pid_file)
             except:
                 pass
     
-    # 强制清理端口
-    for port in [8101, 3100]:
-        try:
-            result = subprocess.run(f"lsof -ti :{port}", shell=True, capture_output=True, text=True)
-            pids = [p for p in result.stdout.strip().split('\n') if p]
-            for pid in pids:
-                pid_int = int(pid)
-                if is_safe_to_kill(pid_int):
-                    if kill_process_gracefully(pid_int):
-                        p_name, _ = get_process_info(pid_int)
-                        print(f"✓ 已自动清理端口 {port} 的进程 {pid} ({p_name})")
-                        stopped = True
-                else:
-                    p_name, _ = get_process_info(pid_int)
-                    print(f"⚠️  跳过非本项目相关的进程 {pid} ({p_name})，它正在占用端口 {port}")
-        except:
-            pass
-    
     if stopped:
+        time.sleep(0.5)
         print("✅ 服务已停止")
     else:
         print("ℹ️  没有运行中的服务")

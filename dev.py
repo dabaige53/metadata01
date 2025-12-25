@@ -20,12 +20,13 @@ import argparse
 PID_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.dev')
 BACKEND_PID_FILE = os.path.join(PID_DIR, 'backend.pid')
 FRONTEND_PID_FILE = os.path.join(PID_DIR, 'frontend.pid')
+LOG_DIR = os.path.join(PID_DIR, 'logs')
 
 
 def check_port_availability():
     """检查端口是否可用，如果被占用则提示用户"""
-    ports = [8101, 3100]
-    port_names = {8101: "后端 Flask", 3100: "前端 Next.js"}
+    ports = [8201, 3200]
+    port_names = {8201: "后端 Flask", 3200: "前端 Next.js"}
     occupied_ports = []
     
     # 清理 Next.js 锁文件（安全操作）
@@ -80,33 +81,36 @@ def check_port_availability():
         print("\n" + "=" * 60)
         print("💡 建议操作:")
         print("   1. 手动终止占用进程: kill -9 <PID>")
-        print("   2. 或者等待进程自然结束后重新运行")
-        print("   3. 如果是系统服务，请考虑更换端口配置")
+        print("   2. 或者运行: python3 dev.py stop")
         print("=" * 60)
         
-        # 询问用户是否继续
-        try:
-            response = input("\n是否仍要尝试启动服务？(y/N): ").strip().lower()
-            if response != 'y':
-                print("\n❌ 已取消启动。")
-                sys.exit(0)
-            print("\n⚠️ 继续启动可能会失败，请注意观察错误信息...\n")
-        except KeyboardInterrupt:
-            print("\n\n❌ 已取消启动。")
-            sys.exit(0)
+        # 移除交互式询问，改为直接警告
+        print("\n⚠️  检测到端口占用，继续启动可能会失败。请清理后再试。\n")
+        # 为保证自动化流程，这里不退出，但在 start_services 中会再次处理占用逻辑
     else:
-        print("✓ 端口 8101 和 3100 均可用")
+        print(f"✓ 端口 {', '.join(map(str, ports))} 均可用")
 
-def run_command(command, cwd=None, name=""):
-    """运行子进程"""
-    print(f"🚀 正在启动 {name}...")
+def run_command(command, cwd=None, name="", log_file=None):
+    """运行子进程并重定向输出"""
+    os.makedirs(LOG_DIR, exist_ok=True)
+    
+    stdout = sys.stdout
+    stderr = sys.stderr
+    
+    if log_file:
+        stdout = open(log_file, 'a')
+        stderr = stdout
+        print(f"🚀 正在启动 {name} (日志: {log_file})...")
+    else:
+        print(f"🚀 正在启动 {name}...")
+        
     return subprocess.Popen(
         command,
         shell=True,
         cwd=cwd,
-        stdout=sys.stdout,
-        stderr=sys.stderr,
-        preexec_fn=os.setsid if os.name != 'nt' else None
+        stdout=stdout,
+        stderr=stderr,
+        start_new_session=True  # 现代推荐方式：在独立会话中运行子进程，等效于 setsid
     )
 
 def save_pid(pid, pid_file):
@@ -151,19 +155,46 @@ def get_process_info(pid):
     return "unknown", ""
 
 def is_safe_to_kill(pid):
-    """判断进程是否可以安全地自动终止"""
+    """判断进程是否可以安全地自动终止
+    
+    只有当进程明确属于本项目时才返回 True，避免误杀 IDE 服务
+    """
     name, args = get_process_info(pid)
     name = name.lower()
     args = args.lower()
     
-    # 安全名称列表
-    safe_names = ['python', 'node', 'npm', 'next-server', 'flask']
-    # 进一步检查（有些时候名称可能只是 python3）
-    if any(sn in name for sn in safe_names):
+    # 获取项目根目录路径（用于匹配）
+    project_root = os.path.dirname(os.path.abspath(__file__)).lower()
+    
+    # 本项目特定的关键词列表
+    project_keywords = [
+        'run_backend.py', 
+        'dev.py', 
+        'deploy.py',
+        'next dev', 
+        'next start',
+        'next-server',          # 显式包含 Next.js 运行进程
+        'next-router-worker',
+        'metadata分析',         # 项目目录名
+        'metadata-analysis'
+    ]
+    
+    # 强制保护列表：绝不杀死包含这些关键词的进程（IDE 核心进程）
+    protection_keywords = [
+        'antigravity',
+        'cursor',
+        'vscode',
+        'python3 -m ccc',
+        'pyright'
+    ]
+    
+    if any(pk in args or pk in name for pk in protection_keywords):
+        return False
+        
+    # 只有命令行参数包含本项目路径或特定关键词时才允许杀死
+    if project_root in args:
         return True
     
-    # 检查命令行是否包含本项目相关的关键词
-    project_keywords = ['run_backend.py', 'dev.py', 'next dev', 'next-router-worker']
     if any(kw in args for kw in project_keywords):
         return True
         
@@ -202,58 +233,35 @@ def kill_process_gracefully(pid, name=""):
         return False
 
 def stop_services():
-    """停止所有服务"""
+    """停止所有服务（通过 PID 文件和端口主动检查）"""
     print("=" * 50)
     print("🛑 正在停止服务...")
     print("=" * 50)
     
     stopped_any = False
-    ports_to_check = []
+    ports = [8201, 3200]
+    port_names = {8201: "后端 Flask", 3200: "前端 Next.js"}
     
-    # 1. 先尝试通过 PID 文件停止
-    backend_pid = read_pid(BACKEND_PID_FILE)
-    if backend_pid and is_process_running(backend_pid):
-        try:
-            if os.name != 'nt':
-                os.killpg(os.getpgid(backend_pid), signal.SIGTERM)
-            else:
-                os.kill(backend_pid, signal.SIGTERM)
-            print(f"✓ 已停止后端服务 (PID: {backend_pid})")
-            stopped_any = True
-        except Exception as e:
-            print(f"⚠️ 停止后端服务失败: {e}")
-            ports_to_check.append(8101)
-        try:
-            os.remove(BACKEND_PID_FILE)
-        except:
-            pass
-    else:
-        ports_to_check.append(8101)
+    # 步骤 1: 通过 PID 文件停止进程
+    for pid_file, service_name in [(BACKEND_PID_FILE, "后端"), (FRONTEND_PID_FILE, "前端")]:
+        pid = read_pid(pid_file)
+        if pid:
+            if is_process_running(pid):
+                if not is_safe_to_kill(pid):
+                    print(f"⚠️  警告: PID {pid} ({service_name}) 对应的进程似乎不是本项目服务。")
+                else:
+                    if kill_process_gracefully(pid, service_name):
+                        print(f"✓ 已通过 PID 文件停止{service_name}服务 (PID: {pid})")
+                        stopped_any = True
+            
+            # 清理 PID 文件
+            try:
+                os.remove(pid_file)
+            except:
+                pass
     
-    frontend_pid = read_pid(FRONTEND_PID_FILE)
-    if frontend_pid and is_process_running(frontend_pid):
-        try:
-            if os.name != 'nt':
-                os.killpg(os.getpgid(frontend_pid), signal.SIGTERM)
-            else:
-                os.kill(frontend_pid, signal.SIGTERM)
-            print(f"✓ 已停止前端服务 (PID: {frontend_pid})")
-            stopped_any = True
-        except Exception as e:
-            print(f"⚠️ 停止前端服务失败: {e}")
-            ports_to_check.append(3100)
-        try:
-            os.remove(FRONTEND_PID_FILE)
-        except:
-            pass
-    else:
-        ports_to_check.append(3100)
-    
-    # 2. 检查端口是否仍被占用
-    port_names = {8101: "后端 Flask", 3100: "前端 Next.js"}
-    occupied_ports = []
-    
-    for port in ports_to_check:
+    # 步骤 2: 主动检查端口并清理残留
+    for port in ports:
         try:
             result = subprocess.run(
                 f"lsof -ti :{port}",
@@ -264,43 +272,22 @@ def stop_services():
             pids = result.stdout.strip().split('\n')
             pids = [pid for pid in pids if pid]
             
-            if pids:
-                occupied_ports.append({
-                    'port': port,
-                    'name': port_names[port],
-                    'pids': pids
-                })
-        except Exception:
+            for pid_str in pids:
+                pid = int(pid_str)
+                if is_safe_to_kill(pid):
+                    print(f"🔍 发现端口 {port} ({port_names[port]}) 仍有残留进程 {pid}，正在清理...")
+                    if kill_process_gracefully(pid, port_names[port]):
+                        stopped_any = True
+                else:
+                    print(f"ℹ️  端口 {port} 被非本项目进程 {pid} 占用，跳过。")
+        except:
             pass
     
-    # 3. 如果有端口仍被占用，询问是否强制终止
-    if occupied_ports:
-        print(f"\n⚠️  发现 {len(occupied_ports)} 个端口仍被占用:")
-        for item in occupied_ports:
-            print(f"   - 端口 {item['port']} ({item['name']}): PID {', '.join(item['pids'])}")
-        
-        try:
-            # 获取每个 PID 的详细信息以供参考
-            for item in occupied_ports:
-                for pid in item['pids']:
-                    p_name, p_args = get_process_info(int(pid))
-                    print(f"     PID {pid}: {p_name} ({p_args[:60]}...)")
-            
-            response = input("\n是否终止这些进程？(y/N): ").strip().lower()
-            if response == 'y':
-                for item in occupied_ports:
-                    for pid in item['pids']:
-                        if kill_process_gracefully(int(pid)):
-                            print(f"✓ 已终止进程 {pid} (端口 {item['port']})")
-                            stopped_any = True
-        except KeyboardInterrupt:
-            print("\n\n已取消终止操作")
-    
     if not stopped_any:
-        print("ℹ️  没有运行中的服务")
+        print("ℹ️  没有发现运行中的项目服务")
     else:
-        time.sleep(1)
-        print("✅ 服务已停止")
+        time.sleep(0.5)
+        print("✅ 服务清理完成")
     
     print("=" * 50)
 
@@ -309,15 +296,42 @@ def start_services():
     root_dir = os.path.dirname(os.path.abspath(__file__))
     frontend_dir = os.path.join(root_dir, "frontend")
     
-    # 先检查端口可用性
+    # 先停止之前由本脚本启动的服务（通过 PID 文件）
     print("=" * 50)
-    print("🔍 检查端口可用性...")
+    print("🔍 检查并清理旧进程...")
     print("=" * 50)
     
-    # 检查端口占用情况
-    ports = [8101, 3100]
-    port_names = {8101: "后端 Flask", 3100: "前端 Next.js"}
-    has_occupied = False
+    stopped_any = False
+    
+    # 只停止 PID 文件记录的进程
+    for pid_file, service_name in [(BACKEND_PID_FILE, "后端"), (FRONTEND_PID_FILE, "前端")]:
+        pid = read_pid(pid_file)
+        if pid:
+            if is_process_running(pid):
+                if not is_safe_to_kill(pid):
+                    print(f"⚠️  PID {pid} 对应的旧{service_name}记录似乎不是本项目服务，跳过终止。")
+                else:
+                    try:
+                        kill_process_gracefully(pid, service_name)
+                        print(f"✓ 已停止旧的{service_name}服务 (PID: {pid})")
+                        stopped_any = True
+                    except Exception as e:
+                        print(f"⚠️  停止{service_name}服务时出错: {e}")
+            
+            # 清理 PID 文件
+            try:
+                os.remove(pid_file)
+            except:
+                pass
+    
+    if stopped_any:
+        time.sleep(0.5)
+        print("✓ 旧进程已清理")
+    
+    # 检查端口是否仍被占用
+    ports = [8201, 3200]
+    port_names = {8201: "后端 Flask", 3200: "前端 Next.js"}
+    occupied_ports = []
     
     for port in ports:
         try:
@@ -331,97 +345,65 @@ def start_services():
             pids = [pid for pid in pids if pid]
             
             if pids:
-                has_occupied = True
-                break
+                occupied_ports.append({'port': port, 'name': port_names[port], 'pids': pids})
         except Exception:
             pass
     
-    # 如果有端口被占用，自动清理
-    if has_occupied:
-        print("⚠️  检测到端口被占用，正在自动清理...")
-        print()
+    # 如果端口仍被占用，直接报错退出
+    if occupied_ports:
+        print("\n" + "⚠️ " * 20)
+        print("警告：以下端口仍被其他进程占用")
+        print("⚠️ " * 20)
+        for item in occupied_ports:
+            print(f"\n端口 {item['port']} ({item['name']}) 已被占用:")
+            for pid in item['pids']:
+                p_name, p_args = get_process_info(int(pid))
+                print(f"  - PID {pid}: {p_name}")
+                if p_args:
+                    print(f"    命令: {p_args[:80]}...")
+        print("\n💡 建议操作:")
+        print("   1. 手动终止占用进程: kill -9 <PID>")
+        print("   2. 或者使用: python3 dev.py stop")
+        print("⚠️ " * 20 + "\n")
         
-        # 静默停止服务（不需要用户交互）
-        stopped_any = False
-        
-        # 尝试通过 PID 文件停止
-        for pid_file in [BACKEND_PID_FILE, FRONTEND_PID_FILE]:
-            pid = read_pid(pid_file)
-            if pid and is_process_running(pid):
-                try:
-                    if os.name != 'nt':
-                        os.killpg(os.getpgid(pid), signal.SIGTERM)
-                    else:
-                        os.kill(pid, signal.SIGTERM)
-                    stopped_any = True
-                except Exception:
-                    pass
-                try:
-                    os.remove(pid_file)
-                except:
-                    pass
-        
-        # 强制清理占用端口的进程
-        for port in ports:
-            try:
-                result = subprocess.run(
-                    f"lsof -ti :{port}",
-                    shell=True,
-                    capture_output=True,
-                    text=True
-                )
-                pids = result.stdout.strip().split('\n')
-                pids = [pid for pid in pids if pid]
-                
-                for pid in pids:
-                    pid_int = int(pid)
-                    p_name, p_args = get_process_info(pid_int)
-                    
-                    if is_safe_to_kill(pid_int):
-                        if kill_process_gracefully(pid_int):
-                            print(f"✓ 已自动清理占用端口 {port} 的进程 {pid} ({p_name})")
-                            stopped_any = True
-                    else:
-                        print(f"⚠️  跳过并保留非本项目相关的进程 {pid} ({p_name})，它正在占用端口 {port}。")
-                        print(f"   如果服务启动失败，请手动处理该进程。")
-            except Exception:
-                pass
-        
-        if stopped_any:
-            time.sleep(1)
-            print("✓ 端口清理完成")
-        print()
+        print("❌ 端口被占用，启动已中止。请清理端口后重试。")
+        sys.exit(1)
     else:
-        print("✓ 端口 8101 和 3100 均可用")
-        print()
+        print(f"✓ 端口 {', '.join(map(str, ports))} 均可用")
     
-    processes = []
+    print()
+    
+    # 3. 启动后台进程
+    os.makedirs(LOG_DIR, exist_ok=True)
+    backend_log = os.path.join(LOG_DIR, 'backend.log')
+    frontend_log = os.path.join(LOG_DIR, 'frontend.log')
     
     try:
-        # 1. 启动后端 Flask (端口 8101)
+        # 1. 启动后端 Flask (端口 8201)
         backend_proc = run_command(
             "python3 run_backend.py",
             cwd=root_dir,
-            name="后端服务 (Port 8101)"
+            name="后端服务 (Port 8201)",
+            log_file=backend_log
         )
-        processes.append(('backend', backend_proc))
         save_pid(backend_proc.pid, BACKEND_PID_FILE)
         
         # 等待后端启动一会
         time.sleep(2)
         
-        # 2. 启动前端 Next.js (端口 3100)
+        # 2. 启动前端 Next.js (端口 3200)
         frontend_proc = run_command(
             "npm run dev",
             cwd=frontend_dir,
-            name="前端服务 (Port 3100)"
+            name="前端服务 (Port 3200)",
+            log_file=frontend_log
         )
-        processes.append(('frontend', frontend_proc))
         save_pid(frontend_proc.pid, FRONTEND_PID_FILE)
         
         print("\n✨ 系统已全面启动！")
-        print("🔗 前端地址: http://localhost:3100 (本机)")
-        print("🔗 后端 API: http://localhost:8101/api (本机)")
+        print("🔗 前端地址: http://localhost:3200 (本机)")
+        print("🔗 后端 API: http://localhost:8201/api (本机)")
+        
         # 获取本机内网 IP
         import socket
         try:
@@ -429,40 +411,19 @@ def start_services():
             s.connect(("8.8.8.8", 80))
             local_ip = s.getsockname()[0]
             s.close()
-            print(f"🌐 内网访问: http://{local_ip}:3100")
+            print(f"🌐 内网访问: http://{local_ip}:3200")
         except:
             pass
-        print("\n💡 提示: 使用 'python3 dev.py stop' 可以停止服务")
-        print("按 Ctrl+C 停止所有服务...\n")
+            
+        print("\n💡 服务已在后台成功启动！")
+        print("💡 提示: 使用 'python3 dev.py stop' 可以停止服务")
+        print(f"💡 日志已存放在: {LOG_DIR}")
+        print("✅ 脚本执行完成，已返回。再见！\n")
         
-        # 保持主进程运行
-        while True:
-            time.sleep(1)
-            # 检查子进程是否已中断
-            for name, p in processes:
-                if p.poll() is not None:
-                    print(f"\n⚠️ {name} 进程 {p.pid} 已意外停止。")
-                    raise KeyboardInterrupt
-                    
-    except KeyboardInterrupt:
-        print("\n\n🛑 正在停止所有服务...")
-        for name, p in processes:
-            try:
-                if os.name != 'nt':
-                    os.killpg(os.getpgid(p.pid), signal.SIGTERM)
-                else:
-                    p.terminate()
-            except Exception:
-                pass
-        
-        # 清理 PID 文件
-        for pid_file in [BACKEND_PID_FILE, FRONTEND_PID_FILE]:
-            try:
-                os.remove(pid_file)
-            except:
-                pass
-        
-        print("✅ 服务已关闭。再见！")
+    except Exception as e:
+        print(f"\n❌ 启动过程中出错: {e}")
+        stop_services()
+        sys.exit(1)
 
 def main():
     """主函数 - 处理命令行参数"""

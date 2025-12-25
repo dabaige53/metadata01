@@ -70,7 +70,9 @@ export default function HotViewsAnalysis({ onCountUpdate, onSortUpdate }: HotVie
         handlePageChange,
         handlePageSizeChange,
         searchTerm,
-        setSearchTerm
+        setSearchTerm,
+        handleSearch,
+        clearSearch
     } = useDataTable({
         moduleName: 'views-hot',
         data: allData,
@@ -165,17 +167,36 @@ export default function HotViewsAnalysis({ onCountUpdate, onSortUpdate }: HotVie
                     onFilterChange={handleBatchFilterChange}
                     onClearAll={handleClearAllFilters}
                 />
+                {/* 搜索框组件 */}
                 <div className="flex items-center gap-2">
                     <div className="relative w-64">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        </div>
                         <input
                             type="text"
                             placeholder="搜索视图或工作簿..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                            className="w-full pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                         />
+                        {searchTerm && (
+                            <button
+                                onClick={clearSearch}
+                                className="absolute inset-y-0 right-0 pr-2 flex items-center cursor-pointer text-gray-400 hover:text-gray-600"
+                                title="清空搜索"
+                            >
+                                <span className="text-xs">✕</span>
+                            </button>
+                        )}
                     </div>
+                    <button
+                        onClick={() => handleSearch()}
+                        className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+                    >
+                        搜索
+                    </button>
                 </div>
             </div>
 

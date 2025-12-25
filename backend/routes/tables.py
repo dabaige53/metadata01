@@ -353,12 +353,27 @@ def get_table_detail(table_id):
         'workbook_count': len(workbooks_data)
     }
     
-    # 获取关联数据源的 vizportal_url_id（用于嵌入式表的 URL 构建）
+    # 获取关联数据源的 vizportal_url_id 或工作簿信息（用于嵌入式表的 URL 构建）
     ds_vizportal_url_id = None
+    wb_vizportal_url_id = None
+    embedded_ds_id = None
+    
     if table.is_embedded and table.datasources:
         for ds in table.datasources:
-            if ds.vizportal_url_id:
+            # 优先处理嵌入式数据源：需要找到所属工作簿
+            if ds.is_embedded:
+                if ds.workbooks:
+                    # 嵌入式数据源通常只属于一个工作簿
+                    wb = ds.workbooks[0]
+                    if wb.vizportal_url_id:
+                        wb_vizportal_url_id = wb.vizportal_url_id
+                        embedded_ds_id = ds.id
+                        break
+            # 其次处理已发布数据源
+            elif ds.vizportal_url_id:
                 ds_vizportal_url_id = ds.vizportal_url_id
+                # 如果找到了已发布数据源，也可以break，视业务优先级而定
+                # 这里假设嵌入式表如果关联了已发布数据源，优先跳转数据源
                 break
     
     data['tableau_url'] = build_tableau_url(
@@ -366,7 +381,9 @@ def get_table_detail(table_id):
         asset_id=table.id, 
         luid=table.luid,
         is_embedded=table.is_embedded or False,
-        datasource_vizportal_url_id=ds_vizportal_url_id
+        datasource_vizportal_url_id=ds_vizportal_url_id,
+        workbook_vizportal_url_id=wb_vizportal_url_id,
+        embedded_datasource_id=embedded_ds_id
     )
 
     return jsonify(data)

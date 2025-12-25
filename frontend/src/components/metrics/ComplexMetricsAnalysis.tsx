@@ -62,7 +62,9 @@ export default function ComplexMetricsAnalysis({ onCountUpdate, onSortUpdate }: 
         handlePageChange,
         handlePageSizeChange,
         searchTerm,
-        setSearchTerm
+        setSearchTerm,
+        handleSearch,
+        clearSearch
     } = useDataTable({
         moduleName: 'metrics-complex',
         data: allData,
@@ -145,6 +147,7 @@ export default function ComplexMetricsAnalysis({ onCountUpdate, onSortUpdate }: 
                     onClearAll={handleClearAllFilters}
                 />
 
+                {/* 搜索框组件 */}
                 <div className="flex items-center gap-2">
                     <div className="relative w-64">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -155,9 +158,25 @@ export default function ComplexMetricsAnalysis({ onCountUpdate, onSortUpdate }: 
                             placeholder="搜索参数名称或公式..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                            className="block w-full pl-10 pr-8 py-2 border border-gray-200 rounded-lg bg-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
                         />
+                        {searchTerm && (
+                            <button
+                                onClick={clearSearch}
+                                className="absolute inset-y-0 right-0 pr-2 flex items-center cursor-pointer text-gray-400 hover:text-gray-600"
+                                title="清空搜索"
+                            >
+                                <span className="text-xs">✕</span>
+                            </button>
+                        )}
                     </div>
+                    <button
+                        onClick={() => handleSearch()}
+                        className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+                    >
+                        搜索
+                    </button>
                 </div>
             </div>
 
@@ -197,8 +216,8 @@ export default function ComplexMetricsAnalysis({ onCountUpdate, onSortUpdate }: 
                                                 <span className="font-bold text-gray-800">{item.name}</span>
                                                 {/* 复杂度标签 */}
                                                 <span className={`px-2 py-0.5 text-[10px] rounded-full font-medium ${item.complexity_level === '超高' ? 'text-red-600 bg-red-50' :
-                                                        item.complexity_level === '高' ? 'text-orange-600 bg-orange-50' :
-                                                            item.complexity_level === '中' ? 'text-purple-600 bg-purple-50' : 'text-blue-600 bg-blue-50'
+                                                    item.complexity_level === '高' ? 'text-orange-600 bg-orange-50' :
+                                                        item.complexity_level === '中' ? 'text-purple-600 bg-purple-50' : 'text-blue-600 bg-blue-50'
                                                     }`}>
                                                     {item.complexity_level === '超高' ? '🔴' : '🟠'} {item.complexity_level} (评分:{item.complexity})
                                                 </span>

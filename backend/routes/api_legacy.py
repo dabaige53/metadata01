@@ -34,8 +34,8 @@ def get_stats():
     stats_rows = session.execute(text("""
         SELECT 'databases' as key, COUNT(*) as cnt FROM databases
         UNION ALL SELECT 'tables', COUNT(*) FROM tables WHERE is_embedded = 0 OR is_embedded IS NULL
-        UNION ALL SELECT 'fields', COUNT(*) FROM fields WHERE is_calculated = 0 OR is_calculated IS NULL
-        UNION ALL SELECT 'metrics', COUNT(*) FROM fields WHERE is_calculated = 1 AND (role = 'measure' OR role IS NULL)
+        UNION ALL SELECT 'fields', COUNT(*) FROM unique_regular_fields
+        UNION ALL SELECT 'metrics', COUNT(*) FROM unique_calculated_fields
         UNION ALL SELECT 'datasources', COUNT(*) FROM datasources WHERE is_embedded = 0 OR is_embedded IS NULL
         UNION ALL SELECT 'workbooks', COUNT(*) FROM workbooks
         UNION ALL SELECT 'views', COUNT(*) FROM views

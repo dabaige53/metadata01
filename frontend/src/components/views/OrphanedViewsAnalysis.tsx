@@ -77,7 +77,9 @@ export default function OrphanedViewsAnalysis() {
         handlePageChange,
         handlePageSizeChange,
         searchTerm,
-        setSearchTerm
+        setSearchTerm,
+        handleSearch,
+        clearSearch
     } = useDataTable({
         moduleName: 'views-governance',
         data: allData,
@@ -143,15 +145,33 @@ export default function OrphanedViewsAnalysis() {
                         currentSort={sortState}
                         onSortChange={handleSortChange}
                     />
-                    <div className="relative w-full md:w-64">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="搜索视图、工作簿..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                        />
+                    <div className="flex items-center gap-2">
+                        <div className="relative w-full md:w-64">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <input
+                                type="text"
+                                placeholder="搜索视图、工作簿..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                                className="w-full pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                            />
+                            {searchTerm && (
+                                <button
+                                    onClick={clearSearch}
+                                    className="absolute inset-y-0 right-0 pr-2 flex items-center cursor-pointer text-gray-400 hover:text-gray-600 h-full"
+                                    title="清空搜索"
+                                >
+                                    <span className="text-xs">✕</span>
+                                </button>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => handleSearch()}
+                            className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors whitespace-nowrap"
+                        >
+                            搜索
+                        </button>
                     </div>
                 </div>
             </div>
