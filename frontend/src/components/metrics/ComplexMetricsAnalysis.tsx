@@ -18,7 +18,7 @@ import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 
 // 排序选项定义在组件外部，保证引用稳定
 const SORT_OPTIONS: SortConfig[] = [
-    { key: 'formula_length', label: '复杂度' },
+    { key: 'complexity', label: '复杂度' },
     { key: 'total_references', label: '引用数' },
     { key: 'name', label: '名称' }
 ];
@@ -113,14 +113,14 @@ export default function ComplexMetricsAnalysis({ onCountUpdate, onSortUpdate }: 
             {/* 概览统计 */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-orange-500">
-                    <div className="text-xs text-gray-500 uppercase mb-1">高难度规范指标</div>
+                    <div className="text-xs text-gray-500 uppercase mb-1">高复杂度指标</div>
                     <div className="text-2xl font-bold text-orange-600">{allData.length}</div>
-                    <div className="text-xs text-gray-400 mt-1">公式聚合后 &gt; 100 字符</div>
+                    <div className="text-xs text-gray-400 mt-1">评分 &gt; 3 或 长度 &gt; 100</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-red-500">
                     <div className="text-xs text-gray-500 uppercase mb-1">超高复杂度</div>
-                    <div className="text-2xl font-bold text-red-600">{superComplex}</div>
-                    <div className="text-xs text-gray-400 mt-1">公式&gt;500字符</div>
+                    <div className="text-2xl font-bold text-red-600">{allData.filter(m => m.complexity > 10).length}</div>
+                    <div className="text-xs text-gray-400 mt-1">评分 &gt; 10</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-purple-500">
                     <div className="text-xs text-gray-500 uppercase mb-1">跨数据源</div>
@@ -178,12 +178,7 @@ export default function ComplexMetricsAnalysis({ onCountUpdate, onSortUpdate }: 
                     ) : (
                         displayData.map((item, idx) => {
                             const formulaLen = item.formula_length || 0;
-                            const level = ((length: number) => {
-                                if (length >= 500) return { color: 'text-red-600 bg-red-50', label: '超高', icon: '🔴' };
-                                if (length >= 300) return { color: 'text-orange-600 bg-orange-50', label: '高', icon: '🟠' };
-                                if (length >= 200) return { color: 'text-amber-600 bg-amber-50', label: '中高', icon: '🟡' };
-                                return { color: 'text-gray-600 bg-gray-50', label: '正常', icon: '🟢' };
-                            })(formulaLen);
+                            // const level = ... (Removed legacy calculation)
                             return (
                                 <div
                                     key={`${item.name}-${item.formula_hash || idx}`}
@@ -201,8 +196,11 @@ export default function ComplexMetricsAnalysis({ onCountUpdate, onSortUpdate }: 
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <span className="font-bold text-gray-800">{item.name}</span>
                                                 {/* 复杂度标签 */}
-                                                <span className={`px-2 py-0.5 text-[10px] rounded-full font-medium ${level.color}`}>
-                                                    {level.icon} {level.label} ({formulaLen}字符)
+                                                <span className={`px-2 py-0.5 text-[10px] rounded-full font-medium ${item.complexity_level === '超高' ? 'text-red-600 bg-red-50' :
+                                                        item.complexity_level === '高' ? 'text-orange-600 bg-orange-50' :
+                                                            item.complexity_level === '中' ? 'text-purple-600 bg-purple-50' : 'text-blue-600 bg-blue-50'
+                                                    }`}>
+                                                    {item.complexity_level === '超高' ? '🔴' : '🟠'} {item.complexity_level} (评分:{item.complexity})
                                                 </span>
                                                 {/* 实例数标签 */}
                                                 {item.instance_count > 1 && (

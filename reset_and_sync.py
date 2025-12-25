@@ -1,6 +1,7 @@
 from backend.models import get_engine, init_db
 from backend.config import Config
 from backend.tableau_sync import MetadataSync, TableauMetadataClient
+from backend.migrations import split_fields_table_v5
 import os
 import logging
 import sys
@@ -55,8 +56,26 @@ if client.sign_in():
         print("\n=== STEP 5: Fields (with Fixes) ===")
         sync.sync_fields()
         
+        print("\n=== STEP 5.5: Structure Migration (Part 1) ===")
+        ms_session, ms_engine = split_fields_table_v5.get_session()
+        split_fields_table_v5.cleanup_tables(ms_session)
+        split_fields_table_v5.create_tables(ms_engine)
+        split_fields_table_v5.migrate_regular_fields(ms_session)
+        split_fields_table_v5.migrate_calculated_fields(ms_session)
+        ms_session.commit()
+        ms_session.close()
+
         print("\n=== STEP 6: Lineage ===")
         sync.sync_lineage()
+        
+        print("\n=== STEP 7: Structure Migration (Part 2) ===")
+        ms_session_2, _ = split_fields_table_v5.get_session()
+        split_fields_table_v5.migrate_relations(ms_session_2)
+        split_fields_table_v5.update_statistics(ms_session_2)
+        split_fields_table_v5.migrate_lineage(ms_session_2)
+        split_fields_table_v5.verify_no_duplicates(ms_session_2)
+        ms_session_2.commit()
+        ms_session_2.close()
         
     except Exception as e:
         print(f"❌ Sync failed with error: {e}")

@@ -53,7 +53,21 @@ function MetricsContent() {
             const res = await fetch(`/api/metrics/catalog?${queryParams.toString()}`);
             const result = await res.json();
 
-            setData(result.items || []);
+            // 处理数据，增加 complexity_level
+            const items = (result.items || []).map((item: any) => {
+                const score = item.complexity || 0;
+                let level = '低';
+                if (score > 10) level = '超高';
+                else if (score > 6) level = '高';
+                else if (score > 3) level = '中';
+
+                return {
+                    ...item,
+                    complexity_level: level
+                };
+            });
+
+            setData(items);
             setTotal(result.total || 0);
             setFacetsData(result.facets || null);
             setTabCounts(prev => ({ ...prev, catalog: result.total || 0 }));

@@ -193,9 +193,10 @@ def migrate_calculated_fields(session):
         if ds_id and ds_id in ds_penetration:
             ds_id = ds_penetration[ds_id]
         
-        # 去重键: (datasource_id, name, formula_hash)
-        # 这样同数据源同名同公式只会产生一个 unique
-        key = f"{ds_id or 'none'}::{row['name']}::{formula_hash}"
+        # 去重键: (name, formula_hash) - 全局去重，忽略数据源差异
+        # 只要名字和公式一致，就视为同一个"标准指标"
+        name_clean = (row['name'] or '').strip()
+        key = f"{name_clean}::{formula_hash}"
         
         if key not in unique_map:
             unique_id = generate_uuid()
@@ -203,7 +204,7 @@ def migrate_calculated_fields(session):
             
             new_unique_records.append({
                 'id': unique_id,
-                'name': row['name'],
+                'name': name_clean, # 使用清洗后的名称
                 'formula': formula,
                 'formula_hash': formula_hash,
                 'description': row['description'],
@@ -306,8 +307,42 @@ def update_statistics(session):
             WHERE calc_field_dependencies.source_field_id = calculated_fields.id
         )
     """))
+
+    print("  ... 计算复杂度评分 ...")
+    # Fetch all calculated fields
+    rows = session.execute(text("SELECT id, formula, dependency_count FROM calculated_fields")).fetchall()
     
-    print("  ✅ 统计信息更新完成")
+    updates = []
+    for row in rows:
+        fid = row.id
+        formula = row.formula
+        dep_count = row.dependency_count or 0
+        
+        score = 0
+        if formula:
+            # 1. Length Factor
+            score += len(formula) / 50.0
+            # 2. Structure Factor
+            score += formula.count('\n') * 0.5
+            # 3. Keywords
+            keywords = {
+                'FIXED': 5, 'INCLUDE': 4, 'EXCLUDE': 4, 'REGEXP': 3,
+                'CASE': 2, 'IF': 1, 'IIF': 1, 'ZN': 1, 'ISNULL': 1,
+                'DATE': 1, 'SPLIT': 2
+            }
+            upper_f = formula.upper()
+            for kw, weight in keywords.items():
+                score += upper_f.count(kw) * weight
+        
+        # 4. Dependency Factor
+        score += dep_count * 2.0
+        
+        updates.append({'id': fid, 'score': round(score, 1)})
+    
+    if updates:
+        session.execute(text("UPDATE calculated_fields SET complexity_score = :score WHERE id = :id"), updates)
+        
+    print(f"  ✅ 统计信息更新完成 (更新了 {len(updates)} 个复杂度评分)")
 
 def migrate_lineage(session):
     print("\n[4/4] 迁移血缘数据...")
@@ -356,9 +391,9 @@ def verify_no_duplicates(session):
     # 计算字段：同ds同name同formula应该只有 1 个 unique
     result2 = session.execute(text("""
         SELECT COUNT(*) FROM (
-            SELECT datasource_id, name, formula, COUNT(DISTINCT unique_id) as uid_cnt
+            SELECT name, formula, COUNT(DISTINCT unique_id) as uid_cnt
             FROM calculated_fields
-            GROUP BY datasource_id, name, formula
+            GROUP BY name, formula
             HAVING COUNT(DISTINCT unique_id) > 1
         )
     """)).scalar()

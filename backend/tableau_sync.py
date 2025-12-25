@@ -296,6 +296,40 @@ class TableauMetadataClient:
         result = self.execute_query(query)
         return result.get("data", {}).get("databaseTables", [])
     
+    def fetch_datasource_by_id(self, ds_id: str) -> Optional[Dict]:
+        """获取单个数据源详情"""
+        query = """
+        {
+            publishedDatasources(filter: {id: "%s"}) {
+                id
+                name
+                description
+                projectName
+                projectVizportalUrlId
+                uri
+                hasExtracts
+                isCertified
+                certificationNote
+                certifierDisplayName
+                owner {
+                    id
+                    username
+                }
+            }
+        }
+        """ % ds_id
+        
+        result = self.execute_query(query)
+        if "errors" in result:
+             print(f"  ⚠️ 获取单数据源失败: {result['errors']}")
+             return None
+             
+        data = result.get("data", {})
+        ds_list = data.get("publishedDatasources") or []
+        if ds_list:
+            return ds_list[0]
+        return None
+
     def fetch_datasources(self) -> List[Dict]:
         """获取所有已发布数据源（增强版）"""
         query = """
@@ -525,6 +559,9 @@ class TableauMetadataClient:
                     id
                     name
                 }
+                workbook {
+                    id
+                }
             }
         }
         """
@@ -542,6 +579,13 @@ class TableauMetadataClient:
             upstreams = ds.get("upstreamDatasources") or []
             if upstreams:
                 embedded_to_published[ds["id"]] = upstreams[0]["id"]
+            
+            # 建立嵌入式数据源到工作簿的映射
+            if ds.get("workbook"):
+                f_wb_id = ds["workbook"]["id"]
+                # 我们将在 _batch_fetch_fields 中用到这个信息，但那里是重新查的
+                # 实际上 _batch_fetch_fields 也需要更新查询来获取 workbook
+
 
         # 分别处理两种数据源
         self._batch_fetch_fields(published, "publishedDatasources", all_fields)
@@ -557,6 +601,15 @@ class TableauMetadataClient:
             return
         
         embedded_to_published = embedded_to_published or {}
+        
+        # 修正：仅由于嵌入式数据源本身有 workbook 字段，发布式数据源没有
+        # 我们需要在查询中动态决定是否包含 workbook
+        nested_workbook_query = ""
+        if type_name == "embeddedDatasources":
+            nested_workbook_query = """
+                workbook {
+                    id
+                }"""
 
         print(f"  同步 {type_name}: {len(datasources)} 个...")
         chunk_size = 10
@@ -573,6 +626,7 @@ class TableauMetadataClient:
                 q{idx}: {type_name}(filter: {{id: "{ds_id}"}}) {{
                     id
                     name
+                    {nested_workbook_query}
                     fields {{
                         __typename
                         id
@@ -693,6 +747,11 @@ class TableauMetadataClient:
                             field["datasource_name"] = ds_name
                             field["parent_datasource_id"] = ds_id  # 保留原始 ID 备用
                             field["is_from_embedded_ds"] = (type_name == "embeddedDatasources")  # 标记来源
+                            
+                            # 提取 workbook 信息 (仅针对 embeddedDatasources)
+                            if ds_data.get("workbook"):
+                                field["workbook"] = ds_data["workbook"]
+                                
                             all_fields.append(field)
                 
                 print(f"    - {type_name}: 已处理 {min(i+chunk_size, total)}/{total}")
@@ -2418,9 +2477,8 @@ class MetadataSync:
             self.session.commit()
             
             # 2. 获取所有计算字段
-            calc_fields = self.session.query(CalculatedField, Field).join(
-                Field, CalculatedField.field_id == Field.id
-            ).all()
+            # 注意：CalculatedField 是独立表，不再需要 join Field
+            calc_fields = self.session.query(CalculatedField).all()
             
             # 构建字段索引 (Name -> ID lookup cache)
             all_fields = self.session.query(Field).all()
@@ -2432,21 +2490,21 @@ class MetadataSync:
                 field_map[key] = f.id
                 global_field_map[f.name] = f.id
             
-            for calc, field in calc_fields:
+            for calc in calc_fields:
                 formula = calc.formula
                 if not formula:
                     continue
                     
                 # A. 识别 Metric
                 # 规则: 计算字段 且 Role=Measure
-                if field.role == 'measure':
+                if calc.role == 'measure':
                     metric = Metric(
-                        id=field.id, # 复用 Field ID
-                        name=field.name,
-                        description=field.description,
+                        id=calc.id,
+                        name=calc.name,
+                        description=calc.description,
                         formula=formula,
                         metric_type='Calculated',
-                        owner=field.datasource.owner if field.datasource else None
+                        owner=None # 暂不获取 Owner
                     )
                     self.session.merge(metric)
                 
@@ -2458,8 +2516,8 @@ class MetadataSync:
                     dep_id = None
                     
                     # 1. 尝试同数据源匹配
-                    if field.datasource_id:
-                        dep_id = field_map.get((field.datasource_id, ref_name))
+                    if calc.datasource_id:
+                        dep_id = field_map.get((calc.datasource_id, ref_name))
                     
                     # 2. 尝试全局匹配
                     if not dep_id:
@@ -2467,7 +2525,7 @@ class MetadataSync:
                     
                     # 3. 创建依赖记录
                     dependency = FieldDependency(
-                        source_field_id=field.id,
+                        source_field_id=calc.id,
                         dependency_field_id=dep_id, 
                         dependency_name=ref_name,
                         dependency_type='formula'

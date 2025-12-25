@@ -3199,9 +3199,9 @@ def get_metrics_catalog_complex():
         FROM calculated_fields cf
         LEFT JOIN datasources d ON cf.datasource_id = d.id
         LEFT JOIN workbooks w ON cf.workbook_id = w.id
-        WHERE LENGTH(cf.formula) > 100
+        WHERE cf.complexity_score > 3 OR LENGTH(cf.formula) > 100
         GROUP BY cf.name, cf.formula_hash
-        ORDER BY formula_length DESC, cf.name
+        ORDER BY cf.complexity_score DESC, formula_length DESC
     """
     rows = session.execute(text(sql)).fetchall()
     
@@ -3217,13 +3217,13 @@ def get_metrics_catalog_complex():
         workbooks = [{'id': wb_ids[i] if i < len(wb_ids) else None, 'name': wb_names[i]} 
                      for i in range(len(wb_names))]
         
-        # 计算复杂度等级
-        formula_len = row.formula_length or 0
-        if formula_len >= 500:
+        # 计算复杂度等级 (基于评分)
+        score = row.complexity or 0
+        if score > 10:
             complexity_level = '超高'
-        elif formula_len >= 300:
+        elif score > 6:
             complexity_level = '高'
-        elif formula_len >= 100:
+        elif score > 3:
             complexity_level = '中'
         else:
             complexity_level = '低'
@@ -3237,9 +3237,9 @@ def get_metrics_catalog_complex():
             'data_type': row.data_type,
             'description': row.description or '',
             'instance_count': row.instance_count,
-            'complexity': row.complexity or 0,
+            'complexity': score,
             'complexity_level': complexity_level,
-            'formula_length': formula_len,
+            'formula_length': row.formula_length or 0,
             'total_references': row.total_references or 0,
             'datasources': datasources,
             'datasource_count': len(datasources),
