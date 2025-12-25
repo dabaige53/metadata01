@@ -1425,15 +1425,8 @@ class MetadataSync:
         ftv_count = self.sync_field_to_view()
         lineage_count = self.sync_lineage()
 
-        # 自动执行四表架构迁移与统计更新
-        print("-" * 30)
-        print("🛠 自动触发 V5 数据迁移与统计...")
-        try:
-            # 确保当前会话已提交，避免锁竞争
-            self.session.commit()
-            split_fields_table_v5.main()
-        except Exception as e:
-            print(f"❌ V5 迁移失败: {e}")
+        # 自行执行四表架构迁移与统计更新 (移至最后)
+        pass 
         
         duration = (datetime.now() - start_time).total_seconds()
         
@@ -1456,8 +1449,21 @@ class MetadataSync:
         # 同步视图使用统计（通过 REST API）
         self.sync_views_usage()
         
-        # 最后：计算预存统计字段
+        # 计算预存统计字段
         self.calculate_stats()
+
+        # 🚀 最后：自动执行四表架构迁移与统计更新
+        # 必须在 calculate_stats 之后执行，以确保迁移的数据包含最新的 usage_count 等统计
+        print("-" * 30)
+        print("🛠 自动触发 V5 数据迁移...")
+        try:
+            # 确保当前会话已提交，避免锁竞争
+            self.session.commit()
+            split_fields_table_v5.main()
+        except Exception as e:
+            print(f"❌ V5 迁移失败: {e}")
+            import traceback
+            traceback.print_exc()
     
     def sync_views_usage(self) -> int:
         """同步视图使用统计（通过 REST API）并记录历史快照"""
@@ -1638,10 +1644,13 @@ class MetadataSync:
             
             # 3. 统计字段被指标引用的次数 (metric_usage_count)
             print("  - 使用 SQL 批量更新指标引用次数...")
+            # 优化：优先匹配此时确定的依赖 ID，fallback 到名称匹配
             self.session.execute(text("""
                 UPDATE fields SET metric_usage_count = (
                     SELECT COUNT(*) FROM field_dependencies 
-                    WHERE field_dependencies.dependency_name = fields.name
+                    WHERE field_dependencies.dependency_field_id = fields.id
+                       OR (field_dependencies.dependency_field_id IS NULL 
+                           AND field_dependencies.dependency_name = fields.name)
                 )
             """))
             

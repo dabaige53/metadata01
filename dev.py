@@ -110,7 +110,7 @@ def run_command(command, cwd=None, name="", log_file=None):
         cwd=cwd,
         stdout=stdout,
         stderr=stderr,
-        start_new_session=True  # 现代推荐方式：在独立会话中运行子进程，等效于 setsid
+        start_new_session=True  # 现代推荐方式：在独立会话中运行子进程
     )
 
 def save_pid(pid, pid_file):
@@ -291,7 +291,7 @@ def stop_services():
     
     print("=" * 50)
 
-def start_services():
+def start_services(is_daemon=False):
     """启动所有服务"""
     root_dir = os.path.dirname(os.path.abspath(__file__))
     frontend_dir = os.path.join(root_dir, "frontend")
@@ -375,8 +375,14 @@ def start_services():
     
     # 3. 启动后台进程
     os.makedirs(LOG_DIR, exist_ok=True)
-    backend_log = os.path.join(LOG_DIR, 'backend.log')
-    frontend_log = os.path.join(LOG_DIR, 'frontend.log')
+    
+    # 根据模式决定日志去向
+    backend_log = None
+    frontend_log = None
+    
+    if is_daemon:
+        backend_log = os.path.join(LOG_DIR, 'backend.log')
+        frontend_log = os.path.join(LOG_DIR, 'frontend.log')
     
     try:
         # 1. 启动后端 Flask (端口 8201)
@@ -414,11 +420,36 @@ def start_services():
             print(f"🌐 内网访问: http://{local_ip}:3200")
         except:
             pass
+
+        if is_daemon:
+            print("\n💡 服务已在后台成功启动！")
+            print("💡 提示: 使用 'python3 dev.py stop' 可以停止服务")
+            print(f"💡 日志已存放在: {LOG_DIR}")
+            print("✅ 脚本执行完成，已返回。再见！\n")
+        else:
+            print("\n💡 服务已启动！正在监听日志输出 (按 Ctrl+C 停止所有服务)...")
+            print("=" * 60 + "\n")
             
-        print("\n💡 服务已在后台成功启动！")
-        print("💡 提示: 使用 'python3 dev.py stop' 可以停止服务")
-        print(f"💡 日志已存放在: {LOG_DIR}")
-        print("✅ 脚本执行完成，已返回。再见！\n")
+            try:
+                # 循环监控子进程状态
+                while True:
+                    time.sleep(1)
+                    b_poll = backend_proc.poll()
+                    f_poll = frontend_proc.poll()
+                    
+                    if b_poll is not None:
+                        print(f"\n❌ 后端服务已退出 (Exit Code: {b_poll})")
+                        break
+                    
+                    if f_poll is not None:
+                        print(f"\n❌ 前端服务已退出 (Exit Code: {f_poll})")
+                        break
+                        
+            except KeyboardInterrupt:
+                print("\n\n🛑 接收到停止信号 (Ctrl+C)，正在停止所有服务...")
+            finally:
+                stop_services()
+                sys.exit(0)
         
     except Exception as e:
         print(f"\n❌ 启动过程中出错: {e}")
@@ -445,6 +476,12 @@ def main():
         help='操作: start (启动), stop (停止), restart (重启)'
     )
     
+    parser.add_argument(
+        '-d', '--daemon',
+        action='store_true',
+        help='后台模式运行 (不占用终端，日志输出到文件)'
+    )
+    
     args = parser.parse_args()
     
     if args.action == 'stop':
@@ -452,9 +489,9 @@ def main():
     elif args.action == 'restart':
         stop_services()
         print()
-        start_services()
+        start_services(is_daemon=args.daemon)
     else:  # start
-        start_services()
+        start_services(is_daemon=args.daemon)
 
 if __name__ == "__main__":
     main()

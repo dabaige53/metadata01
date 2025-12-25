@@ -209,7 +209,9 @@ def get_metrics_catalog():
     
     # 排序
     order_dir = 'DESC' if order == 'desc' else 'ASC'
-    if sort == 'total_references':
+    if sort == 'total_usage':
+        order_clause = f"ORDER BY total_usage {order_dir}"
+    elif sort == 'total_references':
         order_clause = f"ORDER BY total_references {order_dir}"
     elif sort == 'instance_count':
         order_clause = f"ORDER BY instance_count {order_dir}"
@@ -218,7 +220,8 @@ def get_metrics_catalog():
     elif sort == 'name':
         order_clause = f"ORDER BY name {order_dir}"
     else:
-        order_clause = f"ORDER BY total_references {order_dir}"
+        # 默认优先按热度排序 (与字段目录一致)
+        order_clause = f"ORDER BY total_usage {order_dir}"
     
     # 分页
     offset = (page - 1) * page_size

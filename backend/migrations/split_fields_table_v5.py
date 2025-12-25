@@ -152,7 +152,8 @@ def migrate_regular_fields(session):
             'remote_field_name': row['remote_field_name'],
             'created_at': row['created_at'],
             'updated_at': row['updated_at'],
-            'usage_count': row['usage_count']
+            'usage_count': row['usage_count'],
+            'metric_usage_count': row['metric_usage_count']
         })
     
     if new_unique_records:

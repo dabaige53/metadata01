@@ -436,6 +436,7 @@ class RegularField(Base):
     
     # 统计
     usage_count = Column(Integer, default=0)
+    metric_usage_count = Column(Integer, default=0)
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
     

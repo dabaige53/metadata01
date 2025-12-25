@@ -222,7 +222,19 @@ def get_fields_catalog():
     # 使用 CTE 预先计算统计信息可能会更快，但直接 JOIN 也是可行的
     # 注意：GROUP_CONCAT 去重依赖于 DISTINCT
     
+    # 使用 CTE 预先计算统计信息，并使用子查询获取血缘信息，避免数据膨胀
     base_sql = f"""
+        WITH field_stats AS (
+            SELECT 
+                rf.unique_id,
+                COUNT(DISTINCT rf.id) as instance_count,
+                COALESCE(SUM(rf.usage_count + rf.metric_usage_count), 0) as total_usage,
+                MAX(rf.role) as role,
+                MAX(rf.data_type) as data_type,
+                MAX(rf.remote_type) as remote_type
+            FROM regular_fields rf
+            GROUP BY rf.unique_id
+        )
         SELECT 
             urf.id as representative_id,
             urf.name as canonical_name,
@@ -231,39 +243,33 @@ def get_fields_catalog():
             t.schema as table_schema,
             db.name as database_name,
             urf.description as description,
+            fs.role,
+            fs.data_type,
+            fs.remote_type,
+            COALESCE(fs.instance_count, 0) as instance_count,
+            COALESCE(fs.total_usage, 0) as total_usage,
             
-            -- 从实例聚合属性 (取出现次数最多的或者非空的)
-            MAX(rf.role) as role, 
-            MAX(rf.data_type) as data_type,
-            MAX(rf.remote_type) as remote_type,
-            
-            -- 统计信息
-            COUNT(DISTINCT rf.id) as instance_count,
-            COALESCE(SUM(rf.usage_count), 0) as total_usage,
-            
-            -- 血缘信息
-            GROUP_CONCAT(DISTINCT CASE WHEN rfl.datasource_id IS NOT NULL THEN rfl.datasource_id || '|' || COALESCE(d.name, 'Unknown') END) as datasource_info,
-            GROUP_CONCAT(DISTINCT CASE WHEN rfl.workbook_id IS NOT NULL THEN rfl.workbook_id || '|' || COALESCE(w.name, 'Unknown') END) as workbook_info
+            -- 血缘信息 (使用子查询避免主查询膨胀)
+            (SELECT GROUP_CONCAT(DISTINCT rfl.datasource_id || '|' || COALESCE(d.name, 'Unknown'))
+             FROM regular_fields rf2
+             JOIN regular_field_full_lineage rfl ON rf2.id = rfl.field_id
+             LEFT JOIN datasources d ON rfl.datasource_id = d.id
+             WHERE rf2.unique_id = urf.id) as datasource_info,
+             
+            (SELECT GROUP_CONCAT(DISTINCT rfl.workbook_id || '|' || COALESCE(w.name, 'Unknown'))
+             FROM regular_fields rf2
+             JOIN regular_field_full_lineage rfl ON rf2.id = rfl.field_id
+             LEFT JOIN workbooks w ON rfl.workbook_id = w.id
+             WHERE rf2.unique_id = urf.id) as workbook_info
 
         FROM unique_regular_fields urf
         LEFT JOIN tables t ON urf.table_id = t.id
         LEFT JOIN databases db ON t.database_id = db.id
-
-        -- 关联实例表
-        LEFT JOIN regular_fields rf ON rf.unique_id = urf.id 
-        
-        -- 关联血缘表
-        LEFT JOIN regular_field_full_lineage rfl ON rfl.field_id = rf.id
-        LEFT JOIN datasources d ON rfl.datasource_id = d.id
-        LEFT JOIN workbooks w ON rfl.workbook_id = w.id
-
-        {where_clause}
-
-        GROUP BY urf.id
+        LEFT JOIN field_stats fs ON fs.unique_id = urf.id
+        {where_clause.replace('rf.', 'fs.')}
     """
     
-    # 统计总数 (在外层统计，因为内层有 GROUP BY)
-    # 注意：如果筛选了 role，那么没有匹配 role 实例的 urf 将被过滤
+    # 统计总数 (在外层统计，因为内层有 GROUP BY 或者 CTE)
     count_sql = f"SELECT COUNT(*) FROM ({base_sql}) sub"
     total = session.execute(text(count_sql), params).scalar() or 0
     total_pages = (total + page_size - 1) // page_size if total > 0 else 0
@@ -336,11 +342,14 @@ def get_fields_catalog():
     
     role_sql = f"""
         SELECT sub.role, COUNT(*) FROM (
-            SELECT MAX(rf.role) as role
+            SELECT fs.role
             FROM unique_regular_fields urf
-            LEFT JOIN regular_fields rf ON rf.unique_id = urf.id
-            {where_clause}
-            GROUP BY urf.id
+            LEFT JOIN (
+                SELECT unique_id, MAX(role) as role
+                FROM regular_fields
+                GROUP BY unique_id
+            ) fs ON fs.unique_id = urf.id
+            {where_clause.replace('rf.', 'fs.')}
         ) sub GROUP BY sub.role
     """
     
@@ -363,42 +372,42 @@ def get_fields_catalog():
 def get_fields_catalog_no_description():
     """
     获取无描述字段分析 - 聚合视角
-    
-    聚合规则：按 (upstream_column_name OR name) + table_id 分组
-    筛选条件：聚合后 description 为空的字段
+    基于 unique_regular_fields 表
     """
     session = g.db_session
     from sqlalchemy import text
     
-    # 聚合查询 - 筛选无描述的聚合字段
     sql = """
         SELECT 
-            MIN(f.id) as representative_id,
-            COALESCE(f.upstream_column_name, f.name) as canonical_name,
-            f.table_id,
+            urf.id as representative_id,
+            urf.name as canonical_name,
+            urf.table_id,
             t.name as table_name,
             t.schema as table_schema,
             db.name as database_name,
-            MAX(f.role) as role,
-            MAX(f.data_type) as data_type,
-            MAX(f.remote_type) as remote_type,
-            MAX(f.description) as description,
-            COUNT(*) as instance_count,
-            COALESCE(SUM(f.usage_count), 0) as total_usage,
-            GROUP_CONCAT(DISTINCT f.datasource_id) as datasource_ids,
-            GROUP_CONCAT(DISTINCT d.name) as datasource_names
-        FROM fields f
-        LEFT JOIN tables t ON f.table_id = t.id
+            
+            -- 聚合属性
+            (SELECT MAX(rf.role) FROM regular_fields rf WHERE rf.unique_id = urf.id) as role,
+            (SELECT MAX(rf.data_type) FROM regular_fields rf WHERE rf.unique_id = urf.id) as data_type,
+            (SELECT MAX(rf.remote_type) FROM regular_fields rf WHERE rf.unique_id = urf.id) as remote_type,
+            urf.description,
+            
+            -- 统计
+            (SELECT COUNT(*) FROM regular_fields rf WHERE rf.unique_id = urf.id) as instance_count,
+            (SELECT COALESCE(SUM(rf.usage_count + rf.metric_usage_count), 0) FROM regular_fields rf WHERE rf.unique_id = urf.id) as total_usage,
+            
+            -- 血缘
+            (SELECT GROUP_CONCAT(DISTINCT d.name) FROM regular_fields rf JOIN regular_field_full_lineage rfl ON rf.id = rfl.field_id JOIN datasources d ON rfl.datasource_id = d.id WHERE rf.unique_id = urf.id) as datasource_names,
+            (SELECT GROUP_CONCAT(DISTINCT rfl.datasource_id) FROM regular_fields rf JOIN regular_field_full_lineage rfl ON rf.id = rfl.field_id WHERE rf.unique_id = urf.id) as datasource_ids
+            
+        FROM unique_regular_fields urf
+        LEFT JOIN tables t ON urf.table_id = t.id
         LEFT JOIN databases db ON t.database_id = db.id
-        LEFT JOIN datasources d ON f.datasource_id = d.id
-        WHERE (f.is_calculated = 0 OR f.is_calculated IS NULL)
-        GROUP BY COALESCE(f.upstream_column_name, f.name), f.table_id
-        HAVING MAX(f.description) IS NULL OR MAX(f.description) = ''
-        ORDER BY instance_count DESC, canonical_name
+        WHERE (urf.description IS NULL OR urf.description = '')
+        ORDER BY total_usage DESC
     """
     rows = session.execute(text(sql)).fetchall()
     
-    # 构建结果
     items = []
     for row in rows:
         ds_ids = row.datasource_ids.split(',') if row.datasource_ids else []
@@ -418,7 +427,7 @@ def get_fields_catalog_no_description():
             'remote_type': row.remote_type,
             'description': row.description or '',
             'instance_count': row.instance_count,
-            'total_usage': row.total_usage or 0,
+            'total_usage': row.total_usage,
             'datasources': datasources,
             'datasource_count': len(datasources)
         })
@@ -433,43 +442,38 @@ def get_fields_catalog_no_description():
 def get_fields_catalog_orphan():
     """
     获取孤立字段分析 - 聚合视角
-    
-    聚合规则：按 (upstream_column_name OR name) + table_id 分组
-    筛选条件：聚合后 total_usage = 0 的字段
+    基于 unique_regular_fields 表，筛选在任何数据源下都无使用的字段
     """
     session = g.db_session
     from sqlalchemy import text
     
-    # 聚合查询 - 筛选孤立的聚合字段（总使用次数为0）
     sql = """
         SELECT 
-            MIN(f.id) as representative_id,
-            COALESCE(f.upstream_column_name, f.name) as canonical_name,
-            f.table_id,
+            urf.id as representative_id,
+            urf.name as canonical_name,
+            urf.table_id,
             t.name as table_name,
             t.schema as table_schema,
             db.name as database_name,
-            MAX(f.role) as role,
-            MAX(f.data_type) as data_type,
-            MAX(f.remote_type) as remote_type,
-            MAX(f.description) as description,
-            COUNT(*) as instance_count,
-            COALESCE(SUM(f.usage_count), 0) as total_usage,
-            COALESCE(SUM(f.metric_usage_count), 0) as total_metric_usage,
-            GROUP_CONCAT(DISTINCT f.datasource_id) as datasource_ids,
-            GROUP_CONCAT(DISTINCT d.name) as datasource_names
-        FROM fields f
-        LEFT JOIN tables t ON f.table_id = t.id
+            
+            (SELECT MAX(rf.role) FROM regular_fields rf WHERE rf.unique_id = urf.id) as role,
+            (SELECT MAX(rf.data_type) FROM regular_fields rf WHERE rf.unique_id = urf.id) as data_type,
+            urf.description,
+            
+            (SELECT COUNT(*) FROM regular_fields rf WHERE rf.unique_id = urf.id) as instance_count,
+            (SELECT COALESCE(SUM(rf.usage_count + rf.metric_usage_count), 0) FROM regular_fields rf WHERE rf.unique_id = urf.id) as total_usage,
+            
+            (SELECT GROUP_CONCAT(DISTINCT d.name) FROM regular_fields rf JOIN regular_field_full_lineage rfl ON rf.id = rfl.field_id JOIN datasources d ON rfl.datasource_id = d.id WHERE rf.unique_id = urf.id) as datasource_names,
+            (SELECT GROUP_CONCAT(DISTINCT rfl.datasource_id) FROM regular_fields rf JOIN regular_field_full_lineage rfl ON rf.id = rfl.field_id WHERE rf.unique_id = urf.id) as datasource_ids
+            
+        FROM unique_regular_fields urf
+        LEFT JOIN tables t ON urf.table_id = t.id
         LEFT JOIN databases db ON t.database_id = db.id
-        LEFT JOIN datasources d ON f.datasource_id = d.id
-        WHERE (f.is_calculated = 0 OR f.is_calculated IS NULL)
-        GROUP BY COALESCE(f.upstream_column_name, f.name), f.table_id
-        HAVING COALESCE(SUM(f.usage_count), 0) = 0 AND COALESCE(SUM(f.metric_usage_count), 0) = 0
-        ORDER BY instance_count DESC, canonical_name
+        WHERE (SELECT COALESCE(SUM(rf.usage_count + rf.metric_usage_count), 0) FROM regular_fields rf WHERE rf.unique_id = urf.id) = 0
+        ORDER BY instance_count DESC
     """
     rows = session.execute(text(sql)).fetchall()
     
-    # 构建结果
     items = []
     for row in rows:
         ds_ids = row.datasource_ids.split(',') if row.datasource_ids else []
@@ -486,10 +490,9 @@ def get_fields_catalog_orphan():
             'database_name': row.database_name,
             'role': row.role,
             'data_type': row.data_type,
-            'remote_type': row.remote_type,
             'description': row.description or '',
             'instance_count': row.instance_count,
-            'total_usage': row.total_usage or 0,
+            'total_usage': row.total_usage,
             'datasources': datasources,
             'datasource_count': len(datasources)
         })
@@ -504,45 +507,37 @@ def get_fields_catalog_orphan():
 def get_fields_catalog_hot():
     """
     获取热门字段排行榜 - 聚合视角
-    
-    聚合规则：按 (upstream_column_name OR name) + table_id 分组
-    筛选条件：聚合后 total_usage > 20 的字段
+    基于 unique_regular_fields 表
     """
     session = g.db_session
     from sqlalchemy import text
     
-    # 聚合查询 - 筛选热门的聚合字段（总使用次数 > 20）
     sql = """
         SELECT 
-            MIN(f.id) as representative_id,
-            COALESCE(f.upstream_column_name, f.name) as canonical_name,
-            f.table_id,
+            urf.id as representative_id,
+            urf.name as canonical_name,
+            urf.table_id,
             t.name as table_name,
             t.schema as table_schema,
             db.name as database_name,
-            MAX(f.role) as role,
-            MAX(f.data_type) as data_type,
-            MAX(f.remote_type) as remote_type,
-            MAX(f.description) as description,
-            COUNT(*) as instance_count,
-            COALESCE(SUM(f.usage_count), 0) as total_usage,
-            GROUP_CONCAT(DISTINCT f.datasource_id) as datasource_ids,
-            GROUP_CONCAT(DISTINCT d.name) as datasource_names
-        FROM fields f
-        LEFT JOIN tables t ON f.table_id = t.id
+            
+            (SELECT MAX(rf.role) FROM regular_fields rf WHERE rf.unique_id = urf.id) as role,
+            (SELECT MAX(rf.data_type) FROM regular_fields rf WHERE rf.unique_id = urf.id) as data_type,
+            urf.description,
+            
+            (SELECT COUNT(*) FROM regular_fields rf WHERE rf.unique_id = urf.id) as instance_count,
+            (SELECT COALESCE(SUM(rf.usage_count + rf.metric_usage_count), 0) FROM regular_fields rf WHERE rf.unique_id = urf.id) as total_usage,
+            
+            (SELECT GROUP_CONCAT(DISTINCT d.name) FROM regular_fields rf JOIN regular_field_full_lineage rfl ON rf.id = rfl.field_id JOIN datasources d ON rfl.datasource_id = d.id WHERE rf.unique_id = urf.id) as datasource_names,
+            (SELECT GROUP_CONCAT(DISTINCT rfl.datasource_id) FROM regular_fields rf JOIN regular_field_full_lineage rfl ON rf.id = rfl.field_id WHERE rf.unique_id = urf.id) as datasource_ids
+            
+        FROM unique_regular_fields urf
+        LEFT JOIN tables t ON urf.table_id = t.id
         LEFT JOIN databases db ON t.database_id = db.id
-        LEFT JOIN datasources d ON f.datasource_id = d.id
-        WHERE (f.is_calculated = 0 OR f.is_calculated IS NULL)
-        GROUP BY COALESCE(f.upstream_column_name, f.name), f.table_id
-        HAVING COALESCE(SUM(f.usage_count), 0) > 20
-        ORDER BY total_usage DESC, canonical_name
+        WHERE (SELECT COALESCE(SUM(rf.usage_count + rf.metric_usage_count), 0) FROM regular_fields rf WHERE rf.unique_id = urf.id) > 20
+        ORDER BY total_usage DESC
     """
     rows = session.execute(text(sql)).fetchall()
-    
-    # 计算统计数据
-    usage_counts = [row.total_usage for row in rows]
-    max_usage = max(usage_counts) if usage_counts else 0
-    avg_usage = round(sum(usage_counts) / len(usage_counts)) if usage_counts else 0
     
     # 构建结果
     items = []
@@ -553,7 +548,7 @@ def get_fields_catalog_hot():
                        for i in range(len(ds_names))]
         
         # 计算热度等级
-        usage = row.total_usage or 0
+        usage = row.total_usage
         if usage >= 200:
             heat_level = '超热门'
         elif usage >= 100:
@@ -572,7 +567,6 @@ def get_fields_catalog_hot():
             'database_name': row.database_name,
             'role': row.role,
             'data_type': row.data_type,
-            'remote_type': row.remote_type,
             'description': row.description or '',
             'instance_count': row.instance_count,
             'total_usage': usage,
@@ -583,8 +577,6 @@ def get_fields_catalog_hot():
     
     return jsonify({
         'total_count': len(items),
-        'max_usage': max_usage,
-        'avg_usage': avg_usage,
         'items': items
     })
 
@@ -659,7 +651,7 @@ def get_fields():
     # 3. 数据查询 (使用新表 regular_fields)
     order_clause = "ORDER BY rf.name ASC"
     if sort == 'usageCount':
-        order_clause = f"ORDER BY rf.usage_count {'DESC' if order == 'desc' else 'ASC'}"
+        order_clause = f"ORDER BY (rf.usage_count + rf.metric_usage_count) {'DESC' if order == 'desc' else 'ASC'}"
     elif sort == 'name':
         order_clause = f"ORDER BY rf.name {'DESC' if order == 'desc' else 'ASC'}"
     elif sort == 'data_type':
@@ -673,7 +665,7 @@ def get_fields():
         SELECT 
             rf.id, rf.name, rf.data_type, rf.remote_type, rf.description,
             rf.role, rf.aggregation, rf.is_hidden,
-            rf.usage_count, rf.unique_id,
+            rf.usage_count, rf.metric_usage_count, rf.unique_id,
             rf.created_at, rf.updated_at,
             rf.datasource_id, rf.table_id, rf.workbook_id,
             d.name as datasource_name,
@@ -701,6 +693,8 @@ def get_fields():
             'isCalculated': False,  # regular_fields 都是非计算字段
             'isHidden': row.is_hidden or False,
             'usageCount': row.usage_count or 0,
+            'metricUsageCount': row.metric_usage_count or 0,
+            'totalUsage': (row.usage_count or 0) + (row.metric_usage_count or 0),
             'uniqueId': row.unique_id,  # 新增：关联的标准字段ID
             'hasDescription': bool(row.description and row.description.strip()),
             'datasourceId': row.datasource_id,
@@ -755,7 +749,7 @@ def get_field_detail(field_id):
         stats_sql = """
             SELECT 
                 COUNT(*) as instance_count,
-                COALESCE(SUM(usage_count), 0) as total_usage,
+                COALESCE(SUM(usage_count + metric_usage_count), 0) as total_usage,
                 MAX(role) as role,
                 MAX(data_type) as data_type,
                 MAX(aggregation) as aggregation,
