@@ -15,6 +15,8 @@ export interface TableCardData {
   fieldCount?: number;
   datasource_count?: number;
   datasourceCount?: number;
+  embedded_datasource_count?: number;
+  embeddedDatasourceCount?: number;
   workbook_count?: number;
   workbookCount?: number;
   preview_fields?: any[] | { measures?: string[], dimensions?: string[] };
@@ -39,6 +41,7 @@ export default function TableCard({ table, onClick }: TableCardProps) {
   const columnCount = table.column_count ?? table.columnCount ?? 0;
   const fieldCount = table.field_count ?? table.fieldCount ?? 0;
   const datasourceCount = table.datasource_count ?? table.datasourceCount ?? 0;
+  const embeddedDatasourceCount = table.embedded_datasource_count ?? table.embeddedDatasourceCount ?? 0;
   const workbookCount = table.workbook_count ?? table.workbookCount ?? 0;
   const previewFields = table.preview_fields ?? table.previewFields ?? [];
   const databaseName = table.database_name ?? table.databaseName; // Allow undefined/null for filtering
@@ -47,6 +50,9 @@ export default function TableCard({ table, onClick }: TableCardProps) {
   const createdAt = table.created_at ?? table.createdAt;
   const updatedAt = table.updated_at ?? table.updatedAt;
 
+  // 总数据源数（用于状态判断）
+  const totalDatasourceCount = datasourceCount + embeddedDatasourceCount;
+
   // 智能状态判断 - 嵌入式表使用不同逻辑
   let statusText = '使用中';
   let statusColor: 'green' | 'orange' | 'red' = 'green';
@@ -54,7 +60,7 @@ export default function TableCard({ table, onClick }: TableCardProps) {
   if (isEmbedded) {
     // 嵌入式表：只有通过元数据关联才能追溯工作簿
     // 由于 Tableau API 限制，大部分嵌入式表无法追溯关联，所以状态标记不同
-    if (datasourceCount > 0) {
+    if (totalDatasourceCount > 0) {
       statusText = '已关联';
       statusColor = 'green';
     } else {
@@ -63,10 +69,10 @@ export default function TableCard({ table, onClick }: TableCardProps) {
     }
   } else {
     // 非嵌入式表：正常判断
-    if (workbookCount === 0 && datasourceCount > 0) {
+    if (workbookCount === 0 && totalDatasourceCount > 0) {
       statusText = '仅关联';
       statusColor = 'orange';
-    } else if (workbookCount === 0 && datasourceCount === 0) {
+    } else if (workbookCount === 0 && totalDatasourceCount === 0) {
       statusText = '孤立';
       statusColor = 'red';
     }
@@ -116,23 +122,41 @@ export default function TableCard({ table, onClick }: TableCardProps) {
 
   // 非嵌入式表才显示数据源和工作簿关联
   if (!isEmbedded) {
-    details.push({
-      label: '数据源',
-      value: `${datasourceCount} 个`,
-      highlight: datasourceCount > 0,
-    } as any);
+    if (datasourceCount > 0) {
+      details.push({
+        label: '数据源',
+        value: `${datasourceCount} 个`,
+        highlight: true,
+      } as any);
+    }
+    if (embeddedDatasourceCount > 0) {
+      details.push({
+        label: '嵌入式数据源',
+        value: `${embeddedDatasourceCount} 个`,
+        highlight: true,
+      } as any);
+    }
     details.push({
       label: '工作簿',
       value: `${workbookCount} 个`,
       highlight: workbookCount > 0,
     } as any);
-  } else if (datasourceCount > 0) {
+  } else if (totalDatasourceCount > 0) {
     // 嵌入式表只在有关联时才显示
-    details.push({
-      label: '关联数据源',
-      value: `${datasourceCount} 个`,
-      highlight: true,
-    } as any);
+    if (datasourceCount > 0) {
+      details.push({
+        label: '数据源',
+        value: `${datasourceCount} 个`,
+        highlight: true,
+      } as any);
+    }
+    if (embeddedDatasourceCount > 0) {
+      details.push({
+        label: '嵌入式数据源',
+        value: `${embeddedDatasourceCount} 个`,
+        highlight: true,
+      } as any);
+    }
   }
 
   if (createdAt) {
@@ -157,7 +181,7 @@ export default function TableCard({ table, onClick }: TableCardProps) {
   const tags = [];
 
   // 非嵌入式孤立表警告
-  if (!isEmbedded && datasourceCount === 0 && workbookCount === 0) {
+  if (!isEmbedded && totalDatasourceCount === 0 && workbookCount === 0) {
     tags.push({
       label: '孤立表',
       color: 'gray' as const,

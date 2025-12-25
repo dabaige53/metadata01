@@ -90,21 +90,28 @@ def get_datasources():
         wb_stats = session.execute(stmt_wb, {'ds_ids': list(ds_ids)}).fetchall()
         wb_map = {row[0]: row[1] for row in wb_stats}
         
-        # 3. 物理表统计
+        # 3. 物理表统计 - 分别统计嵌入表和原始表
         stmt_tbl = text("""
-            SELECT datasource_id, COUNT(table_id) as tbl_count
-            FROM table_to_datasource
-            WHERE datasource_id IN :ds_ids
-            GROUP BY datasource_id
+            SELECT 
+                td.datasource_id, 
+                SUM(CASE WHEN t.is_embedded = 1 THEN 1 ELSE 0 END) as embedded_count,
+                SUM(CASE WHEN t.is_embedded = 0 OR t.is_embedded IS NULL THEN 1 ELSE 0 END) as regular_count
+            FROM table_to_datasource td
+            JOIN tables t ON td.table_id = t.id
+            WHERE td.datasource_id IN :ds_ids
+            GROUP BY td.datasource_id
         """).bindparams(bindparam('ds_ids', expanding=True))
         tbl_stats = session.execute(stmt_tbl, {'ds_ids': list(ds_ids)}).fetchall()
-        table_map = {row[0]: row[1] for row in tbl_stats}
+        table_map = {row[0]: {'embedded': row[1], 'regular': row[2]} for row in tbl_stats}
  
     results = []
     for ds in datasources:
         data = ds.to_dict()
         # 优先使用动态统计数据，确保与详情页及工作流一致
-        data['table_count'] = table_map.get(ds.id, ds.table_count or 0)
+        tbl_info = table_map.get(ds.id, {'embedded': 0, 'regular': 0})
+        data['embedded_table_count'] = tbl_info['embedded'] if isinstance(tbl_info, dict) else 0
+        data['regular_table_count'] = tbl_info['regular'] if isinstance(tbl_info, dict) else 0
+        data['table_count'] = data['embedded_table_count'] + data['regular_table_count']
         data['field_count'] = ds.field_count or 0 # 字段数量目前主表相对准确
         data['workbook_count'] = wb_map.get(ds.id, ds.workbook_count or 0)
         data['view_count'] = view_map.get(ds.id, 0)
@@ -169,6 +176,21 @@ def get_datasource_detail(ds_id):
         })
     data['tables'] = tables_data
 
+    # 原始列数据（从关联的数据表中提取）
+    columns_data = []
+    for t in ds.tables:
+        for col in t.columns:
+            columns_data.append({
+                'id': col.id,
+                'name': col.name,
+                'remote_type': col.remote_type,
+                'table_id': t.id,
+                'table_name': t.name,
+                'description': col.description,
+                'is_nullable': col.is_nullable
+            })
+    data['columns'] = columns_data
+
     # 下游：使用此数据源的工作簿
     workbooks_data = []
     for wb in ds.workbooks:
@@ -216,6 +238,7 @@ def get_datasource_detail(ds_id):
     
     for f in ds.fields:
         # 精简的字段摘要（避免返回完整对象和 N+1 查询）
+        # 增加上游表信息用于前端分组显示
         summary = {
             'id': f.id,
             'name': f.name,
@@ -223,7 +246,17 @@ def get_datasource_detail(ds_id):
             'data_type': f.data_type or f.remote_type,
             'description': f.description[:100] if f.description else '',
             'usage_count': f.usage_count or 0,
-            'is_calculated': f.is_calculated or False
+            'is_calculated': f.is_calculated or False,
+            # 上游表信息（用于分组）
+            'upstream_table_id': f.table_id,
+            'upstream_table_name': f.table.name if f.table else None,
+            'upstream_column_name': f.upstream_column.name if f.upstream_column else None,
+            # 来源信息（用于聚合后展示）
+            'workbook_id': f.workbook_id,
+            'workbook_name': f.workbook.name if f.workbook else None,
+            'datasource_id': f.datasource_id,
+            'datasource_name': f.datasource.name if f.datasource else None,
+            'is_embedded_ds': f.datasource.is_embedded if f.datasource else False
         }
         
         if f.is_calculated:

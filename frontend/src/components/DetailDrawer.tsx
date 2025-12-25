@@ -20,6 +20,7 @@ import {
     BookOpen,
     FileText,
     ChevronRight,
+    ChevronDown,
     Layout,
     FunctionSquare,
     List,
@@ -307,6 +308,10 @@ export default function DetailDrawer() {
             }
             if (embeddedTables.length > 0) {
                 tabs.push({ id: 'embedded_tables', label: `嵌入式表 (${embeddedTables.length})`, icon: Copy });
+            }
+            // 原始列 - 只有有列时才显示
+            if (data.columns && data.columns.length > 0) {
+                tabs.push({ id: 'columns', label: `原始列 (${data.columns.length})`, icon: List });
             }
             // 包含字段 - 只有有字段时才显示
             if (data.full_fields && data.full_fields.length > 0) {
@@ -630,6 +635,650 @@ export default function DetailDrawer() {
                         </button>
                     )}
                 </div>
+            </div>
+        );
+    };
+
+    /**
+     * 按原始列分组的字段渲染函数
+     * 用于数据表详情页的"包含字段"Tab
+     * 第一层：按原始列分组
+     * 第二层：按字段名聚合，显示来源数据源统计
+     * 超过50个分组时默认全部折叠
+     */
+    const renderFieldsGroupedByColumn = (fields: any[]) => {
+        if (!fields || fields.length === 0) {
+            return (
+                <div className="bg-gray-50 rounded-lg border border-gray-200 p-6 text-center">
+                    <div className="text-gray-400 text-sm">暂无字段数据</div>
+                </div>
+            );
+        }
+
+        // 第一层：按原始列分组
+        const groupedByColumn: Record<string, any[]> = {};
+        fields.forEach(f => {
+            const columnName = f.upstreamColumnName || f.upstream_column_name || '未关联原始列';
+            if (!groupedByColumn[columnName]) {
+                groupedByColumn[columnName] = [];
+            }
+            groupedByColumn[columnName].push(f);
+        });
+
+        const columnNames = Object.keys(groupedByColumn).sort((a, b) => {
+            if (a === '未关联原始列') return 1;
+            if (b === '未关联原始列') return -1;
+            return a.localeCompare(b);
+        });
+
+        const shouldDefaultCollapse = columnNames.length > 50;
+
+        // 对分组内字段按名称聚合的辅助函数
+        const aggregateFieldsByName = (groupFields: any[]) => {
+            const byName: Record<string, {
+                name: string;
+                role: string;
+                dataType: string;
+                fields: any[];
+                sources: Map<string, number>;  // 数据源名 -> 次数
+            }> = {};
+
+            groupFields.forEach(f => {
+                const fieldName = f.name || '未命名';
+                if (!byName[fieldName]) {
+                    byName[fieldName] = {
+                        name: fieldName,
+                        role: f.role || '',
+                        dataType: f.dataType || f.remote_type || '',
+                        fields: [],
+                        sources: new Map()
+                    };
+                }
+                byName[fieldName].fields.push(f);
+
+                // 统计来源数据源
+                const sourceName = f.via_datasource || f.datasourceName || '未知数据源';
+                byName[fieldName].sources.set(
+                    sourceName,
+                    (byName[fieldName].sources.get(sourceName) || 0) + 1
+                );
+            });
+
+            return Object.values(byName).sort((a, b) => a.name.localeCompare(b.name));
+        };
+
+        return (
+            <div className="space-y-2">
+                {/* 标题栏 */}
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-bold text-blue-900 flex items-center gap-2">
+                        <Columns className="w-3.5 h-3.5 text-blue-600" />
+                        包含字段 (共 {fields.length} 个实例，按 {columnNames.length} 个原始列分组)
+                    </h3>
+                    {shouldDefaultCollapse && (
+                        <span className="text-[10px] text-gray-400">
+                            超过50个分组，默认全部折叠
+                        </span>
+                    )}
+                </div>
+
+                {/* 分组列表 */}
+                {columnNames.map((columnName, gi) => {
+                    const columnFields = groupedByColumn[columnName];
+                    const aggregatedFields = aggregateFieldsByName(columnFields);
+                    const groupKey = `field-group-${columnName}`;
+                    const isExpanded = expandedGroups[groupKey] ?? !shouldDefaultCollapse;
+
+                    return (
+                        <div
+                            key={gi}
+                            className="bg-blue-50/50 rounded-lg border border-blue-100 overflow-hidden"
+                            style={{ animationDelay: `${gi * 20}ms` }}
+                        >
+                            {/* 分组标题（可点击展开/折叠） */}
+                            <button
+                                onClick={() => toggleGroupExpand(groupKey)}
+                                className="w-full px-3 py-2 flex items-center justify-between bg-blue-50 hover:bg-blue-100/70 transition-colors text-left"
+                            >
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <List className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
+                                    <span className="text-[13px] font-bold text-gray-900 truncate">
+                                        {columnName}
+                                    </span>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium flex-shrink-0">
+                                        {aggregatedFields.length} 种字段 · {columnFields.length} 个实例
+                                    </span>
+                                    {columnName === '未关联原始列' && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium flex-shrink-0">
+                                            计算字段/派生字段
+                                        </span>
+                                    )}
+                                </div>
+                                <ChevronDown
+                                    className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'}`}
+                                />
+                            </button>
+
+                            {/* 分组内容 - 聚合后的字段列表 */}
+                            {isExpanded && (
+                                <div className="p-2 space-y-1">
+                                    {aggregatedFields.map((agg, ai) => {
+                                        const subGroupKey = `${groupKey}-${agg.name}`;
+                                        const isSubExpanded = expandedGroups[subGroupKey] ?? false;
+                                        const sourceList = Array.from(agg.sources.entries())
+                                            .sort((a, b) => b[1] - a[1])  // 按数量降序
+                                            .slice(0, 3);  // 只显示前3个来源
+
+                                        return (
+                                            <div key={ai} className="bg-white rounded border border-blue-100">
+                                                {/* 聚合字段主行 */}
+                                                <div
+                                                    className="p-2 hover:bg-blue-50/50 transition-all cursor-pointer"
+                                                    onClick={() => {
+                                                        // 如果只有一个实例，直接跳转；否则展开子列表
+                                                        if (agg.fields.length === 1) {
+                                                            handleAssetClick(agg.fields[0].id, 'fields', agg.name);
+                                                        } else {
+                                                            toggleGroupExpand(subGroupKey);
+                                                        }
+                                                    }}
+                                                >
+                                                    {/* 第一行：字段名 + 标签 */}
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                            <span className="text-[12px] text-gray-900 font-medium truncate">
+                                                                {agg.name}
+                                                            </span>
+                                                            {agg.role && (
+                                                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${agg.role === 'measure' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'} flex-shrink-0`}>
+                                                                    {agg.role === 'measure' ? '度量' : '维度'}
+                                                                </span>
+                                                            )}
+                                                            {agg.dataType && (
+                                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-mono flex-shrink-0">
+                                                                    {agg.dataType}
+                                                                </span>
+                                                            )}
+                                                            {agg.fields.length > 1 && (
+                                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-medium flex-shrink-0">
+                                                                    {agg.fields.length} 个来源
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {agg.fields.length === 1 ? (
+                                                            <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                                        ) : (
+                                                            <ChevronDown
+                                                                className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${isSubExpanded ? 'rotate-0' : '-rotate-90'}`}
+                                                            />
+                                                        )}
+                                                    </div>
+                                                    {/* 第二行：来源数据源统计 */}
+                                                    <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-500 flex-wrap">
+                                                        {sourceList.map(([sourceName, count], si) => (
+                                                            <span key={si} className="flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                                                <Layers className="w-3 h-3 text-indigo-500" />
+                                                                <span className="truncate max-w-[100px]">{sourceName}</span>
+                                                                {count > 1 && <span className="text-indigo-600 font-medium">×{count}</span>}
+                                                            </span>
+                                                        ))}
+                                                        {agg.sources.size > 3 && (
+                                                            <span className="text-gray-400">
+                                                                +{agg.sources.size - 3} 个其他来源
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* 子列表：展开显示所有实例 */}
+                                                {isSubExpanded && agg.fields.length > 1 && (
+                                                    <div className="border-t border-blue-100 bg-gray-50/50 p-2 space-y-1">
+                                                        {agg.fields.map((field: any, fi: number) => (
+                                                            <div
+                                                                key={fi}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleAssetClick(field.id, 'fields', field.name);
+                                                                }}
+                                                                onMouseEnter={() => field.id && prefetch(field.id, 'fields')}
+                                                                className="bg-white p-2 rounded border border-gray-200 cursor-pointer hover:border-blue-300 hover:bg-blue-50/50 transition-all text-[11px]"
+                                                            >
+                                                                <div className="flex items-center justify-between">
+                                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                                        <span className="flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                                                            <Layers className="w-3 h-3 text-indigo-500" />
+                                                                            {field.via_datasource || field.datasourceName || '未知数据源'}
+                                                                        </span>
+                                                                        {field.workbook_name && (
+                                                                            <span className="flex items-center gap-1 bg-rose-50 px-1.5 py-0.5 rounded">
+                                                                                <BookOpen className="w-3 h-3 text-rose-500" />
+                                                                                {field.workbook_name}
+                                                                            </span>
+                                                                        )}
+                                                                        {field.is_certified && (
+                                                                            <span className="flex items-center gap-0.5 bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium">
+                                                                                <ShieldCheck className="w-3 h-3" /> 认证
+                                                                            </span>
+                                                                        )}
+                                                                        {!field.description && (
+                                                                            <span className="flex items-center gap-0.5 text-amber-600">
+                                                                                <AlertTriangle className="w-3 h-3" /> 无描述
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <ChevronRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        );
+    };
+
+
+    /**
+     * 按上游表分组的字段渲染函数
+     * 用于数据源详情页的"包含字段"Tab
+     * 第一层：按上游表分组
+     * 第二层：按原始列分组
+     * 第三层：字段列表
+     */
+    const renderFieldsGroupedByTable = (fields: any[]) => {
+        if (!fields || fields.length === 0) {
+            return (
+                <div className="bg-gray-50 rounded-lg border border-gray-200 p-6 text-center">
+                    <div className="text-gray-400 text-sm">暂无字段数据</div>
+                </div>
+            );
+        }
+
+        // 第一层：按上游表分组
+        const groupedByTable: Record<string, any[]> = {};
+        fields.forEach(f => {
+            const tableName = f.upstream_table_name || '未关联数据表';
+            if (!groupedByTable[tableName]) {
+                groupedByTable[tableName] = [];
+            }
+            groupedByTable[tableName].push(f);
+        });
+
+        const tableNames = Object.keys(groupedByTable).sort((a, b) => {
+            if (a === '未关联数据表') return 1;
+            if (b === '未关联数据表') return -1;
+            return a.localeCompare(b);
+        });
+
+        const shouldDefaultCollapse = tableNames.length > 10;
+
+        // 表内按原始列分组的辅助函数
+        const groupByColumn = (tableFields: any[]) => {
+            const grouped: Record<string, any[]> = {};
+            tableFields.forEach(f => {
+                const colName = f.upstream_column_name || '未关联原始列';
+                if (!grouped[colName]) {
+                    grouped[colName] = [];
+                }
+                grouped[colName].push(f);
+            });
+            return grouped;
+        };
+
+        // 按字段名聚合的辅助函数（合并重复字段，记录来源）
+        const aggregateByFieldName = (colFields: any[]) => {
+            const byName: Record<string, {
+                name: string;
+                role: string;
+                dataType: string;
+                fields: any[];
+                sources: { workbook?: string; datasource?: string; isEmbedded?: boolean; id: string }[];
+            }> = {};
+
+            colFields.forEach(f => {
+                const fieldName = f.name || '未命名';
+                if (!byName[fieldName]) {
+                    byName[fieldName] = {
+                        name: fieldName,
+                        role: f.role || '',
+                        dataType: f.data_type || '',
+                        fields: [],
+                        sources: []
+                    };
+                }
+                byName[fieldName].fields.push(f);
+                byName[fieldName].sources.push({
+                    workbook: f.workbook_name,
+                    datasource: f.datasource_name,
+                    isEmbedded: f.is_embedded_ds,
+                    id: f.id
+                });
+            });
+
+            return Object.values(byName).sort((a, b) => a.name.localeCompare(b.name));
+        };
+
+        return (
+            <div className="space-y-2">
+                {/* 标题栏 */}
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-bold text-blue-900 flex items-center gap-2">
+                        <Columns className="w-3.5 h-3.5 text-blue-600" />
+                        包含字段 (共 {fields.length} 个字段，按 {tableNames.length} 个数据表分组)
+                    </h3>
+                    {shouldDefaultCollapse && (
+                        <span className="text-[10px] text-gray-400">
+                            超过10个表，默认全部折叠
+                        </span>
+                    )}
+                </div>
+
+                {/* 第一层：表分组列表 */}
+                {tableNames.map((tableName, gi) => {
+                    const tableFields = groupedByTable[tableName];
+                    const tableGroupKey = `field-table-${tableName}`;
+                    const isTableExpanded = expandedGroups[tableGroupKey] ?? !shouldDefaultCollapse;
+
+                    // 表内按原始列分组
+                    const columnGroups = groupByColumn(tableFields);
+                    const columnNames = Object.keys(columnGroups).sort((a, b) => {
+                        if (a === '未关联原始列') return 1;
+                        if (b === '未关联原始列') return -1;
+                        return a.localeCompare(b);
+                    });
+                    const shouldCollapseColumns = columnNames.length > 20;
+
+                    return (
+                        <div
+                            key={gi}
+                            className="bg-blue-50/50 rounded-lg border border-blue-100 overflow-hidden"
+                            style={{ animationDelay: `${gi * 20}ms` }}
+                        >
+                            {/* 表分组标题 */}
+                            <button
+                                onClick={() => toggleGroupExpand(tableGroupKey)}
+                                className="w-full px-3 py-2 flex items-center justify-between bg-blue-50 hover:bg-blue-100/70 transition-colors text-left"
+                            >
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <Table2 className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
+                                    <span className="text-[13px] font-bold text-gray-900 truncate">
+                                        {tableName}
+                                    </span>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium flex-shrink-0">
+                                        {tableFields.length} 个字段
+                                    </span>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 font-medium flex-shrink-0">
+                                        {columnNames.length} 个原始列
+                                    </span>
+                                    {tableName === '未关联数据表' && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium flex-shrink-0">
+                                            计算字段/派生字段
+                                        </span>
+                                    )}
+                                </div>
+                                <ChevronDown
+                                    className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${isTableExpanded ? 'rotate-0' : '-rotate-90'}`}
+                                />
+                            </button>
+
+                            {/* 表内内容：按原始列分组 */}
+                            {isTableExpanded && (
+                                <div className="p-2 space-y-1">
+                                    {/* 第二层：原始列分组 */}
+                                    {columnNames.map((colName, ci) => {
+                                        const colFields = columnGroups[colName];
+                                        const colGroupKey = `${tableGroupKey}-col-${colName}`;
+                                        const isColExpanded = expandedGroups[colGroupKey] ?? !shouldCollapseColumns;
+
+                                        return (
+                                            <div
+                                                key={ci}
+                                                className="bg-white rounded border border-blue-100 overflow-hidden"
+                                            >
+                                                {/* 原始列标题 */}
+                                                <button
+                                                    onClick={() => toggleGroupExpand(colGroupKey)}
+                                                    className="w-full px-2.5 py-1.5 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                                                >
+                                                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                        <List className="w-3 h-3 text-violet-500 flex-shrink-0" />
+                                                        <span className="text-[12px] font-medium text-gray-800 truncate">
+                                                            {colName}
+                                                        </span>
+                                                        <span className="text-[9px] px-1 py-0.5 rounded bg-gray-200 text-gray-600 font-medium flex-shrink-0">
+                                                            {colFields.length} 个字段
+                                                        </span>
+                                                        {colName === '未关联原始列' && (
+                                                            <span className="text-[9px] px-1 py-0.5 rounded bg-amber-100 text-amber-700 font-medium flex-shrink-0">
+                                                                计算/派生
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <ChevronDown
+                                                        className={`w-3 h-3 text-gray-400 flex-shrink-0 transition-transform ${isColExpanded ? 'rotate-0' : '-rotate-90'}`}
+                                                    />
+                                                </button>
+
+                                                {/* 字段列表（按字段名聚合） */}
+                                                {isColExpanded && (
+                                                    <div className="p-1.5 space-y-0.5 bg-gray-50/50">
+                                                        {aggregateByFieldName(colFields).map((agg, ai) => {
+                                                            const subGroupKey = `${colGroupKey}-field-${agg.name}`;
+                                                            const isSubExpanded = expandedGroups[subGroupKey] ?? false;
+                                                            // 去重的来源列表
+                                                            const uniqueSources = agg.sources.reduce((acc: any[], s) => {
+                                                                const key = s.workbook || s.datasource || 'unknown';
+                                                                if (!acc.find(x => (x.workbook || x.datasource) === key)) {
+                                                                    acc.push(s);
+                                                                }
+                                                                return acc;
+                                                            }, []);
+
+                                                            return (
+                                                                <div key={ai} className="bg-white rounded border border-gray-100">
+                                                                    {/* 聚合字段主行 */}
+                                                                    <div
+                                                                        className="px-2 py-1.5 cursor-pointer hover:bg-blue-50/50 transition-all"
+                                                                        onClick={() => {
+                                                                            if (agg.fields.length === 1) {
+                                                                                handleAssetClick(agg.fields[0].id, 'fields', agg.name);
+                                                                            } else {
+                                                                                toggleGroupExpand(subGroupKey);
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        <div className="flex items-center justify-between gap-2">
+                                                                            <div className="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap">
+                                                                                <span className="text-[11px] text-gray-900 font-medium truncate">
+                                                                                    {agg.name}
+                                                                                </span>
+                                                                                {agg.role && (
+                                                                                    <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${agg.role === 'measure' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'} flex-shrink-0`}>
+                                                                                        {agg.role === 'measure' ? '度量' : '维度'}
+                                                                                    </span>
+                                                                                )}
+                                                                                {agg.dataType && (
+                                                                                    <span className="text-[9px] px-1 py-0.5 rounded bg-gray-100 text-gray-500 font-mono flex-shrink-0">
+                                                                                        {agg.dataType}
+                                                                                    </span>
+                                                                                )}
+                                                                                {agg.fields.length > 1 && (
+                                                                                    <span className="text-[9px] px-1 py-0.5 rounded bg-orange-100 text-orange-700 font-medium flex-shrink-0">
+                                                                                        {agg.fields.length} 个来源
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                            {agg.fields.length === 1 ? (
+                                                                                <ChevronRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                                                                            ) : (
+                                                                                <ChevronDown className={`w-3 h-3 text-gray-400 flex-shrink-0 transition-transform ${isSubExpanded ? 'rotate-0' : '-rotate-90'}`} />
+                                                                            )}
+                                                                        </div>
+                                                                        {/* 来源预览 */}
+                                                                        {uniqueSources.length > 0 && (
+                                                                            <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                                                                {uniqueSources.slice(0, 3).map((src, si) => (
+                                                                                    <span key={si} className={`text-[8px] px-1 py-0.5 rounded ${src.isEmbedded ? 'bg-purple-50 text-purple-600' : 'bg-rose-50 text-rose-600'}`}>
+                                                                                        {src.isEmbedded ? '📦' : '📕'} {src.workbook || src.datasource || '未知'}
+                                                                                    </span>
+                                                                                ))}
+                                                                                {uniqueSources.length > 3 && (
+                                                                                    <span className="text-[8px] text-gray-400">+{uniqueSources.length - 3}</span>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+
+                                                                    {/* 展开：显示所有来源实例 */}
+                                                                    {isSubExpanded && agg.fields.length > 1 && (
+                                                                        <div className="border-t border-gray-100 bg-gray-50/50 p-1 space-y-0.5">
+                                                                            {agg.fields.map((field: any, fi: number) => (
+                                                                                <div
+                                                                                    key={fi}
+                                                                                    onClick={(e) => { e.stopPropagation(); handleAssetClick(field.id, 'fields', field.name); }}
+                                                                                    className="bg-white px-2 py-1 rounded border border-gray-100 cursor-pointer hover:border-blue-300 text-[10px] flex items-center gap-2"
+                                                                                >
+                                                                                    {field.workbook_name && (
+                                                                                        <span className="flex items-center gap-0.5 bg-rose-50 px-1 py-0.5 rounded text-rose-600">
+                                                                                            <BookOpen className="w-2.5 h-2.5" /> {field.workbook_name}
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {field.is_embedded_ds && field.datasource_name && (
+                                                                                        <span className="flex items-center gap-0.5 bg-purple-50 px-1 py-0.5 rounded text-purple-600">
+                                                                                            <Layers className="w-2.5 h-2.5" /> {field.datasource_name}
+                                                                                        </span>
+                                                                                    )}
+                                                                                    <ChevronRight className="w-2.5 h-2.5 text-gray-400 ml-auto" />
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        );
+    };
+
+
+    /**
+     * 按上游表分组的原始列渲染函数
+     * 用于数据源详情页的"原始列"Tab
+     */
+    const renderColumnsGroupedByTable = (columns: any[]) => {
+        if (!columns || columns.length === 0) {
+            return (
+                <div className="bg-gray-50 rounded-lg border border-gray-200 p-6 text-center">
+                    <div className="text-gray-400 text-sm">暂无原始列数据</div>
+                </div>
+            );
+        }
+
+        // 按表分组
+        const groupedByTable: Record<string, any[]> = {};
+        columns.forEach(col => {
+            const tableName = col.table_name || '未知表';
+            if (!groupedByTable[tableName]) {
+                groupedByTable[tableName] = [];
+            }
+            groupedByTable[tableName].push(col);
+        });
+
+        const tableNames = Object.keys(groupedByTable).sort();
+        const shouldDefaultCollapse = tableNames.length > 20;
+
+        return (
+            <div className="space-y-2">
+                {/* 标题栏 */}
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-bold text-gray-700 flex items-center gap-2">
+                        <List className="w-3.5 h-3.5 text-gray-500" />
+                        原始列 (共 {columns.length} 列，来自 {tableNames.length} 个数据表)
+                    </h3>
+                </div>
+
+                {/* 分组列表 */}
+                {tableNames.map((tableName, gi) => {
+                    const tableColumns = groupedByTable[tableName];
+                    const groupKey = `column-table-group-${tableName}`;
+                    const isExpanded = expandedGroups[groupKey] ?? !shouldDefaultCollapse;
+
+                    return (
+                        <div
+                            key={gi}
+                            className="bg-gray-50/50 rounded-lg border border-gray-200 overflow-hidden"
+                        >
+                            {/* 分组标题 */}
+                            <button
+                                onClick={() => toggleGroupExpand(groupKey)}
+                                className="w-full px-3 py-2 flex items-center justify-between bg-gray-100 hover:bg-gray-200/70 transition-colors text-left"
+                            >
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <Table2 className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
+                                    <span className="text-[13px] font-bold text-gray-900 truncate">
+                                        {tableName}
+                                    </span>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-700 font-medium flex-shrink-0">
+                                        {tableColumns.length} 列
+                                    </span>
+                                </div>
+                                <ChevronDown
+                                    className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'}`}
+                                />
+                            </button>
+
+                            {/* 列列表 */}
+                            {isExpanded && (
+                                <div className="p-2 space-y-1">
+                                    {tableColumns.map((col: any, ci: number) => (
+                                        <div
+                                            key={ci}
+                                            className="bg-white p-2 rounded border border-gray-100 hover:border-gray-300 transition-all"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[12px] text-gray-900 font-medium">
+                                                    {col.name}
+                                                </span>
+                                                {col.remote_type && (
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-mono flex-shrink-0">
+                                                        {col.remote_type}
+                                                    </span>
+                                                )}
+                                                {col.is_nullable === false && (
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 font-medium flex-shrink-0">
+                                                        NOT NULL
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {col.description && (
+                                                <div className="text-[10px] text-gray-500 mt-1 truncate">
+                                                    {col.description}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
         );
     };
@@ -1349,7 +1998,6 @@ export default function DetailDrawer() {
         switch (activeTab) {
             case 'overview': return renderOverviewTab();
             case 'duplicates': return renderDuplicatesTab();
-            case 'datasources': return renderDatasourcesTab();
             case 'lineage': return renderLineageTab();
             case 'usage': return renderUsageTab();
 
@@ -1366,8 +2014,15 @@ export default function DetailDrawer() {
             // 表相关
             case 'db':
                 return renderAssetSection('所属数据库', Database, data.database_info ? [data.database_info] : (data.databaseName ? [{ id: data.databaseId, name: data.databaseName }] : []), 'databases', 'blue');
-            case 'columns':
-                return renderAssetSection('数据库原始列', List, data.columns || [], 'columns', 'gray');
+            case 'columns': {
+                const columnsData = data.columns || [];
+                // 数据源详情页：按表分组显示原始列
+                if (currentItem?.type === 'datasources' && columnsData.length > 0) {
+                    return renderColumnsGroupedByTable(columnsData);
+                }
+                // 数据表详情页：直接列表显示
+                return renderAssetSection('数据库原始列', List, columnsData, 'columns', 'gray');
+            }
 
             // 字段/指标相关
             case 'table':
@@ -1440,12 +2095,23 @@ export default function DetailDrawer() {
                 const items = embDsItems.length > 0 ? embDsItems : (data.datasource_info && data.datasource_info.is_embedded ? [data.datasource_info] : []);
                 return renderAssetSection('嵌入式数据源', Copy, items, 'datasources', 'purple');
             }
-            case 'fields':
-                const fieldItems = (data.full_fields || data.used_fields || []).map((f: any) => ({
+            case 'fields': {
+                const fieldItems = data.full_fields || data.used_fields || [];
+                // 数据表详情页使用按原始列分组的渲染方式
+                if (currentItem?.type === 'tables' && data.full_fields) {
+                    return renderFieldsGroupedByColumn(fieldItems);
+                }
+                // 数据源详情页使用按上游表分组的渲染方式
+                if (currentItem?.type === 'datasources' && data.full_fields) {
+                    return renderFieldsGroupedByTable(fieldItems);
+                }
+                // 其他类型（视图等）使用原有的列表展示
+                const mappedFields = fieldItems.map((f: any) => ({
                     ...f,
                     subtitle: f.role === 'measure' ? '度量' : '维度'
                 }));
-                return renderAssetSection('包含/使用的字段', Columns, fieldItems, 'fields', 'blue');
+                return renderAssetSection('包含/使用的字段', Columns, mappedFields, 'fields', 'blue');
+            }
             case 'metrics':
                 return renderAssetSection('包含/使用的指标', FunctionSquare, data.metrics || data.used_metrics || [], 'metrics', 'amber');
             case 'embedded':

@@ -11,6 +11,10 @@ export interface DatasourceCardData {
   owner?: string;
   table_count?: number;
   tableCount?: number;
+  embedded_table_count?: number;
+  embeddedTableCount?: number;
+  regular_table_count?: number;
+  regularTableCount?: number;
   field_count?: number;
   fieldCount?: number;
   metric_count?: number;
@@ -73,6 +77,8 @@ function formatRefreshTime(dateString?: string): string {
 export default function DatasourceCard({ datasource, onClick }: DatasourceCardProps) {
   const projectName = datasource.project_name ?? datasource.projectName; // Allow undefined to filter
   const tableCount = datasource.table_count ?? datasource.tableCount ?? 0;
+  const embeddedTableCount = datasource.embedded_table_count ?? datasource.embeddedTableCount ?? 0;
+  const regularTableCount = datasource.regular_table_count ?? datasource.regularTableCount ?? 0;
   const fieldCount = datasource.field_count ?? datasource.fieldCount ?? 0;
   const metricCount = datasource.metric_count ?? datasource.metricCount ?? 0;
   const workbookCount = datasource.workbook_count ?? datasource.workbookCount ?? 0;
@@ -125,8 +131,12 @@ export default function DatasourceCard({ datasource, onClick }: DatasourceCardPr
       value: datasource.owner,
     },
     {
-      label: '表',
-      value: `${tableCount} 个`,
+      label: '原始表',
+      value: `${regularTableCount} 个`,
+    },
+    {
+      label: '嵌入表',
+      value: `${embeddedTableCount} 个`,
     },
     {
       label: '字段',

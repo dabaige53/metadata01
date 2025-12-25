@@ -206,7 +206,14 @@ def get_tables():
         direct_field_count = len(t.fields) if t.fields else 0
         data['field_count'] = stats.get('field_count', direct_field_count)
         data['column_count'] = len(t.columns) if t.columns else 0
-        data['datasource_count'] = len(t.datasources) if t.datasources else 0
+        
+        # 分开统计嵌入式和已发布数据源
+        all_datasources = t.datasources if t.datasources else []
+        published_ds = [ds for ds in all_datasources if not ds.is_embedded]
+        embedded_ds = [ds for ds in all_datasources if ds.is_embedded]
+        data['datasource_count'] = len(published_ds)
+        data['embedded_datasource_count'] = len(embedded_ds)
+        
         data['workbook_count'] = wb_map.get(t.id, 0)
         
         measure_count = stats.get('measure_count', 0)
@@ -280,10 +287,17 @@ def get_table_detail(table_id):
             seen_field_ids.add(f.id)
 
     # 3. 通过关联的数据源获取字段（用于嵌入式表）
+    # 重要：只保留 upstream_column 真正属于当前表的字段，过滤掉 JOIN 进来的其他表字段
+    column_ids = set(col.id for col in table.columns) if table.columns else set()
+    
     if table.datasources:
         for ds in table.datasources:
             for f in ds.fields:
                 if f.id not in seen_field_ids:
+                    # 过滤逻辑：如果字段有 upstream_column_id，必须属于当前表
+                    if f.upstream_column_id:
+                        if f.upstream_column_id not in column_ids:
+                            continue  # 跳过不属于本表的字段
                     f_data = f.to_dict()
                     f_data['via_datasource'] = ds.name
                     full_fields.append(f_data)
@@ -352,6 +366,9 @@ def get_table_detail(table_id):
         'datasource_count': len(datasources_data),
         'workbook_count': len(workbooks_data)
     }
+    
+    # 添加顶层 referenceCount 属性，供前端页眉显示
+    data['referenceCount'] = len(workbooks_data)
     
     # 获取关联数据源的 vizportal_url_id 或工作簿信息（用于嵌入式表的 URL 构建）
     ds_vizportal_url_id = None
