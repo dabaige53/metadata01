@@ -817,7 +817,7 @@ class TableauMetadataClient:
         for i in range(0, total, chunk_size):
             chunk = workbooks[i:i+chunk_size]
             
-            # 动态构建 Alias Filter 查询（增加仪表板字段查询）
+            # 动态构建 Alias Filter 查询
             query_parts = []
             for idx, wb in enumerate(chunk):
                 wb_id = wb["id"]
@@ -829,17 +829,6 @@ class TableauMetadataClient:
                         id
                         name
                         sheetFieldInstances {{
-                            id
-                            name
-                            datasource {{
-                                id
-                            }}
-                        }}
-                    }}
-                    dashboards {{
-                        id
-                        name
-                        dashboardFieldInstances {{
                             id
                             name
                             datasource {{
@@ -866,41 +855,19 @@ class TableauMetadataClient:
                     # workbooks 返回的是列表
                     wb_data = wb_list[0]
                     wb_id = wb_data.get("id")
-
-                    # 处理 sheets 的字段
+                    
                     sheets = wb_data.get("sheets") or []
                     for sheet in sheets:
                         if not sheet: continue
                         view_id = sheet.get("id")
                         view_name = sheet.get("name")
                         fields = sheet.get("sheetFieldInstances") or []
-
+                        
                         for field in fields:
                             if field and field.get("id"):
                                 all_view_fields.append({
                                     "view_id": view_id,
                                     "view_name": view_name,
-                                    "view_type": "sheet",
-                                    "workbook_id": wb_id,
-                                    "field_id": field.get("id"),
-                                    "field_name": field.get("name"),
-                                    "datasource_id": (field.get("datasource") or {}).get("id")
-                                })
-
-                    # 处理 dashboards 的字段
-                    dashboards = wb_data.get("dashboards") or []
-                    for dashboard in dashboards:
-                        if not dashboard: continue
-                        view_id = dashboard.get("id")
-                        view_name = dashboard.get("name")
-                        fields = dashboard.get("dashboardFieldInstances") or []
-
-                        for field in fields:
-                            if field and field.get("id"):
-                                all_view_fields.append({
-                                    "view_id": view_id,
-                                    "view_name": view_name,
-                                    "view_type": "dashboard",
                                     "workbook_id": wb_id,
                                     "field_id": field.get("id"),
                                     "field_name": field.get("name"),

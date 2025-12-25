@@ -157,6 +157,17 @@
         },
         "卡片详情一致性验证": {
             "任务描述": "检测列表卡片显示值与详情页 Tab 显示值是否来自同一数据源",
+            "修复历史": [
+                {
+                    "修复日期": "2025-12-25",
+                    "修复描述": "修复嵌入式表的字段统计不一致问题，增加间接关联字段（通过 upstream_column_id）的统计",
+                    "涉及文件": [
+                        "backend/routes/tables.py:172-196 (列表API字段统计SQL)",
+                        "backend/routes/tables.py:248-292 (详情API字段查询逻辑)"
+                    ],
+                    "根本原因": "嵌入式表的字段通过 upstream_column_id 间接关联到物理表，原代码只查询了直接关联的字段"
+                }
+            ],
             "验证项列表": [
                 {
                     "一致性检测项": "列数量 (column_count)",
@@ -167,6 +178,51 @@
                         "SQL (模拟详情逻辑)": "SELECT COUNT(*) FROM db_columns WHERE table_id = :id"
                     },
                     "预期规则": "卡片数据源.SQL结果 = 详情数据源.SQL结果"
+                },
+                {
+                    "一致性检测项": "字段数量 (field_count)",
+                    "问题描述": "嵌入式表的字段关联方式复杂，需要合并多种关联路径",
+                    "卡片数据源": {
+                        "说明": "列表API使用预计算的字段统计（合并直接关联和间接关联）",
+                        "SQL (模拟卡片逻辑)": "SELECT COUNT(DISTINCT t.field_id) FROM (SELECT td.table_id, f.id as field_id FROM table_to_datasource td JOIN fields f ON td.datasource_id = f.datasource_id WHERE td.table_id = :id UNION SELECT c.table_id, f.id as field_id FROM db_columns c JOIN fields f ON c.id = f.upstream_column_id WHERE c.table_id = :id AND f.table_id IS NULL) t",
+                        "关联路径": [
+                            "方式1: table_to_datasource -> fields (通过数据源)",
+                            "方式2: db_columns -> fields.upstream_column_id (间接关联)"
+                        ]
+                    },
+                    "详情数据源": {
+                        "说明": "详情API需要合并所有来源的字段（直接、间接、数据源）",
+                        "SQL (模拟详情逻辑)": "SELECT COUNT(DISTINCT f.id) FROM (SELECT id FROM fields WHERE table_id = :id UNION SELECT f.id FROM fields f JOIN db_columns c ON f.upstream_column_id = c.id WHERE c.table_id = :id AND f.table_id IS NULL UNION SELECT f.id FROM fields f JOIN table_to_datasource td ON f.datasource_id = td.datasource_id WHERE td.table_id = :id) f",
+                        "关联路径": [
+                            "方式1: fields.table_id (直接关联)",
+                            "方式2: db_columns -> fields.upstream_column_id (间接关联)",
+                            "方式3: table_to_datasource -> fields.datasource_id (数据源字段)"
+                        ]
+                    },
+                    "预期规则": "卡片数据源.SQL结果 = 详情数据源.SQL结果",
+                    "实际验证结果": {
+                        "测试表ID": "014a8d36-f685-72ce-e48f-5d54b69c418f",
+                        "测试表名": "机场三字代码表",
+                        "卡片字段数": 218,
+                        "详情字段数": 218,
+                        "验证状态": "✅ 一致"
+                    }
+                },
+                {
+                    "一致性检测项": "度量字段数 (measure_count)",
+                    "说明": "仅用于卡片预览显示，不在详情页单独展示",
+                    "卡片数据源": {
+                        "SQL (模拟卡片逻辑)": "SELECT COUNT(DISTINCT CASE WHEN f.role = 'measure' THEN t.field_id END) FROM (SELECT td.table_id, f.id as field_id FROM table_to_datasource td JOIN fields f ON td.datasource_id = f.datasource_id WHERE td.table_id = :id UNION SELECT c.table_id, f.id as field_id FROM db_columns c JOIN fields f ON c.id = f.upstream_column_id WHERE c.table_id = :id AND f.table_id IS NULL) t JOIN fields f ON t.field_id = f.id"
+                    },
+                    "预期规则": "用于卡片预览文案：'度量字段 (N个)'"
+                },
+                {
+                    "一致性检测项": "维度字段数 (dimension_count)",
+                    "说明": "仅用于卡片预览显示，不在详情页单独展示",
+                    "卡片数据源": {
+                        "SQL (模拟卡片逻辑)": "SELECT COUNT(DISTINCT CASE WHEN f.role != 'measure' THEN t.field_id END) FROM (SELECT td.table_id, f.id as field_id FROM table_to_datasource td JOIN fields f ON td.datasource_id = f.datasource_id WHERE td.table_id = :id UNION SELECT c.table_id, f.id as field_id FROM db_columns c JOIN fields f ON c.id = f.upstream_column_id WHERE c.table_id = :id AND f.table_id IS NULL) t JOIN fields f ON t.field_id = f.id"
+                    },
+                    "预期规则": "用于卡片预览文案：'维度字段 (N个)'"
                 }
             ]
         }

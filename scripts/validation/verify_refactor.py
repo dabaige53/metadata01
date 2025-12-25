@@ -26,8 +26,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # 数据库路径
-DB_PATH = "metadata.db"
-BACKUP_DB_PATH = "metadata_backup_20241224_before_refactor.db"
+DB_PATH = "data/metadata.db"
+BACKUP_DB_PATH = "data/backups/metadata_backup_20241224_before_refactor.db"
 OUTPUT_DIR = "docs/测试验证"
 
 # 确保输出目录存在
@@ -69,8 +69,9 @@ class RefactorVerifier:
         """获取各表记录数"""
         tables = [
             'databases', 'tables', 'db_columns', 'datasources', 
-            'workbooks', 'views', 'fields', 'calculated_fields',
-            'metrics', 'field_dependencies', 'field_full_lineage'
+            'workbooks', 'views', 'fields', 'regular_fields', 'calculated_fields',
+            'metrics', 'field_dependencies', 'field_full_lineage',
+            'regular_field_full_lineage', 'calc_field_full_lineage'
         ]
         counts = {}
         for table in tables:
@@ -145,10 +146,8 @@ class RefactorVerifier:
         
         # 4. 表 → 字段 关联
         cur = self.conn.execute("""
-            SELECT t.id, t.name, COUNT(f.id) as field_count
+            SELECT t.id, t.name, (SELECT COUNT(*) FROM regular_fields rf WHERE rf.table_id = t.id) as field_count
             FROM tables t
-            LEFT JOIN fields f ON t.id = f.table_id
-            GROUP BY t.id
             ORDER BY field_count DESC
             LIMIT 10
         """)
@@ -422,7 +421,7 @@ class RefactorVerifier:
         
         # 2. 字段 → 表 → 数据库 完整链路
         cur = self.conn.execute("""
-            SELECT COUNT(*) FROM fields f
+            SELECT COUNT(*) FROM regular_fields f
             JOIN tables t ON f.table_id = t.id
             JOIN databases db ON t.database_id = db.id
         """)
@@ -576,47 +575,47 @@ class RefactorVerifier:
             # 30 工作簿→视图
             {"rule": "eq_total", "cross_sql": "SELECT COUNT(DISTINCT workbook_id) FROM views WHERE workbook_id IS NOT NULL", "expect_key": "workbooks"},
             # 31 工作簿→字段
-            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT wb.id) FROM workbooks wb WHERE EXISTS (SELECT 1 FROM fields f WHERE f.workbook_id=wb.id)"},
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT wb.id) FROM workbooks wb WHERE EXISTS (SELECT 1 FROM regular_fields f WHERE f.workbook_id=wb.id)"},
             # 32 视图→数据库
-            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT fv.view_id) FROM field_to_view fv JOIN field_full_lineage fl ON fv.field_id=fl.field_id WHERE fl.database_id IS NOT NULL"},
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT fv.view_id) FROM field_to_view fv JOIN regular_field_full_lineage fl ON fv.field_id=fl.field_id WHERE fl.datasource_id IS NOT NULL"},
             # 33 视图→物理表
-            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT fv.view_id) FROM field_to_view fv JOIN field_full_lineage fl ON fv.field_id=fl.field_id WHERE fl.table_id IN (SELECT id FROM tables WHERE is_embedded=0)"},
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT fv.view_id) FROM field_to_view fv JOIN regular_field_full_lineage fl ON fv.field_id=fl.field_id WHERE fl.table_id IN (SELECT id FROM tables WHERE is_embedded=0)"},
             # 34 视图→工作簿
             {"rule": "eq_total", "cross_sql": "SELECT COUNT(*) FROM views WHERE workbook_id IS NOT NULL", "expect_key": "views"},
             # 35 视图→字段
             {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT v.id) FROM views v WHERE EXISTS (SELECT 1 FROM field_to_view fv WHERE fv.view_id=v.id)"},
             # 36 字段→数据库
-            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT field_id) FROM field_full_lineage WHERE database_id IS NOT NULL"},
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT field_id) FROM regular_field_full_lineage WHERE datasource_id IS NOT NULL"},
             # 37 字段→物理表
-            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT field_id) FROM field_full_lineage WHERE table_id IN (SELECT id FROM tables WHERE is_embedded=0)"},
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT field_id) FROM regular_field_full_lineage WHERE table_id IN (SELECT id FROM tables WHERE is_embedded=0)"},
             # 38 字段→嵌入表
-            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT field_id) FROM field_full_lineage WHERE table_id IN (SELECT id FROM tables WHERE is_embedded=1)"},
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT field_id) FROM regular_field_full_lineage WHERE table_id IN (SELECT id FROM tables WHERE is_embedded=1)"},
             # 39 字段→数据列
-            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT f.id) FROM fields f WHERE f.is_calculated=0 AND EXISTS (SELECT 1 FROM db_columns c WHERE c.id=f.upstream_column_id)"},
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT f.id) FROM regular_fields f WHERE EXISTS (SELECT 1 FROM db_columns c WHERE c.id=f.upstream_column_id)"},
             # 40 字段→发布源
-            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT f.id) FROM fields f WHERE EXISTS (SELECT 1 FROM datasources ds WHERE ds.id=f.datasource_id AND ds.is_embedded=0)"},
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT f.id) FROM regular_fields f WHERE EXISTS (SELECT 1 FROM datasources ds WHERE ds.id=f.datasource_id AND ds.is_embedded=0)"},
             # 41 字段→嵌入源(穿透) = 0
-            {"rule": "eq_zero", "cross_sql": "SELECT COUNT(*) FROM fields f JOIN datasources ds ON f.datasource_id=ds.id WHERE ds.is_embedded=1 AND ds.source_published_datasource_id IS NOT NULL"},
+            {"rule": "eq_zero", "cross_sql": "SELECT COUNT(*) FROM regular_fields f JOIN datasources ds ON f.datasource_id=ds.id WHERE ds.is_embedded=1 AND ds.source_published_datasource_id IS NOT NULL"},
             # 42 字段→嵌入源(独立)
-            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT f.id) FROM fields f JOIN datasources ds ON f.datasource_id=ds.id WHERE ds.is_embedded=1 AND ds.source_published_datasource_id IS NULL"},
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT f.id) FROM regular_fields f JOIN datasources ds ON f.datasource_id=ds.id WHERE ds.is_embedded=1 AND ds.source_published_datasource_id IS NULL"},
             # 43 字段→工作簿
-            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT field_id) FROM field_full_lineage WHERE workbook_id IS NOT NULL"},
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT field_id) FROM regular_field_full_lineage WHERE workbook_id IS NOT NULL"},
             # 44 字段→视图
-            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT f.id) FROM fields f WHERE EXISTS (SELECT 1 FROM field_to_view fv WHERE fv.field_id=f.id)"},
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT f.id) FROM regular_fields f WHERE EXISTS (SELECT 1 FROM field_to_view fv WHERE fv.field_id=f.id)"},
             # 45 字段→计算字段
             {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT fd.dependency_field_id) FROM field_dependencies fd"},
             # 46 计算字段→物理表
-            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT field_id) FROM field_full_lineage WHERE table_id IN (SELECT id FROM tables WHERE is_embedded=0) AND field_id IN (SELECT id FROM fields WHERE is_calculated=1)"},
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT field_id) FROM calc_field_full_lineage WHERE table_id IN (SELECT id FROM tables WHERE is_embedded=0)"},
             # 47 计算字段→字段(依赖)
             {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT fd.source_field_id) FROM field_dependencies fd"},
             # 48 计算字段→发布源
-            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT f.id) FROM fields f WHERE f.is_calculated=1 AND EXISTS (SELECT 1 FROM datasources ds WHERE ds.id=f.datasource_id AND ds.is_embedded=0)"},
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT f.id) FROM calculated_fields f WHERE EXISTS (SELECT 1 FROM datasources ds WHERE ds.id=f.datasource_id AND ds.is_embedded=0)"},
             # 49 计算字段→嵌入源(独立)
-            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT f.id) FROM fields f WHERE f.is_calculated=1 AND EXISTS (SELECT 1 FROM datasources ds WHERE ds.id=f.datasource_id AND ds.is_embedded=1 AND ds.source_published_datasource_id IS NULL)"},
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT f.id) FROM calculated_fields f JOIN datasources ds ON f.datasource_id=ds.id WHERE ds.is_embedded=1 AND ds.source_published_datasource_id IS NULL"},
             # 50 计算字段→工作簿
-            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT field_id) FROM field_full_lineage WHERE workbook_id IS NOT NULL AND field_id IN (SELECT id FROM fields WHERE is_calculated=1)"},
+            {"rule": "ge_main", "cross_sql": "SELECT COUNT(DISTINCT field_id) FROM calc_field_full_lineage WHERE workbook_id IS NOT NULL"},
             # 51 计算字段→视图
-            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT fv.field_id) FROM field_to_view fv WHERE fv.field_id IN (SELECT id FROM fields WHERE is_calculated=1)"},
+            {"rule": "eq_main", "cross_sql": "SELECT COUNT(DISTINCT fv.field_id) FROM field_to_view fv WHERE fv.field_id IN (SELECT id FROM calculated_fields)"},
         ]
 
         results: List[Dict[str, Any]] = []

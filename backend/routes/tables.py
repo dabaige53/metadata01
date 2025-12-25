@@ -169,17 +169,30 @@ def get_tables():
         wb_stats = session.execute(stmt, {'table_ids': list(table_ids)}).fetchall()
         wb_map = {row[0]: row[1] for row in wb_stats}
         
-        # 预查询字段统计
+        # 预查询字段统计（支持直接和间接关联）
         field_stmt = text("""
-            SELECT 
-                td.table_id,
-                COUNT(DISTINCT f.id) as field_count,
-                COUNT(DISTINCT CASE WHEN f.role = 'measure' THEN f.id END) as measure_count,
-                COUNT(DISTINCT CASE WHEN f.role != 'measure' THEN f.id END) as dimension_count
-            FROM table_to_datasource td
-            JOIN fields f ON td.datasource_id = f.datasource_id
-            WHERE td.table_id IN :table_ids
-            GROUP BY td.table_id
+            SELECT
+                t.table_id,
+                COUNT(DISTINCT t.field_id) as field_count,
+                COUNT(DISTINCT CASE WHEN f.role = 'measure' THEN t.field_id END) as measure_count,
+                COUNT(DISTINCT CASE WHEN f.role != 'measure' THEN t.field_id END) as dimension_count
+            FROM (
+                -- 方式1: 通过 table_to_datasource 关联
+                SELECT td.table_id, f.id as field_id
+                FROM table_to_datasource td
+                JOIN fields f ON td.datasource_id = f.datasource_id
+                WHERE td.table_id IN :table_ids
+
+                UNION
+
+                -- 方式2: 通过 upstream_column_id 间接关联
+                SELECT c.table_id, f.id as field_id
+                FROM db_columns c
+                JOIN fields f ON c.id = f.upstream_column_id
+                WHERE c.table_id IN :table_ids AND f.table_id IS NULL
+            ) t
+            JOIN fields f ON t.field_id = f.id
+            GROUP BY t.table_id
         """)
         field_stmt = field_stmt.bindparams(bindparam('table_ids', expanding=True))
         field_stats = session.execute(field_stmt, {'table_ids': list(table_ids)}).fetchall()
@@ -245,22 +258,38 @@ def get_table_detail(table_id):
         })
     data['columns'] = columns_data
 
-    # Tableau字段
+    # Tableau字段（支持多种关联方式，合并所有来源）
     full_fields = []
-    source_fields = table.fields
-    data['source_type'] = 'direct'
+    seen_field_ids = set()
 
-    if not source_fields and table.datasources:
-        source_fields = []
-        data['source_type'] = 'derived'
+    # 1. 直接关联字段（Field.table_id = table.id）
+    direct_fields = table.fields if table.fields else []
+    for f in direct_fields:
+        if f.id not in seen_field_ids:
+            full_fields.append(f.to_dict())
+            seen_field_ids.add(f.id)
+
+    # 2. 间接关联字段（通过 upstream_column_id -> DBColumn -> table）
+    indirect_fields = session.query(Field).join(DBColumn, Field.upstream_column_id == DBColumn.id)\
+        .filter(DBColumn.table_id == table.id)\
+        .filter(Field.table_id.is_(None))\
+        .all()
+    for f in indirect_fields:
+        if f.id not in seen_field_ids:
+            full_fields.append(f.to_dict())
+            seen_field_ids.add(f.id)
+
+    # 3. 通过关联的数据源获取字段（用于嵌入式表）
+    if table.datasources:
         for ds in table.datasources:
-            source_fields.extend(ds.fields)
+            for f in ds.fields:
+                if f.id not in seen_field_ids:
+                    f_data = f.to_dict()
+                    f_data['via_datasource'] = ds.name
+                    full_fields.append(f_data)
+                    seen_field_ids.add(f.id)
 
-    for f in source_fields:
-        f_data = f.to_dict()
-        if data['source_type'] == 'derived' and f.datasource:
-            f_data['via_datasource'] = f.datasource.name
-        full_fields.append(f_data)
+    data['source_type'] = 'direct' if direct_fields else ('via_datasource' if table.datasources else 'no_fields')
 
     data['full_fields'] = full_fields
 

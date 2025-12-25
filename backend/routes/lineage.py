@@ -2,6 +2,7 @@
 血缘关系接口路由模块
 包含血缘查询和 Mermaid 图形化接口
 """
+import re
 from flask import jsonify, request, g
 from sqlalchemy import text
 from . import api_bp
@@ -227,7 +228,7 @@ def get_lineage_graph(item_type, item_id):
             # 上游：依赖字段
             if calc.formula and isinstance(calc.formula, str):
                 refs = re.findall(r'\[(.*?)\]', calc.formula)
-                for ref_name in set(refs)[:5]:
+                for ref_name in list(set(refs))[:5]:
                     dep_field = session.query(Field).filter(Field.name == ref_name).first()
                     if dep_field:
                         add_node(dep_field.id, dep_field.name, 'field')

@@ -1147,10 +1147,10 @@ class MetadataSync:
                 
                 # 更新/创建 CalculatedField 记录
                 calc_field = self.session.query(CalculatedField).filter_by(
-                    field_id=cf_data["id"]
+                    id=cf_data["id"]
                 ).first()
                 if not calc_field:
-                    calc_field = CalculatedField(field_id=cf_data["id"])
+                    calc_field = CalculatedField(id=cf_data["id"])
                     self.session.add(calc_field)
                 
                 calc_field.name = cf_data.get("name") or ""
@@ -1512,9 +1512,9 @@ class MetadataSync:
             field.is_hidden = f_data.get("isHidden") or False
             
             # 确保 CalculatedField 记录
-            calc_sub = self.session.query(CalculatedField).filter_by(field_id=field.id).first()
+            calc_sub = self.session.query(CalculatedField).filter_by(id=field.id).first()
             if not calc_sub:
-                calc_sub = CalculatedField(field_id=field.id)
+                calc_sub = CalculatedField(id=field.id)
                 self.session.add(calc_sub)
             calc_sub.name = field.name
             calc_sub.formula = field.formula

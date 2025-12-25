@@ -343,8 +343,18 @@ def start_services():
         save_pid(frontend_proc.pid, FRONTEND_PID_FILE)
         
         print("\n✨ 系统已全面启动！")
-        print("🔗 前端地址: http://localhost:3100")
-        print("🔗 后端 API: http://localhost:8101/api")
+        print("🔗 前端地址: http://localhost:3100 (本机)")
+        print("🔗 后端 API: http://localhost:8101/api (本机)")
+        # 获取本机内网 IP
+        import socket
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+            print(f"🌐 内网访问: http://{local_ip}:3100")
+        except:
+            pass
         print("\n💡 提示: 使用 'python3 dev.py stop' 可以停止服务")
         print("按 Ctrl+C 停止所有服务...\n")
         

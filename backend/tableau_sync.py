@@ -35,7 +35,7 @@ def main():
     print(f"\n数据库路径: {db_path}")
     
     client = TableauMetadataClient(
-        base_url=Config.TABLEAU_SERVER_URL,
+        base_url=Config.TABLEAU_BASE_URL,
         pat_name=Config.TABLEAU_PAT_NAME,
         pat_secret=Config.TABLEAU_PAT_SECRET
     )
