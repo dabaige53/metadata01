@@ -1032,30 +1032,52 @@ def get_datasources():
     
     datasources = query.limit(page_size).offset(offset).all()
     
-    # 预查询视图统计（仅针对当前页的数据源）
+    # 预查询各项统计（仅针对当前页的数据源，统一口径）
     ds_ids = [ds.id for ds in datasources]
+    view_map = {}
+    wb_map = {}
+    table_map = {}
+    
     if ds_ids:
         from sqlalchemy import bindparam
-        stmt = text("""
+        # 1. 视图统计
+        stmt_view = text("""
             SELECT dw.datasource_id, COUNT(v.id) as view_count
             FROM datasource_to_workbook dw
             JOIN views v ON dw.workbook_id = v.workbook_id
             WHERE dw.datasource_id IN :ds_ids
             GROUP BY dw.datasource_id
-        """)
-        stmt = stmt.bindparams(bindparam('ds_ids', expanding=True))
-        view_stats = session.execute(stmt, {'ds_ids': list(ds_ids)}).fetchall()
+        """).bindparams(bindparam('ds_ids', expanding=True))
+        view_stats = session.execute(stmt_view, {'ds_ids': list(ds_ids)}).fetchall()
         view_map = {row[0]: row[1] for row in view_stats}
-    else:
-        view_map = {}
+        
+        # 2. 工作簿统计
+        stmt_wb = text("""
+            SELECT datasource_id, COUNT(workbook_id) as wb_count
+            FROM datasource_to_workbook
+            WHERE datasource_id IN :ds_ids
+            GROUP BY datasource_id
+        """).bindparams(bindparam('ds_ids', expanding=True))
+        wb_stats = session.execute(stmt_wb, {'ds_ids': list(ds_ids)}).fetchall()
+        wb_map = {row[0]: row[1] for row in wb_stats}
+        
+        # 3. 物理表统计
+        stmt_tbl = text("""
+            SELECT datasource_id, COUNT(table_id) as tbl_count
+            FROM table_to_datasource
+            WHERE datasource_id IN :ds_ids
+            GROUP BY datasource_id
+        """).bindparams(bindparam('ds_ids', expanding=True))
+        tbl_stats = session.execute(stmt_tbl, {'ds_ids': list(ds_ids)}).fetchall()
+        table_map = {row[0]: row[1] for row in tbl_stats}
  
     results = []
     for ds in datasources:
         data = ds.to_dict()
-        # 使用预计算字段
-        data['table_count'] = ds.table_count or 0
-        data['field_count'] = ds.field_count or 0
-        data['workbook_count'] = ds.workbook_count or 0
+        # 优先使用动态统计数据，确保与详情页及工作流一致
+        data['table_count'] = table_map.get(ds.id, ds.table_count or 0)
+        data['field_count'] = ds.field_count or 0 # 字段数量目前主表相对准确
+        data['workbook_count'] = wb_map.get(ds.id, ds.workbook_count or 0)
         data['view_count'] = view_map.get(ds.id, 0)
         # 优化：不返回完整的关联对象列表，仅返回数量以减少 payload
         # 如果前端需要详情，应使用详情接口
@@ -2077,31 +2099,39 @@ def get_fields_catalog():
     
     where_clause = "WHERE " + " AND ".join(conditions)
     
-    # 聚合查询
-    # 使用 COALESCE(upstream_column_name, name) 作为规范名称
-    # 按 (规范名称 + table_id) 分组
-    # 修复：instance_count 使用 COUNT(DISTINCT datasource_id) 确保与 datasource_count 一致
+    # 聚合查询 - 使用 CTE 进行精准聚合
     base_sql = f"""
+        WITH field_groups AS (
+            SELECT 
+                COALESCE(upstream_column_name, name) as canonical_name,
+                table_id,
+                COUNT(DISTINCT id) as instance_count,
+                COALESCE(SUM(usage_count), 0) as total_usage,
+                MAX(role) as role,
+                MAX(data_type) as data_type,
+                MAX(remote_type) as remote_type,
+                MAX(description) as description,
+                MIN(id) as representative_id,
+                GROUP_CONCAT(DISTINCT id) as member_ids
+            FROM fields
+            {where_clause}
+            GROUP BY COALESCE(upstream_column_name, name), table_id
+        )
         SELECT 
-            MIN(f.id) as representative_id,
-            COALESCE(f.upstream_column_name, f.name) as canonical_name,
-            f.table_id,
+            gs.*,
             t.name as table_name,
             t.schema as table_schema,
             db.name as database_name,
-            MAX(f.role) as role,
-            MAX(f.data_type) as data_type,
-            MAX(f.remote_type) as remote_type,
-            MAX(f.description) as description,
-            COUNT(DISTINCT f.datasource_id) as instance_count,
-            COALESCE(SUM(f.usage_count), 0) as total_usage,
-            GROUP_CONCAT(DISTINCT CASE WHEN f.datasource_id IS NOT NULL THEN f.datasource_id || '|' || COALESCE(d.name, 'Unknown') END) as datasource_info
-        FROM fields f
-        LEFT JOIN tables t ON f.table_id = t.id
+            GROUP_CONCAT(DISTINCT CASE WHEN rfl.datasource_id IS NOT NULL THEN rfl.datasource_id || '|' || COALESCE(d.name, 'Unknown') END) as datasource_info,
+            GROUP_CONCAT(DISTINCT CASE WHEN rfl.workbook_id IS NOT NULL THEN rfl.workbook_id || '|' || COALESCE(w.name, 'Unknown') END) as workbook_info
+        FROM field_groups gs
+        LEFT JOIN tables t ON gs.table_id = t.id
         LEFT JOIN databases db ON t.database_id = db.id
-        LEFT JOIN datasources d ON f.datasource_id = d.id
-        {where_clause}
-        GROUP BY COALESCE(f.upstream_column_name, f.name), f.table_id
+        JOIN fields f ON gs.canonical_name = COALESCE(f.upstream_column_name, f.name) AND gs.table_id = f.table_id
+        LEFT JOIN regular_field_full_lineage rfl ON f.id = rfl.field_id
+        LEFT JOIN datasources d ON rfl.datasource_id = d.id
+        LEFT JOIN workbooks w ON rfl.workbook_id = w.id
+        GROUP BY gs.canonical_name, gs.table_id
     """
 
     
@@ -2140,9 +2170,17 @@ def get_fields_catalog():
                     ds_id, ds_name = ds_pair.split('|', 1)
                     datasources.append({'id': ds_id, 'name': ds_name})
 
-        
+        # 解析工作簿列表（新格式：id|name,id|name,...）
+        workbooks = []
+        if row.workbook_info:
+            for wb_pair in row.workbook_info.split(','):
+                if '|' in wb_pair:
+                    wb_id, wb_name = wb_pair.split('|', 1)
+                    if wb_id and wb_id != 'None':
+                        workbooks.append({'id': wb_id, 'name': wb_name})
+
         items.append({
-            'representative_id': row.representative_id, # Add this field
+            'representative_id': row.representative_id,
             'canonical_name': row.canonical_name,
             'table_id': row.table_id,
             'table_name': row.table_name or '-',
@@ -2155,7 +2193,9 @@ def get_fields_catalog():
             'instance_count': row.instance_count,
             'total_usage': row.total_usage or 0,
             'datasources': datasources,
-            'datasource_count': len(datasources)
+            'datasource_count': len(datasources),
+            'workbooks': workbooks,
+            'workbook_count': len(workbooks)
         })
     
     # Facets 统计
@@ -2600,15 +2640,18 @@ def get_field_detail(field_id):
     
     field_name = field_row.name
     
-    # 1. 聚合所有同名字段的物理表血缘 (使用新的 regular_field_full_lineage 表)
+    # 1. 聚合所有「逻辑一致」字段的物理表血缘
+    # 基于 unique_id 聚合，确保跨视图/工作簿的同一物理列血缘能合并
+    unique_id = field_row.unique_id
+    
     table_lineage_result = session.execute(text("""
         SELECT DISTINCT fl.table_id, t.name, t.schema, db.name as db_name, t.database_id
         FROM regular_fields rf
         JOIN regular_field_full_lineage fl ON rf.id = fl.field_id
         JOIN tables t ON fl.table_id = t.id
         LEFT JOIN databases db ON t.database_id = db.id
-        WHERE rf.name = :field_name AND fl.table_id IS NOT NULL AND t.id IS NOT NULL
-    """), {'field_name': field_name}).fetchall()
+        WHERE rf.unique_id = :unique_id AND fl.table_id IS NOT NULL AND t.id IS NOT NULL
+    """), {'unique_id': unique_id}).fetchall()
     
     if table_lineage_result:
         first_table = table_lineage_result[0]
@@ -2629,28 +2672,28 @@ def get_field_detail(field_id):
         data['derived_tables'] = []
         data['derivedTables'] = []
     
-    # 2. 聚合所有同名字段的数据源血缘
+    # 2. 聚合所有「逻辑一致」字段的数据源血缘
     ds_lineage_result = session.execute(text("""
         SELECT DISTINCT fl.datasource_id, d.name, d.project_name, d.owner, d.is_certified
         FROM regular_fields rf
         JOIN regular_field_full_lineage fl ON rf.id = fl.field_id
         LEFT JOIN datasources d ON fl.datasource_id = d.id
-        WHERE rf.name = :field_name AND fl.datasource_id IS NOT NULL AND d.id IS NOT NULL
-    """), {'field_name': field_name}).fetchall()
+        WHERE rf.unique_id = :unique_id AND fl.datasource_id IS NOT NULL AND d.id IS NOT NULL
+    """), {'unique_id': unique_id}).fetchall()
     
     data['all_datasources'] = [{
         'id': row[0], 'name': row[1], 'project_name': row[2],
         'owner': row[3], 'is_certified': bool(row[4]) if row[4] is not None else False
     } for row in ds_lineage_result]
     
-    # 3. 聚合所有同名字段的工作簿血缘
+    # 3. 聚合所有「逻辑一致」字段的工作簿血缘
     wb_lineage_result = session.execute(text("""
         SELECT DISTINCT fl.workbook_id, w.name, w.project_name, w.owner
         FROM regular_fields rf
         JOIN regular_field_full_lineage fl ON rf.id = fl.field_id
         LEFT JOIN workbooks w ON fl.workbook_id = w.id
-        WHERE rf.name = :field_name AND fl.workbook_id IS NOT NULL AND w.id IS NOT NULL
-    """), {'field_name': field_name}).fetchall()
+        WHERE rf.unique_id = :unique_id AND fl.workbook_id IS NOT NULL AND w.id IS NOT NULL
+    """), {'unique_id': unique_id}).fetchall()
     
     data['all_workbooks'] = [{
         'id': row[0], 'name': row[1], 'project_name': row[2], 'owner': row[3]
@@ -2891,25 +2934,52 @@ def get_metrics_catalog():
     where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
     
     # 聚合查询 - 直接从 calculated_fields 表
+    # 修正：使用 unique_id 进行聚合，区分不同数据源的同名指标
+    # 聚合查询 - 引入 Lineage 中台表进行精准聚合 (统一卡片与详情页口径)
+    # 聚合查询 - 使用子查询聚合确保口径绝对统一 (由列表项驱动血缘聚合)
     base_sql = f"""
+        WITH metric_groups AS (
+            SELECT 
+                TRIM(name) as clean_name, 
+                formula_hash,
+                COUNT(DISTINCT id) as instance_count,
+                COALESCE(SUM(reference_count), 0) as total_references,
+                COALESCE(SUM(usage_count), 0) as total_usage,
+                MAX(role) as role,
+                MAX(data_type) as data_type,
+                MAX(description) as description,
+                MAX(complexity_score) as complexity,
+                MAX(formula) as formula,
+                MIN(id) as representative_id,
+                MAX(unique_id) as unique_id
+            FROM calculated_fields
+            {where_clause.replace('cf.', '')}
+            GROUP BY TRIM(name), formula_hash
+        )
         SELECT 
-            MIN(cf.id) as representative_id,
-            cf.name,
-            cf.formula,
-            cf.formula_hash,
-            MAX(cf.role) as role,
-            MAX(cf.data_type) as data_type,
-            MAX(cf.description) as description,
-            COUNT(DISTINCT COALESCE(cf.datasource_id, cf.workbook_id)) as instance_count,
-            MAX(cf.complexity_score) as complexity,
-            COALESCE(SUM(cf.reference_count), 0) as total_references,
-            GROUP_CONCAT(DISTINCT CASE WHEN cf.datasource_id IS NOT NULL THEN cf.datasource_id || '|' || COALESCE(d.name, 'Unknown') END) as datasource_info,
-            GROUP_CONCAT(DISTINCT CASE WHEN cf.workbook_id IS NOT NULL THEN cf.workbook_id || '|' || COALESCE(w.name, 'Unknown') END) as workbook_info
-        FROM calculated_fields cf
-        LEFT JOIN datasources d ON cf.datasource_id = d.id
-        LEFT JOIN workbooks w ON cf.workbook_id = w.id
-        {where_clause}
-        GROUP BY cf.name, cf.formula_hash
+            gs.clean_name as name,
+            gs.formula_hash,
+            gs.instance_count,
+            gs.total_references,
+            gs.total_usage,
+            gs.role,
+            gs.data_type,
+            gs.description,
+            gs.complexity,
+            gs.formula,
+            gs.representative_id,
+            gs.unique_id,
+            (SELECT GROUP_CONCAT(DISTINCT cfl.datasource_id || '|' || COALESCE(d.name, 'Unknown')) 
+             FROM calculated_fields cf2 
+             JOIN calc_field_full_lineage cfl ON cf2.id = cfl.field_id 
+             LEFT JOIN datasources d ON cfl.datasource_id = d.id 
+             WHERE TRIM(cf2.name) = gs.clean_name AND cf2.formula_hash = gs.formula_hash) as datasource_info,
+            (SELECT GROUP_CONCAT(DISTINCT cfl.workbook_id || '|' || COALESCE(w.name, 'Unknown')) 
+             FROM calculated_fields cf2 
+             JOIN calc_field_full_lineage cfl ON cf2.id = cfl.field_id 
+             LEFT JOIN workbooks w ON cfl.workbook_id = w.id 
+             WHERE TRIM(cf2.name) = gs.clean_name AND cf2.formula_hash = gs.formula_hash) as workbook_info
+        FROM metric_groups gs
     """
 
     
@@ -2974,6 +3044,7 @@ def get_metrics_catalog():
         
         items.append({
             'representative_id': row.representative_id,
+            'unique_id': row.unique_id,
             'name': row.name,
             'formula': row.formula,
             'formula_hash': row.formula_hash,
@@ -2985,10 +3056,13 @@ def get_metrics_catalog():
             'complexity_level': complexity_level,
             'formula_length': formula_len,
             'total_references': row.total_references or 0,
+            'total_usage': row.total_usage or 0,
+            'usage_status': 'direct' if (row.total_usage or 0) > 0 else ('intermediate' if (row.total_references or 0) > 0 else 'unused'),
             'datasources': datasources,
             'datasource_count': len(datasources),
             'workbooks': workbooks,
-            'workbook_count': len(workbooks)
+            'workbook_count': len(workbooks),
+            'datasource_name': datasources[0]['name'] if datasources else '-' # 从解析后的结果中取主数据源
         })
     
     # Facets 统计
@@ -2998,7 +3072,7 @@ def get_metrics_catalog():
             SELECT MAX(cf.role) as role
             FROM calculated_fields cf
             {where_clause}
-            GROUP BY cf.name, cf.formula_hash
+            GROUP BY cf.unique_id
         ) sub GROUP BY sub.role
     """
     role_counts = session.execute(text(role_sql), params).fetchall()
@@ -3028,9 +3102,13 @@ def get_metrics_catalog_duplicate():
     from sqlalchemy import text
     
     # 直接从 calculated_fields 表查询（新的四表架构）
+    # 重复分析：这里依然保持按 formula_hash 聚合，因为我们要找的是"逻辑重复"（可能跨数据源也可能同数据源）
+    # 但由于 v5 迁移策略消除了同数据源重复，这里主要会发现跨数据源重复
+    # 为了治理方便，我们也返回 unique_id 列表，以便前端展示
     sql = """
         SELECT 
             MIN(cf.id) as representative_id,
+            GROUP_CONCAT(DISTINCT cf.unique_id) as unique_ids,
             cf.name,
             cf.formula,
             cf.formula_hash,
@@ -3067,6 +3145,7 @@ def get_metrics_catalog_duplicate():
         
         items.append({
             'representative_id': row.representative_id,
+            'unique_ids': row.unique_ids.split(',') if row.unique_ids else [],
             'name': row.name,
             'formula': row.formula,
             'formula_hash': row.formula_hash,
@@ -3186,18 +3265,21 @@ def get_metrics_catalog_unused():
     from sqlalchemy import text
     
     # 直接从 calculated_fields 表查询（新的四表架构）
+    # 修正：使用 unique_id 进行聚合，区分不同数据源
     sql = """
         SELECT 
             MIN(cf.id) as representative_id,
-            cf.name,
-            cf.formula,
-            cf.formula_hash,
+            cf.unique_id,
+            MAX(cf.name) as name,
+            MAX(cf.formula) as formula,
+            MAX(cf.formula_hash) as formula_hash,
             MAX(cf.role) as role,
             MAX(cf.data_type) as data_type,
             MAX(cf.description) as description,
             COUNT(*) as instance_count,
             MAX(cf.complexity_score) as complexity,
             COALESCE(SUM(cf.reference_count), 0) as total_references,
+            MAX(d.name) as datasource_name,
             GROUP_CONCAT(DISTINCT cf.datasource_id) as datasource_ids,
             GROUP_CONCAT(DISTINCT d.name) as datasource_names,
             GROUP_CONCAT(DISTINCT cf.workbook_id) as workbook_ids,
@@ -3205,10 +3287,10 @@ def get_metrics_catalog_unused():
         FROM calculated_fields cf
         LEFT JOIN datasources d ON cf.datasource_id = d.id
         LEFT JOIN workbooks w ON cf.workbook_id = w.id
-        GROUP BY cf.name, cf.formula_hash
+        GROUP BY cf.unique_id
         HAVING COALESCE(SUM(cf.reference_count), 0) = 0
            AND COALESCE(SUM(cf.usage_count), 0) = 0
-        ORDER BY instance_count DESC, cf.name
+        ORDER BY instance_count DESC, name
     """
     rows = session.execute(text(sql)).fetchall()
     
@@ -3226,6 +3308,7 @@ def get_metrics_catalog_unused():
         
         items.append({
             'representative_id': row.representative_id,
+            'unique_id': row.unique_id,
             'name': row.name,
             'formula': row.formula,
             'formula_hash': row.formula_hash,
@@ -3238,7 +3321,8 @@ def get_metrics_catalog_unused():
             'datasources': datasources,
             'datasource_count': len(datasources),
             'workbooks': workbooks,
-            'workbook_count': len(workbooks)
+            'workbook_count': len(workbooks),
+            'datasource_name': row.datasource_name or '-'
         })
     
     return jsonify({
@@ -3415,6 +3499,7 @@ def get_metric_detail(metric_id):
     
     metric_name = metric_row.name
     formula_hash = metric_row.formula_hash
+    clean_name = metric_name.strip() if metric_name else ''
     
     # 1. 查找相似指标 (使用 formula_hash 快速查重)
     similar = []
@@ -3447,8 +3532,7 @@ def get_metric_detail(metric_id):
         'role': row[3], 'dataType': row[4]
     } for row in dependencies]
     
-    # 3. 聚合所有同名指标的血缘 (使用 calc_field_full_lineage)
-    
+    # 3. 聚合所有「逻辑一致」指标的血缘 (基于 formula_hash，确保即便名称微差异或空间不一致也能正确聚合)
     # 3.1 聚合物理表血缘
     table_lineage_result = session.execute(text("""
         SELECT DISTINCT fl.table_id, t.name, t.schema, db.name as db_name, t.database_id
@@ -3456,8 +3540,8 @@ def get_metric_detail(metric_id):
         JOIN calc_field_full_lineage fl ON cf.id = fl.field_id
         JOIN tables t ON fl.table_id = t.id
         LEFT JOIN databases db ON t.database_id = db.id
-        WHERE cf.name = :name AND fl.table_id IS NOT NULL AND t.id IS NOT NULL
-    """), {'name': metric_name}).fetchall()
+        WHERE cf.formula_hash = :hash AND TRIM(cf.name) = :name AND fl.table_id IS NOT NULL AND t.id IS NOT NULL
+    """), {'hash': formula_hash, 'name': clean_name}).fetchall()
     
     derived_tables = [{
         'id': row[0], 'name': row[1], 'schema': row[2],
@@ -3470,8 +3554,8 @@ def get_metric_detail(metric_id):
         FROM calculated_fields cf
         JOIN calc_field_full_lineage fl ON cf.id = fl.field_id
         LEFT JOIN datasources d ON fl.datasource_id = d.id
-        WHERE cf.name = :name AND fl.datasource_id IS NOT NULL AND d.id IS NOT NULL
-    """), {'name': metric_name}).fetchall()
+        WHERE cf.formula_hash = :hash AND TRIM(cf.name) = :name AND fl.datasource_id IS NOT NULL AND d.id IS NOT NULL
+    """), {'hash': formula_hash, 'name': clean_name}).fetchall()
     
     all_datasources = [{
         'id': row[0], 'name': row[1], 'project_name': row[2],
@@ -3484,8 +3568,8 @@ def get_metric_detail(metric_id):
         FROM calculated_fields cf
         JOIN calc_field_full_lineage fl ON cf.id = fl.field_id
         LEFT JOIN workbooks w ON fl.workbook_id = w.id
-        WHERE cf.name = :name AND fl.workbook_id IS NOT NULL AND w.id IS NOT NULL
-    """), {'name': metric_name}).fetchall()
+        WHERE cf.formula_hash = :hash AND TRIM(cf.name) = :name AND fl.workbook_id IS NOT NULL AND w.id IS NOT NULL
+    """), {'hash': formula_hash, 'name': clean_name}).fetchall()
     
     all_workbooks = [{
         'id': row[0], 'name': row[1], 'project_name': row[2], 'owner': row[3]
@@ -3498,8 +3582,8 @@ def get_metric_detail(metric_id):
         JOIN calc_field_to_view cfv ON cf.id = cfv.field_id
         JOIN views v ON cfv.view_id = v.id
         LEFT JOIN workbooks w ON v.workbook_id = w.id
-        WHERE cf.name = :name
-    """), {'name': metric_name}).fetchall()
+        WHERE cf.formula_hash = :hash
+    """), {'hash': formula_hash}).fetchall()
     
     views_data = [{
         'id': row[0], 'name': row[1], 'view_type': row[2],

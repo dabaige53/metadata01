@@ -116,7 +116,54 @@ head -120 docs/重构方案/重构验证方案.md
 }
 ```
 
+### 第七步：卡片与详情页一致性验证 (Card-Detail Alignment)
+
+> [!IMPORTANT]
+> 此步骤用于检测"列表卡片显示值"与"详情页 Tab 显示值"是否来自同一数据源。这是最常见的前端数据不一致问题类型。
+
+#### 问题模式
+
+| 模式                   | 描述                                                                                                     | 根因                 |
+| :--------------------- | :------------------------------------------------------------------------------------------------------- | :------------------- |
+| **实例字段 vs 血缘表** | 卡片从主表 (如 `calculated_fields.workbook_id`) 取值，详情页从血缘表 (如 `calc_field_full_lineage`) 聚合 | API 设计不一致       |
+| **预计算 vs 实时聚合** | 卡片使用预存的 `xxx_count` 字段，详情页使用 `COUNT(*)` 实时计算                                          | 预计算字段未同步更新 |
+| **单实例 vs 全量聚合** | 卡片只取当前实例关联，详情页按 name/formula_hash 聚合所有同名实例                                        | 聚合粒度不一致       |
+
+#### 验证 SQL 模板
+
+对于每个需要验证的统计字段（如 `workbook_count`），添加以下结构：
+```json
+{
+  "一致性检测项": "工作簿数量",
+  "卡片数据源": {
+    "描述": "列表 API 返回的 workbook_count",
+    "SQL (模拟卡片逻辑)": "SELECT COUNT(DISTINCT cf.workbook_id) FROM calculated_fields cf WHERE cf.formula_hash = :hash",
+    "SQL结果": ""
+  },
+  "详情数据源": {
+    "描述": "详情 API 返回的 all_workbooks 长度",
+    "SQL (模拟详情逻辑)": "SELECT COUNT(DISTINCT cfl.workbook_id) FROM calc_field_full_lineage cfl WHERE cfl.field_id IN (SELECT id FROM calculated_fields WHERE formula_hash = :hash)",
+    "SQL结果": ""
+  },
+  "预期规则": "卡片数据源.SQL结果 = 详情数据源.SQL结果",
+  "修复建议": "统一使用血缘表作为权威数据源"
+}
+```
+
+#### 必查字段清单
+
+对于每个模块，以下字段必须进行卡片-详情一致性验证：
+
+| 模块                 | 必查字段                                                       |
+| :------------------- | :------------------------------------------------------------- |
+| 指标 (Metrics)       | `workbook_count`, `datasource_count`, `view_count`             |
+| 字段 (Fields)        | `workbook_count`, `datasource_count`, `view_count`             |
+| 数据源 (Datasources) | `field_count`, `metric_count`, `table_count`, `workbook_count` |
+| 物理表 (Tables)      | `column_count`, `field_count`, `datasource_count`              |
+| 工作簿 (Workbooks)   | `view_count`, `datasource_count`                               |
+
 ## 输出规范
+
 
 // turbo
 4. 将生成的 JSON 保存到指定目录

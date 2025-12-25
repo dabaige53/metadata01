@@ -99,6 +99,21 @@
                     "差异容忍度": 0
                 }
             ]
+        },
+        "卡片详情一致性验证": {
+            "任务描述": "检测列表卡片显示值与详情页 Tab 显示值是否来自同一数据源",
+            "验证项列表": [
+                {
+                    "一致性检测项": "物理表数量 (table_count)",
+                    "卡片数据源": {
+                        "SQL (模拟卡片逻辑)": "SELECT table_count FROM databases WHERE id = :id"
+                    },
+                    "详情数据源": {
+                        "SQL (模拟详情逻辑)": "SELECT COUNT(*) FROM tables WHERE database_id = :id AND is_embedded = 0"
+                    },
+                    "预期规则": "卡片数据源.SQL结果 = 详情数据源.SQL结果"
+                }
+            ]
         }
     }
 }

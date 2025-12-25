@@ -347,6 +347,37 @@
                     "差异容忍度": 0
                 }
             ]
+        },
+        "卡片详情一致性验证": {
+            "任务描述": "检测列表卡片显示值与详情页 Tab 显示值是否来自同一数据源",
+            "验证项列表": [
+                {
+                    "一致性检测项": "工作簿数量 (workbook_count)",
+                    "卡片数据源": {
+                        "描述": "列表 API 的 workbook_count 来自 regular_field_full_lineage 聚合",
+                        "SQL (模拟卡片逻辑)": "SELECT COUNT(DISTINCT rfl.workbook_id) FROM regular_fields rf JOIN regular_field_full_lineage rfl ON rf.id = rfl.field_id WHERE rf.unique_id = :unique_id"
+                    },
+                    "详情数据源": {
+                        "描述": "详情 API 的 all_workbooks 来自 regular_field_full_lineage 聚合",
+                        "SQL (模拟详情逻辑)": "SELECT COUNT(DISTINCT rfl.workbook_id) FROM regular_field_full_lineage rfl WHERE rfl.field_id IN (SELECT id FROM regular_fields WHERE unique_id = :unique_id)"
+                    },
+                    "预期规则": "卡片数据源.SQL结果 = 详情数据源.SQL结果",
+                    "修复建议": "统一使用 regular_field_full_lineage 血缘表"
+                },
+                {
+                    "一致性检测项": "数据源数量 (datasource_count)",
+                    "卡片数据源": {
+                        "描述": "列表 API 的 datasource_count 来自 regular_field_full_lineage 聚合",
+                        "SQL (模拟卡片逻辑)": "SELECT COUNT(DISTINCT rfl.datasource_id) FROM regular_fields rf JOIN regular_field_full_lineage rfl ON rf.id = rfl.field_id WHERE rf.unique_id = :unique_id"
+                    },
+                    "详情数据源": {
+                        "描述": "详情 API 的 all_datasources 来自 regular_field_full_lineage 聚合",
+                        "SQL (模拟详情逻辑)": "SELECT COUNT(DISTINCT rfl.datasource_id) FROM regular_field_full_lineage rfl WHERE rfl.field_id IN (SELECT id FROM regular_fields WHERE unique_id = :unique_id)"
+                    },
+                    "预期规则": "卡片数据源.SQL结果 = 详情数据源.SQL结果",
+                    "修复建议": "统一使用 regular_field_full_lineage 血缘表"
+                }
+            ]
         }
     }
 }

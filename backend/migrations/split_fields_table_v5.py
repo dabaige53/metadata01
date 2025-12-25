@@ -287,6 +287,28 @@ def migrate_relations(session):
     
     print("  ✅ 依赖关系迁移完成")
 
+def update_statistics(session):
+    """更新引用计数和依赖计数"""
+    print("\n[3.5/4] 更新统计信息...")
+    
+    # 更新引用计数 (被多少个计算字段引用)
+    session.execute(text("""
+        UPDATE calculated_fields SET reference_count = (
+            SELECT COUNT(*) FROM calc_field_dependencies 
+            WHERE calc_field_dependencies.dependency_calc_field_id = calculated_fields.id
+        )
+    """))
+    
+    # 更新依赖计数 (依赖了多少个字段)
+    session.execute(text("""
+        UPDATE calculated_fields SET dependency_count = (
+            SELECT COUNT(*) FROM calc_field_dependencies 
+            WHERE calc_field_dependencies.source_field_id = calculated_fields.id
+        )
+    """))
+    
+    print("  ✅ 统计信息更新完成")
+
 def migrate_lineage(session):
     print("\n[4/4] 迁移血缘数据...")
     
@@ -360,6 +382,7 @@ def main():
         r_inst, r_uniq = migrate_regular_fields(session)
         c_inst, c_uniq = migrate_calculated_fields(session)
         migrate_relations(session)
+        update_statistics(session)
         migrate_lineage(session)
         
         session.commit()

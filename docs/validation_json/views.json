@@ -185,6 +185,31 @@
                     "差异容忍度": 0
                 }
             ]
+        },
+        "卡片详情一致性验证": {
+            "任务描述": "检测列表卡片显示值与详情页 Tab 显示值是否来自同一数据源",
+            "验证项列表": [
+                {
+                    "一致性检测项": "字段数量 (field_count)",
+                    "卡片数据源": {
+                        "SQL (模拟卡片逻辑)": "SELECT field_count FROM views WHERE id = :id"
+                    },
+                    "详情数据源": {
+                        "SQL (模拟详情逻辑)": "SELECT COUNT(*) FROM regular_field_to_view WHERE view_id = :id"
+                    },
+                    "预期规则": "卡片数据源.SQL结果 = 详情数据源.SQL结果"
+                },
+                {
+                    "一致性检测项": "指标数量 (metric_count)",
+                    "卡片数据源": {
+                        "SQL (模拟卡片逻辑)": "SELECT metric_count FROM views WHERE id = :id"
+                    },
+                    "详情数据源": {
+                        "SQL (模拟详情逻辑)": "SELECT COUNT(*) FROM calc_field_to_view WHERE view_id = :id"
+                    },
+                    "预期规则": "卡片数据源.SQL结果 = 详情数据源.SQL结果"
+                }
+            ]
         }
     }
 }

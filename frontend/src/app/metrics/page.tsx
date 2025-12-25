@@ -182,7 +182,7 @@ function MetricsContent() {
                     {/* 去重说明 */}
                     <div className="flex items-center gap-1.5 text-[11px] text-gray-400 bg-gray-50/50 px-2 py-1 rounded-md border border-gray-100">
                         <HelpCircle className="w-3.5 h-3.5 text-gray-400" />
-                        <span>去重说明：计算字段按『名称+公式哈希』聚合，不同工作簿中逻辑相同的公式仅计为 1 项</span>
+                        <span>⑦ 去重说明：计算字段按『名称＋公式哈希』聚合，不同工作簿中逻辑相同的公式仅计为1项</span>
                     </div>
                 </div>
 

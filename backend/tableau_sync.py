@@ -17,6 +17,7 @@ import re
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from backend.config import Config
+from backend.migrations import split_fields_table_v5
 from backend.models import (
     Base, get_engine, init_db, get_session,
     Database, DBTable, DBColumn, Field, Datasource, Workbook, View,
@@ -2572,6 +2573,16 @@ class MetadataSync:
         calc_count = self.sync_calculated_fields()
         ftv_count = self.sync_field_to_view()
         lineage_count = self.sync_lineage()
+
+        # 自动执行四表架构迁移与统计更新
+        print("-" * 30)
+        print("🛠 自动触发 V5 数据迁移与统计...")
+        try:
+            # 确保当前会话已提交，避免锁竞争
+            self.session.commit()
+            split_fields_table_v5.main()
+        except Exception as e:
+            print(f"❌ V5 迁移失败: {e}")
         
         duration = (datetime.now() - start_time).total_seconds()
         
@@ -2788,7 +2799,7 @@ class MetadataSync:
             self.session.execute(text("""
                 UPDATE calculated_fields SET dependency_count = (
                     SELECT COUNT(*) FROM field_dependencies 
-                    WHERE field_dependencies.source_field_id = calculated_fields.field_id
+                    WHERE field_dependencies.source_field_id = calculated_fields.id
                 )
             """))
 
@@ -2797,7 +2808,7 @@ class MetadataSync:
             self.session.execute(text("""
                 UPDATE calculated_fields SET reference_count = (
                     SELECT COUNT(*) FROM field_dependencies 
-                    WHERE field_dependencies.dependency_field_id = calculated_fields.field_id
+                    WHERE field_dependencies.dependency_field_id = calculated_fields.id
                 )
             """))
 

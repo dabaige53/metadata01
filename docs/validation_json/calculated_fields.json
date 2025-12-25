@@ -221,7 +221,7 @@
                 "字段:role": {
                     "任务描述": "验证角色分布 (measure=业务指标, dimension=技术计算)",
                     "API键": "role",
-                    "SQL查询": "SELECT role || ':' || COUNT(*) FROM calculated_fields GROUP BY role",
+                    "SQL查询": "SELECT role || ':' || COUNT(*) FROM (SELECT MAX(role) as role FROM calculated_fields GROUP BY unique_id) sub GROUP BY role",
                     "API实际分布": "",
                     "SQL实际分布": ""
                 },
@@ -355,6 +355,43 @@
                     "血缘数据源": "关联元素[目标模块='标准指标(去重)'].关联验证.正向SQL结果(提取实例数)",
                     "比对逻辑": "数值相等",
                     "差异容忍度": 0
+                }
+            ]
+        },
+        "卡片详情一致性验证": {
+            "任务描述": "检测列表卡片显示值与详情页 Tab 显示值是否来自同一数据源，防止'两张皮'问题",
+            "验证项列表": [
+                {
+                    "一致性检测项": "工作簿数量 (workbook_count)",
+                    "问题模式": "实例字段 vs 血缘表",
+                    "卡片数据源": {
+                        "描述": "列表 API 的 workbook_count 来自 calc_field_full_lineage 聚合 (Group by Name + Hash)",
+                        "SQL (模拟卡片逻辑)": "SELECT COUNT(DISTINCT cfl.workbook_id) FROM calculated_fields cf JOIN calc_field_full_lineage cfl ON cf.id = cfl.field_id WHERE TRIM(cf.name) = :name AND cf.formula_hash = :hash",
+                        "SQL实际结果": ""
+                    },
+                    "详情数据源": {
+                        "描述": "详情 API 的 all_workbooks 来自 calc_field_full_lineage 聚合 (Filter by Hash & Name)",
+                        "SQL (模拟详情逻辑)": "SELECT COUNT(DISTINCT cfl.workbook_id) FROM calculated_fields cf JOIN calc_field_full_lineage cfl ON cf.id = cfl.field_id WHERE TRIM(cf.name) = :name AND cf.formula_hash = :hash",
+                        "SQL实际结果": ""
+                    },
+                    "预期规则": "卡片数据源.SQL结果 = 详情数据源.SQL结果",
+                    "修复建议": "统一使用 calc_field_full_lineage 血缘表，且聚合口径（Name+Hash）保持一致"
+                },
+                {
+                    "一致性检测项": "数据源数量 (datasource_count)",
+                    "问题模式": "实例字段 vs 血缘表",
+                    "卡片数据源": {
+                        "描述": "列表 API 的 datasource_count 来自 calc_field_full_lineage 聚合 (Group by Name + Hash)",
+                        "SQL (模拟卡片逻辑)": "SELECT COUNT(DISTINCT cfl.datasource_id) FROM calculated_fields cf JOIN calc_field_full_lineage cfl ON cf.id = cfl.field_id WHERE TRIM(cf.name) = :name AND cf.formula_hash = :hash",
+                        "SQL实际结果": ""
+                    },
+                    "详情数据源": {
+                        "描述": "详情 API 的 all_datasources 来自 calc_field_full_lineage 聚合 (Filter by Hash & Name)",
+                        "SQL (模拟详情逻辑)": "SELECT COUNT(DISTINCT cfl.datasource_id) FROM calculated_fields cf JOIN calc_field_full_lineage cfl ON cf.id = cfl.field_id WHERE TRIM(cf.name) = :name AND cf.formula_hash = :hash",
+                        "SQL实际结果": ""
+                    },
+                    "预期规则": "卡片数据源.SQL结果 = 详情数据源.SQL结果",
+                    "修复建议": "统一使用 calc_field_full_lineage 血缘表，且聚合口径（Name+Hash）保持一致"
                 }
             ]
         }
