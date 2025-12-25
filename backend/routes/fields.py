@@ -228,7 +228,7 @@ def get_fields_catalog():
                 MAX(description) as description,
                 MIN(id) as representative_id,
                 GROUP_CONCAT(DISTINCT id) as member_ids
-            FROM fields
+            FROM fields f
             {where_clause}
             GROUP BY COALESCE(upstream_column_name, name), table_id
         )

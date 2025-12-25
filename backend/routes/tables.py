@@ -355,3 +355,52 @@ def get_table_detail(table_id):
     data['tableau_url'] = build_tableau_url('table', asset_id=table.id, luid=table.luid)
 
     return jsonify(data)
+
+
+# -------------------- 数据表子资源路由 --------------------
+
+@api_bp.route('/tables/<table_id>/fields')
+def get_table_fields(table_id):
+    """获取表关联的字段列表"""
+    session = g.db_session
+    table = session.query(DBTable).filter(DBTable.id == table_id).first()
+    if not table:
+        return jsonify({'error': 'Not found'}), 404
+    
+    fields_data = [f.to_dict() for f in table.fields] if table.fields else []
+    return jsonify({'items': fields_data, 'total': len(fields_data)})
+
+
+@api_bp.route('/tables/<table_id>/datasources')
+def get_table_datasources(table_id):
+    """获取表关联的数据源列表"""
+    session = g.db_session
+    table = session.query(DBTable).filter(DBTable.id == table_id).first()
+    if not table:
+        return jsonify({'error': 'Not found'}), 404
+    
+    ds_data = [{
+        'id': ds.id, 'name': ds.name, 'project_name': ds.project_name,
+        'owner': ds.owner, 'is_certified': ds.is_certified
+    } for ds in table.datasources]
+    return jsonify({'items': ds_data, 'total': len(ds_data)})
+
+
+@api_bp.route('/tables/<table_id>/workbooks')
+def get_table_workbooks(table_id):
+    """获取表关联的工作簿列表"""
+    session = g.db_session
+    table = session.query(DBTable).filter(DBTable.id == table_id).first()
+    if not table:
+        return jsonify({'error': 'Not found'}), 404
+    
+    seen_wb_ids = set()
+    workbooks_data = []
+    for ds in table.datasources:
+        for wb in ds.workbooks:
+            if wb.id not in seen_wb_ids:
+                workbooks_data.append({
+                    'id': wb.id, 'name': wb.name, 'project_name': wb.project_name, 'owner': wb.owner
+                })
+                seen_wb_ids.add(wb.id)
+    return jsonify({'items': workbooks_data, 'total': len(workbooks_data)})

@@ -56,6 +56,12 @@ if client.sign_in():
         print("\n=== STEP 5: Fields (with Fixes) ===")
         sync.sync_fields()
         
+        print("\n=== STEP 5.1: Calculated Fields ===")
+        sync.sync_calculated_fields()
+        
+        print("\n=== STEP 5.2: Field to View Relations ===")
+        sync.sync_field_to_view()
+        
         print("\n=== STEP 5.5: Structure Migration (Part 1) ===")
         ms_session, ms_engine = split_fields_table_v5.get_session()
         split_fields_table_v5.cleanup_tables(ms_session)
@@ -67,6 +73,9 @@ if client.sign_in():
 
         print("\n=== STEP 6: Lineage ===")
         sync.sync_lineage()
+        
+        print("\n=== STEP 6.5: Calculate Stats (填充 field_full_lineage) ===")
+        sync.calculate_stats()
         
         print("\n=== STEP 7: Structure Migration (Part 2) ===")
         ms_session_2, _ = split_fields_table_v5.get_session()

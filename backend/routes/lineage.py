@@ -7,7 +7,7 @@ from flask import jsonify, request, g
 from sqlalchemy import text
 from . import api_bp
 from .utils import build_tableau_url
-from ..models import Field, CalculatedField, Datasource, Workbook, View, DBTable, DBColumn, FieldDependency
+from ..models import Field, CalculatedField, Datasource, Workbook, View, DBTable, DBColumn, FieldDependency, Database
 
 # ==================== 血缘关系接口 ====================
 

@@ -18,8 +18,8 @@
             },
             "项目分布 (枚举)": {
                 "任务描述": "验证工作簿按项目的分布情况",
-                "字段名": "project_id",
-                "SQL查询": "SELECT p.name || ':' || COUNT(w.id) FROM workbooks w LEFT JOIN projects p ON w.project_id = p.id GROUP BY p.name",
+                "字段名": "project_name",
+                "SQL查询": "SELECT project_name || ':' || COUNT(*) FROM workbooks GROUP BY project_name",
                 "SQL实际分布": ""
             }
         },
@@ -27,9 +27,9 @@
             "任务描述": "检测字段空值率及血缘未匹配情况",
             "关键字段空值检测": [
                 {
-                    "字段名": "project_id",
+                    "字段名": "project_name",
                     "任务描述": "检测没有所属项目的工作簿数量",
-                    "SQL查询": "SELECT COUNT(*) FROM workbooks WHERE project_id IS NULL",
+                    "SQL查询": "SELECT COUNT(*) FROM workbooks WHERE project_name IS NULL",
                     "SQL实际结果": ""
                 }
             ],

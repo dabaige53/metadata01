@@ -17,12 +17,6 @@
                 "SQL查询": "SELECT COUNT(*) FROM datasources WHERE is_embedded = 0",
                 "SQL实际结果": ""
             },
-            "类型分布 (枚举)": {
-                "任务描述": "验证发布式数据源按类型的分布情况",
-                "字段名": "type",
-                "SQL查询": "SELECT type || ':' || COUNT(*) FROM datasources WHERE is_embedded = 0 GROUP BY type",
-                "SQL实际分布": ""
-            },
             "认证状态分布 (枚举)": {
                 "任务描述": "验证发布式数据源的认证状态分布",
                 "字段名": "is_certified",

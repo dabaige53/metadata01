@@ -396,7 +396,40 @@ def get_view_usage_stats(view_id):
         'totalViewCount': current_count,
         'dailyDelta': daily_delta,
         'weeklyDelta': weekly_delta,
-        'history': [{'count': h[0], 'recordedAt': h[1]} for h in history[:10]]  # 最近10条
     })
 
 
+# -------------------- 视图子资源路由 --------------------
+
+@api_bp.route('/views/<view_id>/fields')
+def get_view_fields(view_id):
+    """获取视图使用的字段列表"""
+    session = g.db_session
+    view = session.query(View).filter(View.id == view_id).first()
+    if not view:
+        return jsonify({'error': 'Not found'}), 404
+
+    fields_data = [{
+        'id': f.id, 'name': f.name, 'role': f.role, 'data_type': f.data_type
+    } for f in view.fields if not f.is_calculated]
+    return jsonify({'items': fields_data, 'total': len(fields_data)})
+
+
+@api_bp.route('/views/<view_id>/metrics')
+def get_view_metrics(view_id):
+    """获取视图使用的指标列表"""
+    session = g.db_session
+    view = session.query(View).filter(View.id == view_id).first()
+    if not view:
+        return jsonify({'error': 'Not found'}), 404
+
+    metrics_data = [{
+        'id': f.id, 'name': f.name, 'formula': f.formula
+    } for f in view.fields if f.is_calculated]
+    return jsonify({'items': metrics_data, 'total': len(metrics_data)})
+
+
+@api_bp.route('/views/<view_id>/usage')
+def get_view_usage_redirect(view_id):
+    """Alias for /usage-stats to fix 404 errors from frontend calls"""
+    return get_view_usage_stats(view_id)

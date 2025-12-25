@@ -286,3 +286,87 @@ def get_workbook_detail(wb_id):
     return jsonify(data)
 
 
+# -------------------- 工作簿子资源路由 --------------------
+
+@api_bp.route('/workbooks/<wb_id>/views')
+def get_workbook_views(wb_id):
+    """获取工作簿包含的视图列表"""
+    session = g.db_session
+    wb = session.query(Workbook).filter(Workbook.id == wb_id).first()
+    if not wb:
+        return jsonify({'error': 'Not found'}), 404
+
+    views_data = [{
+        'id': v.id, 'name': v.name, 'view_type': v.view_type, 'path': v.path
+    } for v in wb.views]
+    return jsonify({'items': views_data, 'total': len(views_data)})
+
+
+@api_bp.route('/workbooks/<wb_id>/datasources')
+def get_workbook_datasources(wb_id):
+    """获取工作簿使用的数据源列表"""
+    session = g.db_session
+    wb = session.query(Workbook).filter(Workbook.id == wb_id).first()
+    if not wb:
+        return jsonify({'error': 'Not found'}), 404
+
+    ds_data = [{
+        'id': ds.id, 'name': ds.name, 'project_name': ds.project_name, 'owner': ds.owner
+    } for ds in wb.datasources]
+    return jsonify({'items': ds_data, 'total': len(ds_data)})
+
+
+@api_bp.route('/workbooks/<wb_id>/tables')
+def get_workbook_tables(wb_id):
+    """获取工作簿关联的数据表列表"""
+    session = g.db_session
+    wb = session.query(Workbook).filter(Workbook.id == wb_id).first()
+    if not wb:
+        return jsonify({'error': 'Not found'}), 404
+
+    seen_table_ids = set()
+    tables_data = []
+    for ds in wb.datasources:
+        for tbl in ds.tables:
+            if tbl.id not in seen_table_ids:
+                tables_data.append({
+                    'id': tbl.id, 'name': tbl.name, 'schema': tbl.schema
+                })
+                seen_table_ids.add(tbl.id)
+    return jsonify({'items': tables_data, 'total': len(tables_data)})
+
+
+@api_bp.route('/workbooks/<wb_id>/fields')
+def get_workbook_fields(wb_id):
+    """获取工作簿使用的字段列表"""
+    session = g.db_session
+    wb = session.query(Workbook).options(
+        selectinload(Workbook.views).selectinload(View.fields)
+    ).filter(Workbook.id == wb_id).first()
+    if not wb:
+        return jsonify({'error': 'Not found'}), 404
+
+    fields_set = {}
+    for v in wb.views:
+        for f in v.fields:
+            if f.id not in fields_set and not f.is_calculated:
+                fields_set[f.id] = {'id': f.id, 'name': f.name, 'role': f.role}
+    return jsonify({'items': list(fields_set.values()), 'total': len(fields_set)})
+
+
+@api_bp.route('/workbooks/<wb_id>/metrics')
+def get_workbook_metrics(wb_id):
+    """获取工作簿使用的指标列表"""
+    session = g.db_session
+    wb = session.query(Workbook).options(
+        selectinload(Workbook.views).selectinload(View.fields)
+    ).filter(Workbook.id == wb_id).first()
+    if not wb:
+        return jsonify({'error': 'Not found'}), 404
+
+    metrics_set = {}
+    for v in wb.views:
+        for f in v.fields:
+            if f.id not in metrics_set and f.is_calculated:
+                metrics_set[f.id] = {'id': f.id, 'name': f.name, 'formula': f.formula}
+    return jsonify({'items': list(metrics_set.values()), 'total': len(metrics_set)})

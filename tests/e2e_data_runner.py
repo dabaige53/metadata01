@@ -10,7 +10,7 @@ from typing import Dict, Any, List, Optional
 import re
 
 # Configuration
-DB_PATH = os.path.join(os.getcwd(), 'metadata.db')
+DB_PATH = os.path.join(os.getcwd(), 'data', 'metadata.db')
 API_BASE_URL = 'http://localhost:8101'
 JSON_DIR = os.path.join(os.getcwd(), 'docs', 'validation_json')
 REPORT_DIR = os.path.join(os.getcwd(), 'docs', 'validation_reports')

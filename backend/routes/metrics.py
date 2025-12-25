@@ -751,7 +751,9 @@ def get_metric_detail(metric_id):
         'role': row[3], 'dataType': row[4]
     } for row in dependencies]
     
-    # 3. 聚合所有「逻辑一致」指标的血缘 (基于 formula_hash，确保即便名称微差异或空间不一致也能正确聚合)
+    # 3. 聚合所有「逻辑一致」指标的血缘 (基于 unique_id，确保跨视图/工作簿的同一指标血缘能合并)
+    unique_id = metric_row.unique_id
+    
     # 3.1 聚合物理表血缘
     table_lineage_result = session.execute(text("""
         SELECT DISTINCT fl.table_id, t.name, t.schema, db.name as db_name, t.database_id
@@ -759,8 +761,8 @@ def get_metric_detail(metric_id):
         JOIN calc_field_full_lineage fl ON cf.id = fl.field_id
         JOIN tables t ON fl.table_id = t.id
         LEFT JOIN databases db ON t.database_id = db.id
-        WHERE cf.formula_hash = :hash AND TRIM(cf.name) = :name AND fl.table_id IS NOT NULL AND t.id IS NOT NULL
-    """), {'hash': formula_hash, 'name': clean_name}).fetchall()
+        WHERE cf.unique_id = :unique_id AND fl.table_id IS NOT NULL AND t.id IS NOT NULL
+    """), {'unique_id': unique_id}).fetchall()
     
     derived_tables = [{
         'id': row[0], 'name': row[1], 'schema': row[2],
@@ -773,8 +775,8 @@ def get_metric_detail(metric_id):
         FROM calculated_fields cf
         JOIN calc_field_full_lineage fl ON cf.id = fl.field_id
         LEFT JOIN datasources d ON fl.datasource_id = d.id
-        WHERE cf.formula_hash = :hash AND TRIM(cf.name) = :name AND fl.datasource_id IS NOT NULL AND d.id IS NOT NULL
-    """), {'hash': formula_hash, 'name': clean_name}).fetchall()
+        WHERE cf.unique_id = :unique_id AND fl.datasource_id IS NOT NULL AND d.id IS NOT NULL
+    """), {'unique_id': unique_id}).fetchall()
     
     all_datasources = [{
         'id': row[0], 'name': row[1], 'project_name': row[2],
@@ -787,22 +789,22 @@ def get_metric_detail(metric_id):
         FROM calculated_fields cf
         JOIN calc_field_full_lineage fl ON cf.id = fl.field_id
         LEFT JOIN workbooks w ON fl.workbook_id = w.id
-        WHERE cf.formula_hash = :hash AND TRIM(cf.name) = :name AND fl.workbook_id IS NOT NULL AND w.id IS NOT NULL
-    """), {'hash': formula_hash, 'name': clean_name}).fetchall()
+        WHERE cf.unique_id = :unique_id AND fl.workbook_id IS NOT NULL AND w.id IS NOT NULL
+    """), {'unique_id': unique_id}).fetchall()
     
     all_workbooks = [{
         'id': row[0], 'name': row[1], 'project_name': row[2], 'owner': row[3]
     } for row in wb_lineage_result]
     
-    # 3.4 聚合视图血缘 (通过 calc_field_to_view)
+    # 3.4 聚合视图血缘 (通过 calc_field_to_view，基于 unique_id)
     views_result = session.execute(text("""
         SELECT DISTINCT cfv.view_id, v.name, v.view_type, v.workbook_id, w.name as wb_name
         FROM calculated_fields cf
         JOIN calc_field_to_view cfv ON cf.id = cfv.field_id
         JOIN views v ON cfv.view_id = v.id
         LEFT JOIN workbooks w ON v.workbook_id = w.id
-        WHERE cf.formula_hash = :hash
-    """), {'hash': formula_hash}).fetchall()
+        WHERE cf.unique_id = :unique_id
+    """), {'unique_id': unique_id}).fetchall()
     
     views_data = [{
         'id': row[0], 'name': row[1], 'view_type': row[2],

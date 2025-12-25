@@ -839,7 +839,7 @@ class TableauMetadataClient:
                     dashboards {{
                         id
                         name
-                        dashboardFieldInstances {{
+                        upstreamSheetFieldInstances {{
                             id
                             name
                             datasource {{
@@ -893,7 +893,7 @@ class TableauMetadataClient:
                         if not dashboard: continue
                         view_id = dashboard.get("id")
                         view_name = dashboard.get("name")
-                        fields = dashboard.get("dashboardFieldInstances") or []
+                        fields = dashboard.get("upstreamSheetFieldInstances") or []
 
                         for field in fields:
                             if field and field.get("id"):

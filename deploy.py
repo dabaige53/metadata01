@@ -61,6 +61,69 @@ def is_process_running(pid):
         return False
 
 
+def get_process_info(pid):
+    """获取进程名称和命令行"""
+    try:
+        result = subprocess.run(
+            f"ps -p {pid} -o comm=,args=",
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0:
+            parts = result.stdout.strip().split(None, 1)
+            name = parts[0] if parts else "unknown"
+            args = parts[1] if len(parts) > 1 else ""
+            return name, args
+    except:
+        pass
+    return "unknown", ""
+
+
+def is_safe_to_kill(pid):
+    """判断进程是否可以安全地自动终止"""
+    name, args = get_process_info(pid)
+    name = name.lower()
+    args = args.lower()
+    
+    # 安全名称列表
+    safe_names = ['python', 'node', 'npm', 'next-server', 'flask']
+    if any(sn in name for sn in safe_names):
+        return True
+    
+    # 检查命令行
+    project_keywords = ['run_backend.py', 'deploy.py', 'next start', 'next-router-worker']
+    if any(kw in args for kw in project_keywords):
+        return True
+        
+    return False
+
+
+def kill_process_gracefully(pid):
+    """优雅地终止进程"""
+    try:
+        # 1. SIGTERM
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
+        except:
+            os.kill(pid, signal.SIGTERM)
+        
+        # 等待
+        for _ in range(10):
+            if not is_process_running(pid):
+                return True
+            time.sleep(0.2)
+            
+        # 2. SIGKILL
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGKILL)
+        except:
+            os.kill(pid, signal.SIGKILL)
+        return True
+    except:
+        return False
+
+
 def stop_services():
     """停止所有服务"""
     print("🛑 正在停止服务...")
@@ -86,8 +149,15 @@ def stop_services():
             result = subprocess.run(f"lsof -ti :{port}", shell=True, capture_output=True, text=True)
             pids = [p for p in result.stdout.strip().split('\n') if p]
             for pid in pids:
-                os.kill(int(pid), signal.SIGKILL)
-                stopped = True
+                pid_int = int(pid)
+                if is_safe_to_kill(pid_int):
+                    if kill_process_gracefully(pid_int):
+                        p_name, _ = get_process_info(pid_int)
+                        print(f"✓ 已自动清理端口 {port} 的进程 {pid} ({p_name})")
+                        stopped = True
+                else:
+                    p_name, _ = get_process_info(pid_int)
+                    print(f"⚠️  跳过非本项目相关的进程 {pid} ({p_name})，它正在占用端口 {port}")
         except:
             pass
     

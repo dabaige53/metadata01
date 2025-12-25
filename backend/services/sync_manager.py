@@ -70,9 +70,10 @@ class MetadataSync:
         
         count = 0
         for record in orphaned:
-            # 对于 Field，还需要清理相关的 CalculatedField 和依赖
+            # 对于 Field，还需要清理相关的依赖和关联
             if model_class == Field:
-                self.session.query(CalculatedField).filter_by(field_id=record.id).delete()
+                # 新模型: CalculatedField 使用 id 作为主键，与 Field.id 相同
+                self.session.query(CalculatedField).filter_by(id=record.id).delete()
                 self.session.query(FieldDependency).filter(
                     (FieldDependency.source_field_id == record.id) | 
                     (FieldDependency.dependency_field_id == record.id)
@@ -715,146 +716,23 @@ class MetadataSync:
                     if count % 1000 == 0:
                         self.session.commit()
             
-            # --- 第二阶段：处理嵌入式字段 (查重) ---
+            # --- 第二阶段：处理嵌入式字段 (不去重，全部保存) ---
+            # 去重逻辑移至四表迁移阶段 (split_fields_table_v5.py)
             for f_data in embedded_fields:
-                f_data_source_id = f_data.get("datasource_id") # 这是穿透后的 ID (即已发布源ID)
-                name = f_data.get("name")
-                
-                # 2. 对嵌入式数据源，进行去重检查
-                # -----------------------------------------------------------------
-                # 机制说明:
-                # 嵌入式数据源的字段往往是发布的副本(穿透型)或重复定义的直连副本(独立型)。
-                # 我们采用三级缓存机制进行去重，并记录 skipped_id -> survivor_id 映射，
-                # 以便在 sync_field_to_view 时能找回正确的关联。
-                
-                # A. 一级缓存：检查是否已发布字段的副本 (穿透型)
-                # Key: (datasource_id, name) -> datasource_id 已被穿透逻辑修正为发布源ID
-                if f_data_source_id and name and (f_data_source_id, name) in published_field_cache:
-                    survivor_id = published_field_cache[(f_data_source_id, name)]
-                    self.deduplication_map[f_data["id"]] = survivor_id
-                    skipped_count += 1
-                    continue
-                
-                # B. 二级缓存：检查是否指向同一物理列 (独立直连型 - ColumnField)
-                # Key: (table_name, column_name)
-                upstream_cols = f_data.get("upstreamColumns") or []
-                if upstream_cols:
-                    first_col = upstream_cols[0]
-                    col_name = first_col.get("name")
-                    table_info = first_col.get("table")
-                    if table_info:
-                        table_name = table_info.get("name")
-                        if table_name and col_name:
-                            key = (table_name, col_name)
-                            if key in physical_column_cache:
-                                survivor_id = physical_column_cache[key]
-                                self.deduplication_map[f_data["id"]] = survivor_id
-                                skipped_count += 1
-                                continue
-                            else:
-                                # 首次遇到该物理列，加入缓存
-                                # 注意：只有当真正保存字段后才加入缓存，这里先暂存意图，
-                                # 但为了简单，我们在保存后加入(见下文)
-                                pass
-
-                # C. 三级缓存：检查计算字段公式是否重复 (独立直连型 - CalculatedField)
-                # Key: (root_entity_id, name, formula_hash)
-                # 策略：只有当计算字段依赖相同的"根实体"（同一发布数据源或同一物理表）时，才算作重复。
-                if f_data.get("isCalculated") or f_data.get("__typename") == "CalculatedField":
-                    formula = f_data.get("formula") or ""
-                    norm_formula = "".join(formula.split()).lower()
-                    
-                    if norm_formula and name: # 只有非空公式才去重
-                        # 1. 计算 Root Entity ID
-                        root_entity_id = None
-                        
-                        # 优先：检查是否依赖发布数据源
-                        if f_data_source_id: # 这是穿透后的发布源ID
-                             root_entity_id = f_data_source_id
-                        
-                        # 其次：检查是否依赖特定物理表 (上游字段->物理表)
-                        if not root_entity_id:
-                            upstream_fields = f_data.get("upstreamFields") or []
-                            for uf in upstream_fields:
-                                if uf and uf.get("upstreamColumns"):
-                                    cols = uf["upstreamColumns"]
-                                    if cols and cols[0].get("table"):
-                                        # 找到依赖的物理表ID
-                                        t_info = cols[0]["table"]
-                                        # 注意：这里需要物理表的真实ID，可能是 upstreamTables 穿透后的
-                                        # 简单起见，如果 table_real_ds_map 里有，说明它属于某发布源
-                                        t_id = t_info["id"]
-                                        if t_id in table_real_ds_map:
-                                            root_entity_id = table_real_ds_map[t_id]
-                                            break
-                                        else:
-                                            # 这是一个纯独立物理表
-                                            root_entity_id = f"Table:{t_id}"
-                                            break
-                        
-                        # 如果找不到明确的根实体（例如纯计算不依赖任何字段），则使用当前数据源ID作为Scope
-                        if not root_entity_id:
-                            # f_data.get("datasource_id") 可能是嵌入式原始ID
-                            # 为了同一Workbook内的去重，可以使用原始DS ID
-                             root_entity_id = f"DS:{f_data.get('datasource_id')}"
-
-                        import hashlib
-                        formula_hash = hashlib.md5(norm_formula.encode('utf-8')).hexdigest()
-                        
-                        key = (root_entity_id, name, formula_hash)
-                        
-                        if key in calc_field_cache:
-                            survivor_id = calc_field_cache[key]
-                            self.deduplication_map[f_data["id"]] = survivor_id
-                            skipped_count += 1
-                            continue
-
-                
-                # 如果不重复（例如工作簿特有的计算字段），则保存
-                # 如果不重复（例如工作簿特有的计算字段），则保存
-                wb_id = f_data.get("workbook_id") # 嵌入式字段数据中应携带 workbook_id
+                # 直接保存嵌入式字段，不做任何去重跳过
+                wb_id = f_data.get("workbook_id")  # 嵌入式字段数据中应携带 workbook_id
                 self._process_single_field(f_data, table_real_ds_map, workbook_id=wb_id)
                 current_ids.append(f_data["id"])
                 
-                # 更新缓存 (为后续去重做准备)
-                if upstream_cols: # ColumnField
-                     first_col = upstream_cols[0]
-                     if first_col.get("table"):
-                         t_name = first_col["table"].get("name")
-                         c_name = first_col.get("name")
-                         if t_name and c_name:
-                             physical_column_cache[(t_name, c_name)] = f_data["id"]
-                             
-                if f_data.get("isCalculated") or f_data.get("__typename") == "CalculatedField": # CalculatedField
-                    formula = f_data.get("formula") or ""
-                    norm_formula = "".join(formula.split()).lower()
-                    if norm_formula:
-                        import hashlib
-                        f_hash = hashlib.md5(norm_formula.encode('utf-8')).hexdigest()
-                        
-                        # 重新计算 root_entity_id 用于缓存 (代码重复，但为了安全)
-                        root_entity_id = None
-                        if f_data_source_id: root_entity_id = f_data_source_id
-                        if not root_entity_id:
-                             upstream_fields = f_data.get("upstreamFields") or []
-                             for uf in upstream_fields:
-                                if uf and uf.get("upstreamColumns"):
-                                    cols = uf["upstreamColumns"]
-                                    if cols and cols[0].get("table"):
-                                        t_id = cols[0]["table"]["id"]
-                                        if t_id in table_real_ds_map:
-                                            root_entity_id = table_real_ds_map[t_id]
-                                            break
-                                        else:
-                                            root_entity_id = f"Table:{t_id}"
-                                            break
-                        if not root_entity_id: root_entity_id = f"DS:{f_data.get('datasource_id')}"
-
-                        if not root_entity_id: root_entity_id = f"DS:{f_data.get('datasource_id')}"
-
-                        calc_field_cache[(root_entity_id, name, f_hash)] = f_data["id"]
-
+                # 统计计算字段
+                if f_data.get("isCalculated") or f_data.get("__typename") == "CalculatedField":
+                    name = f_data.get("name")
+                    if name:
+                        calc_count += 1
+                
                 count += 1
+                if count % 1000 == 0:
+                    self.session.commit()
                 
             self.session.commit()
             
@@ -862,7 +740,7 @@ class MetadataSync:
             self._cleanup_orphaned_records(Field, current_ids)
             
             self._complete_sync_log(count)
-            print(f"  ✅ 同步 {count} 个字段 (其中 {calc_count} 个计算字段, 去重跳过 {skipped_count} 个)")
+            print(f"  ✅ 同步 {count} 个字段 (其中 {calc_count} 个计算字段)")
             return count
             
         except Exception as e:
@@ -1243,6 +1121,7 @@ class MetadataSync:
                 # 检查ID是否有效
                 if field_id not in valid_field_ids:
                     # ID 无效（可能是被去重的嵌入式字段）
+                    found_new_id = None  # 初始化变量
                     
                     # 策略1: 检查去重映射表 (Deduplication Map) - 最准确
                     # 这是我们在 sync_fields 阶段记录的 "Skipped ID -> Survivor ID"
@@ -1252,29 +1131,28 @@ class MetadataSync:
                         # 再次检查 map 出来的 id 是否有效 (防止链式去重或 survivor 也被删除)
                         if final_field_id in valid_field_ids:
                              relinked_count += 1
-                             # 继续执行插入
+                             # 继续执行插入，跳过后续匹配逻辑
                         else:
                              # 映射的目标也无效？尝试策略2
-                             found_new_id = None
-                    else:
-                        # 策略2: 尝试智能重连 (Name 匹配)
-                        found_new_id = None
+                             pass
                     
-                    if workbook_id and field_name and workbook_id in wb_ds_map:
-                        potential_ds_ids = wb_ds_map[workbook_id]
-                        for p_ds_id in potential_ds_ids:
-                            key = (p_ds_id, field_name)
-                            if key in published_fields_map:
-                                found_new_id = published_fields_map[key]
-                                break
-                    
-                    if found_new_id:
-                        final_field_id = found_new_id
-                        relinked_count += 1
-                    else:
-                        # 确实找不到，放弃
-                        skipped += 1
-                        continue
+                    # 策略2: 尝试智能重连 (Name 匹配) - 仅当策略1未成功时
+                    if final_field_id not in valid_field_ids:
+                        if workbook_id and field_name and workbook_id in wb_ds_map:
+                            potential_ds_ids = wb_ds_map[workbook_id]
+                            for p_ds_id in potential_ds_ids:
+                                key = (p_ds_id, field_name)
+                                if key in published_fields_map:
+                                    found_new_id = published_fields_map[key]
+                                    break
+                        
+                        if found_new_id:
+                            final_field_id = found_new_id
+                            relinked_count += 1
+                        else:
+                            # 确实找不到，放弃
+                            skipped += 1
+                            continue
                 
                 # 插入关联 (批量插入优化可留待后续，目前单条插入并忽略错误)
                 try:

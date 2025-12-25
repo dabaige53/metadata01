@@ -253,3 +253,34 @@ def get_datasource_detail(ds_id):
     data['tableau_url'] = build_tableau_url('datasource', uri=ds.uri, luid=ds.luid, vizportal_url_id=ds.vizportal_url_id)
 
     return jsonify(data)
+
+
+# -------------------- 数据源子资源路由 --------------------
+
+@api_bp.route('/datasources/<ds_id>/fields')
+def get_datasource_fields(ds_id):
+    """获取数据源关联的字段列表"""
+    session = g.db_session
+    ds = session.query(Datasource).filter(Datasource.id == ds_id).first()
+    if not ds:
+        return jsonify({'error': 'Not found'}), 404
+
+    fields_data = [{
+        'id': f.id, 'name': f.name, 'role': f.role, 'data_type': f.data_type,
+        'description': f.description, 'is_calculated': f.is_calculated
+    } for f in ds.fields if not f.is_calculated]
+    return jsonify({'items': fields_data, 'total': len(fields_data)})
+
+
+@api_bp.route('/datasources/<ds_id>/workbooks')
+def get_datasource_workbooks(ds_id):
+    """获取数据源关联的工作簿列表"""
+    session = g.db_session
+    ds = session.query(Datasource).filter(Datasource.id == ds_id).first()
+    if not ds:
+        return jsonify({'error': 'Not found'}), 404
+
+    wb_data = [{
+        'id': wb.id, 'name': wb.name, 'project_name': wb.project_name, 'owner': wb.owner
+    } for wb in ds.workbooks]
+    return jsonify({'items': wb_data, 'total': len(wb_data)})
