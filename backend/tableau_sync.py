@@ -12,7 +12,7 @@ import os
 import sys
 
 # 添加项目根目录到路径
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 从 services 模块重新导出
 from backend.services.tableau_client import TableauMetadataClient

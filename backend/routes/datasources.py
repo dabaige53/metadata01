@@ -176,19 +176,56 @@ def get_datasource_detail(ds_id):
         })
     data['tables'] = tables_data
 
-    # 原始列数据（从关联的数据表中提取）
+    # 原始列数据（优先从字段的 upstream_column 反向获取，解决 Custom SQL 数据源无列的问题）
+    # 方案：通过 regular_fields.upstream_column_id -> db_columns 获取实际使用的列
+    from sqlalchemy import text
     columns_data = []
-    for t in ds.tables:
-        for col in t.columns:
+    seen_column_ids = set()
+    
+    # 方法1：从字段的 upstream_column_id 获取（推荐，覆盖 Custom SQL 场景）
+    column_query = text("""
+        SELECT DISTINCT 
+            c.id, c.name, c.remote_type, c.description, c.is_nullable,
+            c.table_id, t.name as table_name, t.is_embedded as table_is_embedded
+        FROM regular_fields f
+        JOIN db_columns c ON f.upstream_column_id = c.id
+        LEFT JOIN tables t ON c.table_id = t.id
+        WHERE f.datasource_id = :ds_id
+        ORDER BY t.name, c.name
+    """)
+    upstream_columns = session.execute(column_query, {'ds_id': ds_id}).fetchall()
+    
+    for col in upstream_columns:
+        if col.id not in seen_column_ids:
+            seen_column_ids.add(col.id)
             columns_data.append({
                 'id': col.id,
                 'name': col.name,
                 'remote_type': col.remote_type,
-                'table_id': t.id,
-                'table_name': t.name,
+                'table_id': col.table_id,
+                'table_name': col.table_name,
                 'description': col.description,
-                'is_nullable': col.is_nullable
+                'is_nullable': col.is_nullable,
+                'is_embedded': col.table_is_embedded
             })
+    
+    # 方法2：回退 - 如果字段没有 upstream_column，则从 table_to_datasource 关联的表获取
+    if not columns_data:
+        for t in ds.tables:
+            for col in t.columns:
+                if col.id not in seen_column_ids:
+                    seen_column_ids.add(col.id)
+                    columns_data.append({
+                        'id': col.id,
+                        'name': col.name,
+                        'remote_type': col.remote_type,
+                        'table_id': t.id,
+                        'table_name': t.name,
+                        'description': col.description,
+                        'is_nullable': col.is_nullable,
+                        'is_embedded': t.is_embedded
+                    })
+    
     data['columns'] = columns_data
 
     # 下游：使用此数据源的工作簿

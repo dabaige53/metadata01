@@ -724,147 +724,220 @@ def get_fields():
 
 @api_bp.route('/fields/<field_id>')
 def get_field_detail(field_id):
-    """获取单个字段详情 - 使用新的 regular_fields 表"""
+    """获取单个字段详情 - 优先查询 unique_regular_fields (标准字段)"""
     session = g.db_session
     from sqlalchemy import text
     
-    # 查询字段基本信息
-    field_sql = """
+    # 1. 尝试查询 Unique Field (标准字段)
+    unique_sql = """
         SELECT 
-            rf.id, rf.name, rf.data_type, rf.remote_type, rf.description,
-            rf.role, rf.aggregation, rf.is_hidden, rf.usage_count,
-            rf.upstream_column_id, rf.table_id, rf.datasource_id, rf.workbook_id,
-            rf.unique_id, rf.created_at, rf.updated_at,
-            d.name as datasource_name, d.project_name as ds_project_name, d.owner as ds_owner, 
-            d.is_certified as ds_certified, d.vizportal_url_id,
+            urf.id, urf.name, urf.description, urf.remote_type,
+            urf.table_id, urf.upstream_column_id, urf.created_at,
             t.name as table_name, t.schema as table_schema,
-            w.name as workbook_name, w.project_name as wb_project_name, w.owner as wb_owner
-        FROM regular_fields rf
-        LEFT JOIN datasources d ON rf.datasource_id = d.id
-        LEFT JOIN tables t ON rf.table_id = t.id
-        LEFT JOIN workbooks w ON rf.workbook_id = w.id
-        WHERE rf.id = :field_id
-    """
-    field_row = session.execute(text(field_sql), {'field_id': field_id}).first()
-    
-    if not field_row:
-        return jsonify({'error': 'Not found'}), 404
-    
-    data = {
-        'id': field_row.id,
-        'name': field_row.name,
-        'data_type': field_row.data_type,
-        'remoteType': field_row.remote_type,
-        'description': field_row.description or '',
-        'role': field_row.role,
-        'aggregation': field_row.aggregation,
-        'isCalculated': False,
-        'isHidden': field_row.is_hidden or False,
-        'usageCount': field_row.usage_count or 0,
-        'uniqueId': field_row.unique_id,
-        'tableId': field_row.table_id,
-        'tableName': field_row.table_name or '-',
-        'tableSchema': field_row.table_schema,
-        'datasourceId': field_row.datasource_id,
-        'datasourceName': field_row.datasource_name or '-',
-        'workbookId': field_row.workbook_id,
-        'workbookName': field_row.workbook_name,
-        'hasDescription': bool(field_row.description and field_row.description.strip()),
-        'createdAt': field_row.created_at.isoformat() if field_row.created_at else None,
-        'updatedAt': field_row.updated_at.isoformat() if field_row.updated_at else None
-    }
-    
-    field_name = field_row.name
-    
-    # 1. 聚合所有「逻辑一致」字段的物理表血缘
-    # 基于 unique_id 聚合，确保跨视图/工作簿的同一物理列血缘能合并
-    unique_id = field_row.unique_id
-    
-    table_lineage_result = session.execute(text("""
-        SELECT DISTINCT fl.table_id, t.name, t.schema, db.name as db_name, t.database_id
-        FROM regular_fields rf
-        JOIN regular_field_full_lineage fl ON rf.id = fl.field_id
-        JOIN tables t ON fl.table_id = t.id
+            db.name as database_name, db.id as database_id
+        FROM unique_regular_fields urf
+        LEFT JOIN tables t ON urf.table_id = t.id
         LEFT JOIN databases db ON t.database_id = db.id
-        WHERE rf.unique_id = :unique_id AND fl.table_id IS NOT NULL AND t.id IS NOT NULL
-    """), {'unique_id': unique_id}).fetchall()
+        WHERE urf.id = :field_id
+    """
+    unique_row = session.execute(text(unique_sql), {'field_id': field_id}).first()
     
-    if table_lineage_result:
-        first_table = table_lineage_result[0]
-        data['table_info'] = {
-            'id': first_table[0],
-            'name': first_table[1],
-            'schema': first_table[2],
-            'database_name': first_table[3],
-            'database_id': first_table[4]
+    unique_id = None
+    representative_field_id = None
+    vizportal_url_id = None
+    data = {}
+
+    if unique_row:
+        # ========== CASE A: 是标准字段 ID ==========
+        unique_id = unique_row.id
+        
+        # 聚合统计信息 (从 regular_fields)
+        stats_sql = """
+            SELECT 
+                COUNT(*) as instance_count,
+                COALESCE(SUM(usage_count), 0) as total_usage,
+                MAX(role) as role,
+                MAX(data_type) as data_type,
+                MAX(aggregation) as aggregation,
+                MAX(id) as max_id
+            FROM regular_fields
+            WHERE unique_id = :unique_id
+        """
+        stats = session.execute(text(stats_sql), {'unique_id': unique_id}).first()
+        representative_field_id = stats.max_id if stats else None
+        
+        data = {
+            'id': unique_row.id,
+            'uniqueId': unique_row.id,
+            'name': unique_row.name,
+            'description': unique_row.description or '',
+            'remoteType': unique_row.remote_type,
+            'role': stats.role if stats else None,
+            'data_type': stats.data_type if stats else None,
+            'aggregation': stats.aggregation if stats else None,
+            'isCalculated': False,
+            'isHidden': False, 
+            'usageCount': stats.total_usage if stats else 0,
+            'instanceCount': stats.instance_count if stats else 0,
+            'createdAt': str(unique_row.created_at) if unique_row.created_at else None,
+            'tableId': unique_row.table_id,
+            'tableName': unique_row.table_name or '-',
+            'tableSchema': unique_row.table_schema,
+            'databaseId': unique_row.database_id,
+            'databaseName': unique_row.database_name,
+            'datasourceId': None,
+            'datasourceName': '多数据源聚合',
+            'workbookId': None,
+            'workbookName': None,
         }
-        data['derived_tables'] = [{
-            'id': row[0], 'name': row[1], 'schema': row[2],
-            'database_name': row[3], 'database_id': row[4]
-        } for row in table_lineage_result]
-        data['derivedTables'] = data['derived_tables']
+        
     else:
-        data['table_info'] = None
+        # ========== CASE B: 不是标准字段 ID，尝试物理字段 ID (保留兼容性) ==========
+        field_sql = """
+            SELECT 
+                rf.id, rf.name, rf.data_type, rf.remote_type, rf.description,
+                rf.role, rf.aggregation, rf.is_hidden, rf.usage_count,
+                rf.upstream_column_id, rf.table_id, rf.datasource_id, rf.workbook_id,
+                rf.unique_id, rf.created_at, rf.updated_at,
+                d.name as datasource_name, d.project_name as ds_project_name, d.owner as ds_owner, 
+                d.is_certified as ds_certified, d.vizportal_url_id,
+                t.name as table_name, t.schema as table_schema,
+                w.name as workbook_name, w.project_name as wb_project_name, w.owner as wb_owner
+            FROM regular_fields rf
+            LEFT JOIN datasources d ON rf.datasource_id = d.id
+            LEFT JOIN tables t ON rf.table_id = t.id
+            LEFT JOIN workbooks w ON rf.workbook_id = w.id
+            WHERE rf.id = :field_id
+        """
+        field_row = session.execute(text(field_sql), {'field_id': field_id}).first()
+        
+        if not field_row:
+            return jsonify({'error': 'Not found'}), 404
+            
+        unique_id = field_row.unique_id
+        representative_field_id = field_row.id
+        vizportal_url_id = field_row.vizportal_url_id
+        
+        data = {
+            'id': field_row.id,
+            'uniqueId': field_row.unique_id,
+            'name': field_row.name,
+            'data_type': field_row.data_type,
+            'remoteType': field_row.remote_type,
+            'description': field_row.description or '',
+            'role': field_row.role,
+            'aggregation': field_row.aggregation,
+            'isCalculated': False,
+            'isHidden': field_row.is_hidden or False,
+            'usageCount': field_row.usage_count or 0,
+            'tableId': field_row.table_id,
+            'tableName': field_row.table_name or '-',
+            'tableSchema': field_row.table_schema,
+            'datasourceId': field_row.datasource_id,
+            'datasourceName': field_row.datasource_name or '-',
+            'workbookId': field_row.workbook_id,
+            'workbookName': field_row.workbook_name,
+            'hasDescription': bool(field_row.description and field_row.description.strip()),
+            'createdAt': str(field_row.created_at) if field_row.created_at else None,
+            'updatedAt': str(field_row.updated_at) if field_row.updated_at else None
+        }
+        
+        if field_row.datasource_id:
+            data['datasource_info'] = {
+                'id': field_row.datasource_id,
+                'name': field_row.datasource_name,
+                'project_name': field_row.ds_project_name,
+                'owner': field_row.ds_owner,
+                'is_certified': field_row.ds_certified
+            }
+        elif field_row.workbook_id:
+            data['datasource_info'] = {
+                'id': f"embedded-{field_row.workbook_id}",
+                'name': f"{field_row.workbook_name} (内部连接)",
+                'project_name': field_row.wb_project_name,
+                'owner': field_row.wb_owner,
+                'is_certified': False,
+                'is_embedded_fallback': True
+            }
+        else:
+            data['datasource_info'] = None
+
+    # Common Logic: Lineage & Associations (Based on Unique ID if available)
+    if unique_id:
+        # 1. 物理表血缘
+        table_lineage = session.execute(text("""
+            SELECT DISTINCT fl.table_id, t.name, t.schema, db.name as db_name, t.database_id
+            FROM regular_fields rf
+            JOIN regular_field_full_lineage fl ON rf.id = fl.field_id
+            JOIN tables t ON fl.table_id = t.id
+            LEFT JOIN databases db ON t.database_id = db.id
+            WHERE rf.unique_id = :unique_id AND fl.table_id IS NOT NULL AND t.id IS NOT NULL
+        """), {'unique_id': unique_id}).fetchall()
+        
+        data['derived_tables'] = [{
+            'id': r[0], 'name': r[1], 'schema': r[2], 'database_name': r[3], 'database_id': r[4]
+        } for r in table_lineage]
+        data['derivedTables'] = data['derived_tables']
+
+        # 2. 数据源血缘
+        ds_lineage = session.execute(text("""
+            SELECT DISTINCT fl.datasource_id, d.name, d.project_name, d.owner, d.is_certified
+            FROM regular_fields rf
+            JOIN regular_field_full_lineage fl ON rf.id = fl.field_id
+            LEFT JOIN datasources d ON fl.datasource_id = d.id
+            WHERE rf.unique_id = :unique_id AND fl.datasource_id IS NOT NULL AND d.id IS NOT NULL
+        """), {'unique_id': unique_id}).fetchall()
+        
+        data['all_datasources'] = [{
+            'id': r[0], 'name': r[1], 'project_name': r[2], 'owner': r[3], 'is_certified': bool(r[4]) if r[4] is not None else False
+        } for r in ds_lineage]
+        
+        # 3. 工作簿血缘
+        wb_lineage = session.execute(text("""
+            SELECT DISTINCT fl.workbook_id, w.name, w.project_name, w.owner
+            FROM regular_fields rf
+            JOIN regular_field_full_lineage fl ON rf.id = fl.field_id
+            LEFT JOIN workbooks w ON fl.workbook_id = w.id
+            WHERE rf.unique_id = :unique_id AND fl.workbook_id IS NOT NULL AND w.id IS NOT NULL
+        """), {'unique_id': unique_id}).fetchall()
+        
+        data['all_workbooks'] = [{
+            'id': r[0], 'name': r[1], 'project_name': r[2], 'owner': r[3]
+        } for r in wb_lineage]
+
+        # 4. 使用该字段的视图 (聚合所有实例)
+        views_result = session.execute(text("""
+            SELECT DISTINCT rfv.view_id, v.name, v.view_type, v.workbook_id, w.name as wb_name, w.project_name, w.owner
+            FROM regular_field_to_view rfv
+            JOIN regular_fields rf ON rfv.field_id = rf.id
+            JOIN views v ON rfv.view_id = v.id
+            LEFT JOIN workbooks w ON v.workbook_id = w.id
+            WHERE rf.unique_id = :unique_id
+        """), {'unique_id': unique_id}).fetchall()
+        
+        # 5. 指标依赖 (聚合所有实例)
+        metric_deps = session.execute(text("""
+            SELECT DISTINCT cf.id, cf.name, cf.formula, cf.role, cf.data_type,
+                   cf.datasource_id, d.name as ds_name, cf.workbook_id, w.name as wb_name
+            FROM calc_field_dependencies cfd
+            JOIN regular_fields rf ON cfd.dependency_regular_field_id = rf.id
+            JOIN calculated_fields cf ON cfd.source_field_id = cf.id
+            LEFT JOIN datasources d ON cf.datasource_id = d.id
+            LEFT JOIN workbooks w ON cf.workbook_id = w.id
+            WHERE rf.unique_id = :unique_id
+            LIMIT 100
+        """), {'unique_id': unique_id}).fetchall()
+
+    else:
+        # Fallback (Unlikely to be hit if Case B succeeds, as unique_id is usually present)
+        views_result = []
+        metric_deps = []
         data['derived_tables'] = []
         data['derivedTables'] = []
-    
-    # 2. 聚合所有「逻辑一致」字段的数据源血缘
-    ds_lineage_result = session.execute(text("""
-        SELECT DISTINCT fl.datasource_id, d.name, d.project_name, d.owner, d.is_certified
-        FROM regular_fields rf
-        JOIN regular_field_full_lineage fl ON rf.id = fl.field_id
-        LEFT JOIN datasources d ON fl.datasource_id = d.id
-        WHERE rf.unique_id = :unique_id AND fl.datasource_id IS NOT NULL AND d.id IS NOT NULL
-    """), {'unique_id': unique_id}).fetchall()
-    
-    data['all_datasources'] = [{
-        'id': row[0], 'name': row[1], 'project_name': row[2],
-        'owner': row[3], 'is_certified': bool(row[4]) if row[4] is not None else False
-    } for row in ds_lineage_result]
-    
-    # 3. 聚合所有「逻辑一致」字段的工作簿血缘
-    wb_lineage_result = session.execute(text("""
-        SELECT DISTINCT fl.workbook_id, w.name, w.project_name, w.owner
-        FROM regular_fields rf
-        JOIN regular_field_full_lineage fl ON rf.id = fl.field_id
-        LEFT JOIN workbooks w ON fl.workbook_id = w.id
-        WHERE rf.unique_id = :unique_id AND fl.workbook_id IS NOT NULL AND w.id IS NOT NULL
-    """), {'unique_id': unique_id}).fetchall()
-    
-    data['all_workbooks'] = [{
-        'id': row[0], 'name': row[1], 'project_name': row[2], 'owner': row[3]
-    } for row in wb_lineage_result]
-    
-    # 所属数据源信息
-    if field_row.datasource_id:
-        data['datasource_info'] = {
-            'id': field_row.datasource_id,
-            'name': field_row.datasource_name,
-            'project_name': field_row.ds_project_name,
-            'owner': field_row.ds_owner,
-            'is_certified': field_row.ds_certified
-        }
-    elif field_row.workbook_id:
-        data['datasource_info'] = {
-            'id': f"embedded-{field_row.workbook_id}",
-            'name': f"{field_row.workbook_name} (内部连接)",
-            'project_name': field_row.wb_project_name,
-            'owner': field_row.wb_owner,
-            'is_certified': False,
-            'is_embedded_fallback': True
-        }
-    else:
-        data['datasource_info'] = None
-    
-    # 使用该字段的视图 (使用新的 regular_field_to_view 表)
-    views_result = session.execute(text("""
-        SELECT rfv.view_id, v.name, v.view_type, v.workbook_id, w.name as wb_name, w.project_name, w.owner
-        FROM regular_field_to_view rfv
-        JOIN views v ON rfv.view_id = v.id
-        LEFT JOIN workbooks w ON v.workbook_id = w.id
-        WHERE rfv.field_id = :field_id
-    """), {'field_id': field_id}).fetchall()
-    
+        if 'all_datasources' not in data: data['all_datasources'] = []
+        if 'all_workbooks' not in data: data['all_workbooks'] = []
+
+    # Process Views
     views_data = []
     workbooks_set = {}
     for row in views_result:
@@ -876,41 +949,42 @@ def get_field_detail(field_id):
             workbooks_set[row[3]] = {
                 'id': row[3], 'name': row[4], 'project_name': row[5], 'owner': row[6]
             }
-    
+            
     data['used_in_views'] = views_data
     data['used_in_workbooks'] = list(workbooks_set.values())
     data['usedInViews'] = data['used_in_views']
     data['usedInWorkbooks'] = data['used_in_workbooks']
-    
-    # 获取使用该字段的指标 (通过 calc_field_dependencies)
-    metric_deps = session.execute(text("""
-        SELECT DISTINCT cf.id, cf.name, cf.formula, cf.role, cf.data_type,
-               cf.datasource_id, d.name as ds_name, cf.workbook_id, w.name as wb_name
-        FROM calc_field_dependencies cfd
-        JOIN calculated_fields cf ON cfd.source_field_id = cf.id
-        LEFT JOIN datasources d ON cf.datasource_id = d.id
-        LEFT JOIN workbooks w ON cf.workbook_id = w.id
-        WHERE cfd.dependency_regular_field_id = :field_id
-        LIMIT 100
-    """), {'field_id': field_id}).fetchall()
-    
+            
+    # Process Metrics
     data['used_by_metrics'] = [{
         'id': row[0], 'name': row[1], 'formula': row[2], 'role': row[3], 'dataType': row[4],
         'datasourceId': row[5], 'datasourceName': row[6],
         'workbookId': row[7], 'workbookName': row[8]
     } for row in metric_deps]
     
-    # 统计信息
+    # Stats
     data['stats'] = {
         'view_count': len(views_data),
         'workbook_count': len(workbooks_set),
         'metric_count': len(data['used_by_metrics']),
-        'datasource_count': len(data['all_datasources'])
+        'datasource_count': len(data.get('all_datasources', []))
     }
     
-    # 构建 Tableau URL
-    if field_row.vizportal_url_id:
-        data['tableau_url'] = build_tableau_url('datasource', vizportal_url_id=field_row.vizportal_url_id)
+    # Tableau URL
+    if representative_field_id and not vizportal_url_id:
+        # Try to fetch vizportal_url_id from the representative field's datasource
+        url_sql = """
+            SELECT d.vizportal_url_id 
+            FROM regular_fields rf
+            LEFT JOIN datasources d ON rf.datasource_id = d.id
+            WHERE rf.id = :rid
+        """
+        res = session.execute(text(url_sql), {'rid': representative_field_id}).first()
+        if res:
+            vizportal_url_id = res.vizportal_url_id
+            
+    if vizportal_url_id:
+        data['tableau_url'] = build_tableau_url('datasource', vizportal_url_id=vizportal_url_id)
     else:
         data['tableau_url'] = None
     

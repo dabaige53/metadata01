@@ -22,7 +22,7 @@ class Config:
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
     # 数据库配置
-    DATABASE_PATH = os.path.join(BASE_DIR, 'data', 'metadata.db')
+    DATABASE_PATH = os.path.join(BASE_DIR, 'metadata.db')
     SQLALCHEMY_DATABASE_URI = f'sqlite:///{DATABASE_PATH}'
     
     # Flask 配置
