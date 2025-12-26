@@ -1,0 +1,186 @@
+ {
+   "description": "API 数据一致性验证清单 - 列表页与详情页数据需一一对应",
+   "version": "1.0.0",
+   "created_at": "2025-12-26",
+   "validation_rules": [
+     {
+       "id": "table_field_count",
+       "name": "数据表字段数一致性",
+       "description": "表列表页的 field_count 应与表详情页的 full_fields 数组长度一致",
+       "list_api": {
+         "endpoint": "/api/tables",
+         "field": "items[].field_count"
+       },
+       "detail_api": {
+         "endpoint": "/api/tables/{id}",
+         "field": "full_fields.length"
+       },
+       "related_issue": "2025-12-26_字段名与表名匹配错误关联.md"
+     },
+     {
+       "id": "table_column_count",
+       "name": "数据表原始列数一致性",
+       "description": "表列表页的 column_count 应与表详情页的 columns 数组长度一致",
+       "list_api": {
+         "endpoint": "/api/tables",
+         "field": "items[].column_count"
+       },
+       "detail_api": {
+         "endpoint": "/api/tables/{id}",
+         "field": "columns.length"
+       }
+     },
+     {
+       "id": "datasource_field_count",
+       "name": "数据源字段数一致性",
+       "description": "数据源列表页的 field_count 应与详情页的 full_fields 数组长度一致",
+       "list_api": {
+         "endpoint": "/api/datasources",
+         "field": "items[].field_count"
+       },
+       "detail_api": {
+         "endpoint": "/api/datasources/{id}",
+         "field": "full_fields.length"
+       }
+     },
+     {
+       "id": "datasource_table_count",
+       "name": "数据源关联表数一致性",
+       "description": "数据源列表页的 table_count 应与详情页的 tables 数组长度一致",
+       "list_api": {
+         "endpoint": "/api/datasources",
+         "field": "items[].table_count"
+       },
+       "detail_api": {
+         "endpoint": "/api/datasources/{id}",
+         "field": "tables.length"
+       }
+     },
+     {
+       "id": "datasource_workbook_count",
+       "name": "数据源关联工作簿数一致性",
+       "description": "数据源列表页的 workbook_count 应与详情页的 workbooks 数组长度一致",
+       "list_api": {
+         "endpoint": "/api/datasources",
+         "field": "items[].workbook_count"
+       },
+       "detail_api": {
+         "endpoint": "/api/datasources/{id}",
+         "field": "workbooks.length"
+       }
+     },
+     {
+       "id": "workbook_view_count",
+       "name": "工作簿视图数一致性",
+       "description": "工作簿列表页的 view_count 应与详情页的 views 数组长度一致",
+       "list_api": {
+         "endpoint": "/api/workbooks",
+         "field": "items[].view_count"
+       },
+       "detail_api": {
+         "endpoint": "/api/workbooks/{id}",
+         "field": "views.length"
+       }
+     },
+     {
+       "id": "workbook_datasource_count",
+       "name": "工作簿数据源数一致性",
+       "description": "工作簿列表页的 datasource_count 应与详情页的 datasources 数组长度一致",
+       "list_api": {
+         "endpoint": "/api/workbooks",
+         "field": "items[].datasource_count"
+       },
+       "detail_api": {
+         "endpoint": "/api/workbooks/{id}",
+         "field": "datasources.length"
+       }
+     },
+     {
+       "id": "workbook_field_count",
+       "name": "工作簿字段数一致性",
+       "description": "工作簿列表页的 field_count 应与详情页的 used_fields 数组长度一致",
+       "list_api": {
+         "endpoint": "/api/workbooks",
+         "field": "items[].field_count"
+       },
+       "detail_api": {
+         "endpoint": "/api/workbooks/{id}",
+         "field": "used_fields.length"
+       }
+     },
+     {
+       "id": "view_field_count",
+       "name": "视图字段数一致性",
+       "description": "视图列表页的 field_count 应与详情页的 used_fields 数组长度一致",
+       "list_api": {
+         "endpoint": "/api/views",
+         "field": "items[].field_count"
+       },
+       "detail_api": {
+         "endpoint": "/api/views/{id}",
+         "field": "used_fields.length"
+       }
+     },
+     {
+       "id": "database_table_count",
+       "name": "数据库表数一致性",
+       "description": "数据库列表页的 table_count 应与详情页的 tables 数组长度一致",
+       "list_api": {
+         "endpoint": "/api/databases",
+         "field": "items[].table_count"
+       },
+       "detail_api": {
+         "endpoint": "/api/databases/{id}",
+         "field": "tables.length"
+       }
+     }
+   ],
+   "field_source_consistency": [
+     {
+       "id": "table_field_via_datasource",
+       "name": "表字段数据源来源一致性",
+       "description": "表详情页 full_fields 中每个字段的 via_datasource 不应为空",
+       "endpoint": "/api/tables/{id}",
+       "validation": "full_fields[].via_datasource !== null",
+       "related_issue": "2025-12-26_字段名与表名匹配错误关联.md"
+     },
+     {
+       "id": "table_field_upstream_column",
+       "name": "表字段上游列一致性",
+       "description": "表详情页 full_fields 中每个字段必须有 upstream_column_id 且属于当前表",
+       "endpoint": "/api/tables/{id}",
+       "validation": "full_fields[].upstreamColumnId in columns[].id",
+       "related_issue": "2025-12-25_字段表血缘穿透技术债务.md"
+     },
+     {
+       "id": "field_name_not_equals_table_name",
+       "name": "字段名与表名不重复",
+       "description": "表详情页 full_fields 中不应出现与表名相同的字段（除非有有效的 upstream_column_id）",
+       "endpoint": "/api/tables/{id}",
+       "validation": "full_fields[].name !== table.name OR full_fields[].upstreamColumnId !== null",
+       "related_issue": "2025-12-26_字段名与表名匹配错误关联.md"
+     }
+   ],
+   "dual_table_consistency": [
+     {
+       "id": "fields_regular_fields_sync",
+       "name": "fields 与 regular_fields 表数据同步",
+       "description": "fields 表和 regular_fields 表的关键字段应保持一致",
+       "tables": ["fields", "regular_fields"],
+       "sync_fields": ["id", "name", "table_id", "datasource_id", "upstream_column_id"],
+       "validation_sql": "SELECT COUNT(*) FROM fields f JOIN regular_fields rf ON f.id = rf.id WHERE f.table_id != rf.table_id OR (f.table_id IS NULL) != (rf.table_id IS NULL)"
+     }
+   ],
+   "sample_test_cases": [
+     {
+       "id": "dwd_tic_hsd_iinv_1min",
+       "table_id": "03e4b637-01f5-b0a8-3a37-b316d2e3efd7",
+       "expected": {
+         "column_count": 59,
+         "field_count": 59,
+         "should_not_contain_field": "dwd_tic_hsd_iinv_1min"
+       },
+       "related_issue": "2025-12-26_字段名与表名匹配错误关联.md"
+     }
+   ]
+ }

@@ -58,8 +58,11 @@ python3 dev.py
 ### 启动服务
 
 ```bash
-# 一键启动 (推荐)
+# 一键启动 - 开发模式 (推荐日常开发)
 python3 dev.py
+
+# 一键启动 - 生产模式 (推荐内网部署，性能提升 10-50 倍)
+python3 deploy.py
 
 # 分步启动 (手动控制)
 # 后端: python3 run_backend.py
@@ -68,7 +71,8 @@ python3 dev.py
 
 ### 访问地址
 
-- **Next.js 前端**: <http://localhost:3100> ⭐ 主要使用
+- **本机访问**: <http://localhost:3100> ⭐ 主要使用
+- **内网访问**: 启动时会显示内网 IP，如 `http://192.168.x.x:3100`
 - **Flask 后端 API**: <http://localhost:8101/api/>*
 
 ## 常用命令
@@ -76,11 +80,16 @@ python3 dev.py
 ### 服务管理
 
 ```bash
-# 一键启动（推荐）
+# 开发模式启动（实时编译，适合开发调试）
 python3 dev.py start
+
+# 生产模式启动（预编译，适合内网部署）
+python3 deploy.py
+python3 deploy.py --skip-build  # 跳过构建，直接启动
 
 # 停止服务
 python3 dev.py stop
+python3 deploy.py stop
 
 # 重启服务
 python3 dev.py restart
@@ -107,6 +116,12 @@ python3 backend/tableau_sync.py --usage-only
 # 指定数据库路径
 python3 backend/tableau_sync.py --db-path data/metadata.db
 ```
+
+**重要说明**（2025-12-25 修复）：
+- ✅ 已修复仪表板字段关联缺失问题（`fetch_views_with_fields` 现在同时查询 sheets 和 dashboards）
+- ✅ 字段-视图血缘关系现在完整采集（包括所有仪表板的字段）
+- ⚠️ 如果数据库是 2025-12-25 之前同步的，建议重新同步以获取完整的血缘数据
+- 📦 旧数据库备份位置：`data/metadata_backup_YYYYMMDD.db`
 
 ### 前端开发（在 frontend/ 目录下执行）
 
@@ -438,13 +453,3 @@ Next.js Frontend
 2. **数据同步是核心功能**，统计数据全部预计算，API 层只读取不计算
 3. **只读模式**：所有 PUT/POST/DELETE 请求返回 405
 4. **真实数据**：不使用 mock 数据，所有展示基于 Tableau 同步数据
-5. **测试通过率**：E2E 测试 39/39 项全部通过（v2.0）
-
-## 文档资源
-
-| 文档                    | 用途         | 读者          |
-| ----------------------- | ------------ | ------------- |
-| `快速启动指南.md`       | 启动和使用   | 用户/测试人员 |
-| `E2E测试报告.md`        | 测试结果详情 | 测试人员/QA   |
-| `升级完成报告.md`       | 技术实现细节 | 开发者        |
-| `差异分析和修复方案.md` | 完整规划     | 架构师/规划者 |

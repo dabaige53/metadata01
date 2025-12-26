@@ -180,8 +180,24 @@ def get_views():
     
     views = query.limit(page_size).offset(offset).all()
     
+    # 预查询统计数据，确保列表与详情一致
+    view_ids = [v.id for v in views]
+    stats_map = {}
+    if view_ids:
+        stats_sql = text("""
+            SELECT 
+                fv.view_id,
+                COUNT(DISTINCT CASE WHEN f.is_calculated = 0 THEN fv.field_id END) as field_count,
+                COUNT(DISTINCT CASE WHEN f.is_calculated = 1 THEN fv.field_id END) as metric_count
+            FROM field_to_view fv
+            JOIN fields f ON fv.field_id = f.id
+            WHERE fv.view_id IN :view_ids
+            GROUP BY fv.view_id
+        """).bindparams(bindparam('view_ids', expanding=True))
+        rows = session.execute(stats_sql, {'view_ids': list(view_ids)}).fetchall()
+        stats_map = {row[0]: {'field_count': row[1], 'metric_count': row[2]} for row in rows}
+
     # Facets 统计
-    from sqlalchemy import text
     facets = {}
     
     # view_type facet
@@ -205,8 +221,16 @@ def get_views():
     """)).fetchall()
     facets['workbook_name'] = {row[0]: row[1] for row in workbook_stats if row[0]}
     
+    results = []
+    for v in views:
+        data = v.to_dict()
+        v_stats = stats_map.get(v.id, {})
+        data['field_count'] = v_stats.get('field_count', 0)
+        data['metric_count'] = v_stats.get('metric_count', 0)
+        results.append(data)
+
     return jsonify({
-        'items': [v.to_dict() for v in views],
+        'items': results,
         'total': total,
         'page': page,
         'page_size': page_size,

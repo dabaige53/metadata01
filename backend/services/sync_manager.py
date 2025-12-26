@@ -991,15 +991,16 @@ class MetadataSync:
             calc_field.formula = f_data.get("formula") or ""
 
         # D Fix: 如果此时还没有 table_id，尝试通过名称匹配物理表
-        if not field.table_id and field.name:
-            # 仅当字段名与现有物理表名完全一致时关联
-            # 排除常见的通用名称
-            ignored_names = [":Measure Names", "Measure Values", "Number of Records", "记录数"]
-            if field.name not in ignored_names:
-                matched_table = self.session.query(DBTable).filter_by(name=field.name).first()
-                if matched_table:
-                    field.table_id = matched_table.id
-                    print(f"    🔨 修复无关联表字段: {field.name} -> 关联到表 {matched_table.name}")
+        # 注意：此逻辑已禁用，因为会导致字段名与表名相同时的错误关联
+        # 例如：字段 dwd_tic_hsd_iinv_1min 被错误关联到同名物理表
+        # 正确的关联应该通过 upstream_column_id 建立
+        # if not field.table_id and field.name:
+        #     ignored_names = [":Measure Names", "Measure Values", "Number of Records", "记录数"]
+        #     if field.name not in ignored_names:
+        #         matched_table = self.session.query(DBTable).filter_by(name=field.name).first()
+        #         if matched_table:
+        #             field.table_id = matched_table.id
+        #             print(f"    🔨 修复无关联表字段: {field.name} -> 关联到表 {matched_table.name}")
 
     def _get_physical_table_id(self, table_info):
         """尝试从 Table 对象（可能是 EmbeddedTable 或 CustomSQLTable）中提取物理 Table ID"""

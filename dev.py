@@ -185,7 +185,11 @@ def is_safe_to_kill(pid):
         'cursor',
         'vscode',
         'python3 -m ccc',
-        'pyright'
+        'pyright',
+        'droid',                  # Claude Code 终端
+        'claude',
+        'language_server',        # Antigravity 语言服务器
+        'codex'                   # OpenAI Codex 相关
     ]
     
     if any(pk in args or pk in name for pk in protection_keywords):
@@ -200,33 +204,64 @@ def is_safe_to_kill(pid):
         
     return False
 
-def kill_process_gracefully(pid, name=""):
-    """优雅地终止进程"""
+def get_child_pids(pid):
+    """递归获取进程及其所有子进程的 PID 列表（子进程优先，父进程在最后）"""
+    pids = []
     try:
-        # 1. 尝试 SIGTERM
-        if os.name != 'nt':
-            try:
-                os.killpg(os.getpgid(pid), signal.SIGTERM)
-            except:
-                os.kill(pid, signal.SIGTERM)
-        else:
-            os.kill(pid, signal.SIGTERM)
+        # 使用 pgrep 获取子进程
+        result = subprocess.run(
+            f"pgrep -P {pid}",
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+        child_pids = result.stdout.strip().split('\n')
+        child_pids = [int(p) for p in child_pids if p]
         
-        # 等待一会
+        # 递归获取子进程的子进程
+        for child_pid in child_pids:
+            pids.extend(get_child_pids(child_pid))
+        
+        pids.extend(child_pids)
+    except Exception:
+        pass
+    
+    return pids
+
+def kill_process_gracefully(pid, name=""):
+    """优雅地终止进程及其所有子进程
+    
+    重要：不使用 killpg，避免误杀同一终端中的其他进程（如 Claude Code）
+    """
+    try:
+        # 1. 获取所有子进程（子进程优先终止）
+        child_pids = get_child_pids(pid)
+        all_pids = child_pids + [pid]  # 子进程在前，父进程在后
+        
+        # 2. 向所有进程发送 SIGTERM
+        for p in all_pids:
+            try:
+                os.kill(p, signal.SIGTERM)
+            except ProcessLookupError:
+                pass  # 进程可能已经退出
+            except Exception:
+                pass
+        
+        # 3. 等待主进程退出
         for _ in range(10):
             if not is_process_running(pid):
                 return True
             time.sleep(0.2)
             
-        # 2. 如果还在，尝试 SIGKILL
+        # 4. 如果还在，强制终止所有相关进程
         print(f"   ⚠️  进程 {pid} 未能优雅退出，正在强制终止...")
-        if os.name != 'nt':
+        for p in all_pids:
             try:
-                os.killpg(os.getpgid(pid), signal.SIGKILL)
-            except:
-                os.kill(pid, signal.SIGKILL)
-        else:
-            os.kill(pid, signal.SIGKILL)
+                if is_process_running(p):
+                    os.kill(p, signal.SIGKILL)
+            except Exception:
+                pass
+        
         return True
     except Exception as e:
         print(f"   ❌ 终止进程 {pid} 失败: {e}")

@@ -177,11 +177,13 @@ def get_tables():
                 COUNT(DISTINCT CASE WHEN f.role = 'measure' THEN t.field_id END) as measure_count,
                 COUNT(DISTINCT CASE WHEN f.role != 'measure' THEN t.field_id END) as dimension_count
             FROM (
-                -- 方式1: 通过 table_to_datasource 关联
+                -- 方式1: 通过 table_to_datasource 关联（必须有 upstream_column_id 且属于当前表）
                 SELECT td.table_id, f.id as field_id
                 FROM table_to_datasource td
                 JOIN fields f ON td.datasource_id = f.datasource_id
+                JOIN db_columns c ON f.upstream_column_id = c.id
                 WHERE td.table_id IN :table_ids
+                AND c.table_id = td.table_id
 
                 UNION
 
@@ -268,36 +270,50 @@ def get_table_detail(table_id):
     # Tableau字段（支持多种关联方式，合并所有来源）
     full_fields = []
     seen_field_ids = set()
+    # 提前获取当前表的列ID集合，用于过滤不属于该表的字段
+    column_ids = set(col.id for col in table.columns) if table.columns else set()
 
     # 1. 直接关联字段（Field.table_id = table.id）
     direct_fields = table.fields if table.fields else []
     for f in direct_fields:
         if f.id not in seen_field_ids:
-            full_fields.append(f.to_dict())
-            seen_field_ids.add(f.id)
+            # 修复一致性：直接关联的字段也必须有有效的 upstream_column_id 且属于当前表
+            if f.upstream_column_id and f.upstream_column_id in column_ids:
+                f_data = f.to_dict()
+                # 确保 via_datasource 有值（用于前端显示）
+                if not f_data.get('via_datasource') and f.datasource:
+                    f_data['via_datasource'] = f.datasource.name
+                full_fields.append(f_data)
+                seen_field_ids.add(f.id)
 
     # 2. 间接关联字段（通过 upstream_column_id -> DBColumn -> table）
-    indirect_fields = session.query(Field).join(DBColumn, Field.upstream_column_id == DBColumn.id)\
+    from sqlalchemy.orm import joinedload
+    indirect_fields = session.query(Field).options(joinedload(Field.datasource))\
+        .join(DBColumn, Field.upstream_column_id == DBColumn.id)\
         .filter(DBColumn.table_id == table.id)\
         .filter(Field.table_id.is_(None))\
         .all()
     for f in indirect_fields:
         if f.id not in seen_field_ids:
-            full_fields.append(f.to_dict())
+            f_data = f.to_dict()
+            # 确保 via_datasource 有值
+            if not f_data.get('via_datasource') and f.datasource:
+                f_data['via_datasource'] = f.datasource.name
+            full_fields.append(f_data)
             seen_field_ids.add(f.id)
 
     # 3. 通过关联的数据源获取字段（用于嵌入式表）
     # 重要：只保留 upstream_column 真正属于当前表的字段，过滤掉 JOIN 进来的其他表字段
-    column_ids = set(col.id for col in table.columns) if table.columns else set()
-    
     if table.datasources:
         for ds in table.datasources:
             for f in ds.fields:
                 if f.id not in seen_field_ids:
-                    # 过滤逻辑：如果字段有 upstream_column_id，必须属于当前表
-                    if f.upstream_column_id:
-                        if f.upstream_column_id not in column_ids:
-                            continue  # 跳过不属于本表的字段
+                    # 过滤逻辑：字段必须有 upstream_column_id 且属于当前表
+                    # 没有 upstream_column_id 的字段不应该关联到任何表
+                    if not f.upstream_column_id:
+                        continue  # 跳过没有上游列的字段
+                    if f.upstream_column_id not in column_ids:
+                        continue  # 跳过不属于本表的字段
                     f_data = f.to_dict()
                     f_data['via_datasource'] = ds.name
                     full_fields.append(f_data)

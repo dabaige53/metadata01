@@ -117,16 +117,40 @@ def get_workbooks():
     total_count = query.count()
     workbooks = query.limit(page_size).offset(offset).all()
     
+    # 预查询统计数据，确保列表与详情一致
+    wb_ids = [wb.id for wb in workbooks]
+    stats_map = {}
+    if wb_ids:
+        # 1. 视图数和数据源数
+        stats_sql = text("""
+            SELECT 
+                w.id,
+                (SELECT COUNT(*) FROM views v WHERE v.workbook_id = w.id) as view_count,
+                (SELECT COUNT(*) FROM datasource_to_workbook dw WHERE dw.workbook_id = w.id) as ds_count,
+                (SELECT COUNT(DISTINCT fv.field_id) 
+                 FROM views v 
+                 JOIN field_to_view fv ON v.id = fv.view_id 
+                 JOIN fields f ON fv.field_id = f.id
+                 WHERE v.workbook_id = w.id AND f.is_calculated = 0) as used_field_count
+            FROM workbooks w
+            WHERE w.id IN :wb_ids
+        """).bindparams(bindparam('wb_ids', expanding=True))
+        rows = session.execute(stats_sql, {'wb_ids': list(wb_ids)}).fetchall()
+        stats_map = {row[0]: {'view_count': row[1], 'datasource_count': row[2], 'field_count': row[3]} for row in rows}
+
     results = []
     for wb in workbooks:
         data = wb.to_dict()
+        # 补全统计信息
+        wb_stats = stats_map.get(wb.id, {})
+        data['view_count'] = wb_stats.get('view_count', 0)
+        data['datasource_count'] = wb_stats.get('datasource_count', 0)
+        data['field_count'] = wb_stats.get('field_count', 0)
+       
         data['upstream_datasources'] = [ds.name for ds in wb.datasources]
         results.append(data)
-        
-    # 移除之前的内存排序逻辑 (已改为 SQL 排序)
 
     # Facets 统计
-    from sqlalchemy import text
     facets = {}
     
     # project_name facet

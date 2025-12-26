@@ -66,9 +66,9 @@ def get_datasources():
     view_map = {}
     wb_map = {}
     table_map = {}
+    field_map = {}
     
     if ds_ids:
-        from sqlalchemy import bindparam
         # 1. 视图统计
         stmt_view = text("""
             SELECT dw.datasource_id, COUNT(v.id) as view_count
@@ -103,6 +103,23 @@ def get_datasources():
         """).bindparams(bindparam('ds_ids', expanding=True))
         tbl_stats = session.execute(stmt_tbl, {'ds_ids': list(ds_ids)}).fetchall()
         table_map = {row[0]: {'embedded': row[1], 'regular': row[2]} for row in tbl_stats}
+
+        # 4. 字段统计 (仅统计原始字段，即 is_calculated=0)
+       # 4. 字段统计 (增加对穿透已发布数据源的支持)
+       # 如果是嵌入式且有关联的已发布数据源，则统计已发布数据源的字段
+        stmt_field = text("""
+           SELECT d.id, COUNT(f.id) as f_count
+           FROM datasources d
+           LEFT JOIN fields f ON (
+               (d.is_embedded = 0 AND f.datasource_id = d.id) OR 
+               (d.is_embedded = 1 AND f.datasource_id = d.source_published_datasource_id) OR
+               (d.is_embedded = 1 AND d.source_published_datasource_id IS NULL AND f.datasource_id = d.id)
+           )
+           WHERE d.id IN :ds_ids AND (f.is_calculated = 0 OR f.is_calculated IS NULL)
+           GROUP BY d.id
+        """).bindparams(bindparam('ds_ids', expanding=True))
+        field_stats = session.execute(stmt_field, {'ds_ids': list(ds_ids)}).fetchall()
+        field_map = {row[0]: row[1] for row in field_stats}
  
     results = []
     for ds in datasources:
@@ -112,7 +129,7 @@ def get_datasources():
         data['embedded_table_count'] = tbl_info['embedded'] if isinstance(tbl_info, dict) else 0
         data['regular_table_count'] = tbl_info['regular'] if isinstance(tbl_info, dict) else 0
         data['table_count'] = data['embedded_table_count'] + data['regular_table_count']
-        data['field_count'] = ds.field_count or 0 # 字段数量目前主表相对准确
+        data['field_count'] = field_map.get(ds.id, ds.field_count or 0)
         data['workbook_count'] = wb_map.get(ds.id, ds.workbook_count or 0)
         data['view_count'] = view_map.get(ds.id, 0)
         # 优化：不返回完整的关联对象列表，仅返回数量以减少 payload

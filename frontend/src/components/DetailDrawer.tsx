@@ -697,7 +697,7 @@ export default function DetailDrawer() {
                 byName[fieldName].fields.push(f);
 
                 // 统计来源数据源
-                const sourceName = f.via_datasource || f.datasourceName || '未知数据源';
+                const sourceName = f.via_datasource || f.datasourceName || f.datasource_name || '未知数据源';
                 byName[fieldName].sources.set(
                     sourceName,
                     (byName[fieldName].sources.get(sourceName) || 0) + 1
@@ -847,7 +847,7 @@ export default function DetailDrawer() {
                                                                     <div className="flex items-center gap-2 flex-wrap">
                                                                         <span className="flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded">
                                                                             <Layers className="w-3 h-3 text-indigo-500" />
-                                                                            {field.via_datasource || field.datasourceName || '未知数据源'}
+                                                                            {field.via_datasource || field.datasourceName || field.datasource_name || '未知数据源'}
                                                                         </span>
                                                                         {field.workbook_name && (
                                                                             <span className="flex items-center gap-1 bg-rose-50 px-1.5 py-0.5 rounded">
