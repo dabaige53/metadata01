@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## AI回复语言
+简体中文，包括思考过程，task任务和相关交付件都必须是简体中文。
 
 ## 项目概述
 

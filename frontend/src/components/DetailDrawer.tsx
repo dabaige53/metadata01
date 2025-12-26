@@ -1626,6 +1626,20 @@ export default function DetailDrawer() {
         );
     };
 
+    const getReferenceCount = () => {
+        if (!data) return 0;
+        const type = currentItem?.type;
+        const isProjectType = type === 'projects';
+        const isUserType = type === 'users';
+
+        if (data.referenceCount !== undefined) return data.referenceCount;
+        if (isProjectType) return (data.stats?.datasource_count || 0) + (data.stats?.workbook_count || 0);
+        if (isUserType) return (data.datasources?.length || 0) + (data.workbooks?.length || 0);
+        if (type === 'tables') return data.stats?.workbook_count || data.workbooks?.length || 0;
+        if (type === 'datasources') return data.stats?.workbook_count || data.workbooks?.length || 0;
+        return data.views?.length || data.workbooks?.length || 0;
+    };
+
     // ========== 概览 Tab 重构 PRO (Description List 风格) ==========
     const renderOverviewTab = () => {
         if (!data) return null;
@@ -1645,15 +1659,6 @@ export default function DetailDrawer() {
             if (data.dataType) return data.dataType;
             if (data.viewType) return data.viewType === 'dashboard' ? '仪表盘' : '视图';
             return getModuleName(type || '');
-        };
-
-        // 计算引用次数 - 根据类型使用不同逻辑
-        const getReferenceCount = () => {
-            if (data.referenceCount !== undefined) return data.referenceCount;
-            if (isProjectType) return (data.stats?.datasource_count || 0) + (data.stats?.workbook_count || 0);
-            if (isUserType) return (data.datasources?.length || 0) + (data.workbooks?.length || 0);
-            if (type === 'tables') return data.stats?.workbook_count || data.workbooks?.length || 0;
-            return data.views?.length || data.workbooks?.length || 0;
         };
 
         // 获取引用次数标签
@@ -2316,7 +2321,7 @@ export default function DetailDrawer() {
                             {/* 引用数徽章 */}
                             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gray-100 bg-gray-50 text-xs font-medium text-gray-600">
                                 <Flame className="w-3.5 h-3.5 text-orange-500" />
-                                引用数: {safeData?.referenceCount ?? (safeData?.views?.length || 0)}
+                                引用数: {getReferenceCount()}
                             </div>
                         </div>
                     </div>

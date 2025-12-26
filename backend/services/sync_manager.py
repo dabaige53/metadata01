@@ -1665,8 +1665,17 @@ class MetadataSync:
             # ========== Datasource 统计 ==========
             datasources = self.session.query(Datasource).all()
             for ds in datasources:
-                ds.table_count = len(ds.tables) if ds.tables else 0
-                ds.workbook_count = len(ds.workbooks) if ds.workbooks else 0
+                # 🔧 物理表统计修正：通过关联表统计
+                ds.table_count = self.session.execute(
+                    text("SELECT COUNT(*) FROM table_to_datasource WHERE datasource_id = :ds_id"),
+                    {"ds_id": ds.id}
+                ).scalar() or 0
+                
+                # 🔧 工作簿统计修正：通过关联表统计
+                ds.workbook_count = self.session.execute(
+                    text("SELECT COUNT(*) FROM datasource_to_workbook WHERE datasource_id = :ds_id"),
+                    {"ds_id": ds.id}
+                ).scalar() or 0
                 
                 # 🔧 嵌入式数据源字段统计修复：引用发布式则从发布式获取
                 source_fields = ds.fields
@@ -1695,6 +1704,12 @@ class MetadataSync:
             calc_fields = self.session.query(CalculatedField).all()
             formula_map = defaultdict(list)
             for cf in calc_fields:
+                # 🔧 修复：如果 CalculatedField 表中没有公式，尝试从 Field 表补全
+                if not cf.formula:
+                    f_record = self.session.query(Field).filter_by(id=cf.id).first()
+                    if f_record and f_record.formula:
+                        cf.formula = f_record.formula
+
                 if cf.formula:
                     # 标准化公式并计算哈希
                     formula_clean = cf.formula.strip()
@@ -1746,6 +1761,13 @@ class MetadataSync:
                     SELECT COUNT(*) FROM field_dependencies 
                     WHERE field_dependencies.dependency_field_id = calculated_fields.id
                 )
+            """))
+
+            # 6. 将 fields 表中的 usage_count 同步到 calculated_fields
+            print("  - 同步指标视图引用次数...")
+            self.session.execute(text("""
+                UPDATE calculated_fields 
+                SET usage_count = (SELECT usage_count FROM fields WHERE fields.id = calculated_fields.id)
             """))
 
             self.session.commit()
