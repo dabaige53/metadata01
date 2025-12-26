@@ -24,6 +24,7 @@ from backend.models import (
     FieldDependency, Metric, dashboard_to_sheet
 )
 from .tableau_client import TableauMetadataClient
+from .sync_report import SyncReportGenerator
 
 class MetadataSync:
     """元数据同步管理器"""
@@ -777,6 +778,7 @@ class MetadataSync:
         # 根据类型解析字段详情 (提前解析以便获取 table_id 和 schema 穿透)
         typename = f_data.get("__typename")
         target_table_id = None
+        table_info = None  # 初始化 table_info 避免后续引用错误
         
         if typename == "ColumnField":
             # 关联上游表和列
@@ -1502,6 +1504,32 @@ class MetadataSync:
             print(f"❌ V5 迁移失败: {e}")
             import traceback
             traceback.print_exc()
+        
+        # 📊 生成同步报告
+        end_time = datetime.now()
+        sync_stats = {
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "duration": (end_time - start_time).total_seconds(),
+            "status": "completed",
+            "user_count": user_count,
+            "project_count": project_count,
+            "db_count": db_count,
+            "table_count": table_count,
+            "ds_count": ds_count,
+            "wb_count": wb_count,
+            "field_count": field_count,
+            "calc_count": calc_count,
+            "ftv_count": ftv_count,
+            "lineage_count": lineage_count
+        }
+        
+        try:
+            report_dir = os.path.join(os.path.dirname(self.db_path), "reports")
+            reporter = SyncReportGenerator(self.session, sync_stats)
+            reporter.generate_report(output_dir=report_dir)
+        except Exception as e:
+            print(f"⚠️ 报告生成失败: {e}")
     
     def sync_views_usage(self) -> int:
         """同步视图使用统计（通过 REST API）并记录历史快照"""

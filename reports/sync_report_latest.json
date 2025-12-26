@@ -1,0 +1,575 @@
+{
+  "report_time": "2025-12-26T13:00:24.532611",
+  "sync_summary": {
+    "start_time": null,
+    "end_time": null,
+    "duration_seconds": null,
+    "status": "completed"
+  },
+  "module_stats": {
+    "users": {
+      "count": 0,
+      "error": "(sqlite3.OperationalError) no such table: users\n[SQL: SELECT COUNT(*) FROM users]\n(Background on this error at: https://sqlalche.me/e/20/e3q8)"
+    },
+    "projects": {
+      "count": 14
+    },
+    "databases": {
+      "count": 6
+    },
+    "tables": {
+      "count": 516
+    },
+    "datasources": {
+      "count": 172
+    },
+    "workbooks": {
+      "count": 80
+    },
+    "views": {
+      "count": 1595
+    },
+    "fields": {
+      "count": 20231
+    },
+    "calculated_fields": {
+      "count": 4935
+    },
+    "regular_fields": {
+      "count": 15296
+    },
+    "unique_regular_fields": {
+      "count": 5987
+    },
+    "unique_calculated_fields": {
+      "count": 1703
+    }
+  },
+  "module_lineage_details": {
+    "databases": {
+      "total": 6,
+      "linked_tables": 36,
+      "orphan_tables": 34
+    },
+    "tables": {
+      "total": 516,
+      "embedded": 480,
+      "physical": 36,
+      "linked_to_datasource": 173
+    },
+    "datasources": {
+      "total": 172,
+      "embedded": 115,
+      "certified": 0,
+      "with_upstream_tables": 154,
+      "with_downstream_workbooks": 142,
+      "with_fields": 104
+    },
+    "workbooks": {
+      "total": 80,
+      "with_views": 80,
+      "with_datasources": 80,
+      "with_fields": 80
+    },
+    "views": {
+      "total": 1595,
+      "dashboards": 199,
+      "sheets": 1396,
+      "with_field_references": 1531,
+      "sheets_included_in_dashboards": 621
+    },
+    "fields": {
+      "total": 20231,
+      "calculated": 4935,
+      "regular": 15296,
+      "with_table": 15278,
+      "with_datasource": 20231,
+      "with_workbook": 16513,
+      "used_in_views": 3063
+    }
+  },
+  "lineage_stats": {
+    "table_to_datasource": {
+      "total": 357,
+      "by_lineage_source": {
+        "api": 357
+      }
+    },
+    "datasource_to_workbook": {
+      "total": 186,
+      "by_lineage_source": {
+        "api": 186
+      }
+    },
+    "field_to_view": {
+      "total": 17758,
+      "by_lineage_source": {
+        "api": 17758
+      }
+    },
+    "dashboard_to_sheet": {
+      "total": 640,
+      "by_lineage_source": {
+        "api": 640
+      }
+    },
+    "field_dependencies": {
+      "total": 9827
+    },
+    "calc_field_dependencies": {
+      "total": 9827
+    },
+    "field_full_lineage": {
+      "total": 278219
+    },
+    "regular_field_full_lineage": {
+      "total": 115234
+    },
+    "calc_field_full_lineage": {
+      "total": 162985
+    }
+  },
+  "label_distribution": {
+    "fields_by_source": {
+      "api": 20231
+    },
+    "fields_by_penetration": {
+      "failed": 1220,
+      "not_applicable": 19011
+    },
+    "regular_fields_by_source": {
+      "null": 15296
+    },
+    "regular_fields_by_penetration": {
+      "null": 15296
+    }
+  },
+  "type_distribution": {
+    "field_roles": {
+      "unknown": 8365,
+      "dimension": 6918,
+      "measure": 4948
+    },
+    "field_data_types": {},
+    "table_types": {
+      "embedded": 516
+    },
+    "view_types": {
+      "dashboard": 199,
+      "sheet": 1396
+    }
+  },
+  "coverage_stats": {
+    "field_description": {
+      "total": 20231,
+      "with_description": 3,
+      "without_description": 20228,
+      "coverage_rate": 0.0001
+    },
+    "datasource_description": {
+      "total": 172,
+      "with_description": 5,
+      "coverage_rate": 0.0291
+    },
+    "datasource_certification": {
+      "published_total": 57,
+      "certified": 0,
+      "certification_rate": 0.0
+    }
+  },
+  "hot_assets": {
+    "hot_views": [
+      {
+        "name": "提前期分布",
+        "views": 10148,
+        "workbook_id": "7499f780-7f55-7d9f-2a51-e875c7d42a00"
+      },
+      {
+        "name": "到达四象限",
+        "views": 10148,
+        "workbook_id": "7499f780-7f55-7d9f-2a51-e875c7d42a00"
+      },
+      {
+        "name": "每日均价",
+        "views": 10148,
+        "workbook_id": "7499f780-7f55-7d9f-2a51-e875c7d42a00"
+      },
+      {
+        "name": "舱位均价",
+        "views": 10148,
+        "workbook_id": "7499f780-7f55-7d9f-2a51-e875c7d42a00"
+      },
+      {
+        "name": "票价周期 雷达图",
+        "views": 10148,
+        "workbook_id": "7499f780-7f55-7d9f-2a51-e875c7d42a00"
+      },
+      {
+        "name": "始发四象限",
+        "views": 10148,
+        "workbook_id": "7499f780-7f55-7d9f-2a51-e875c7d42a00"
+      },
+      {
+        "name": "票价监控",
+        "views": 10148,
+        "workbook_id": "7499f780-7f55-7d9f-2a51-e875c7d42a00"
+      },
+      {
+        "name": "全周期成长线",
+        "views": 5390,
+        "workbook_id": "8c53c444-2ae8-8781-7660-d69989f01e4b"
+      },
+      {
+        "name": "分月概况",
+        "views": 5390,
+        "workbook_id": "8c53c444-2ae8-8781-7660-d69989f01e4b"
+      },
+      {
+        "name": "分天销售还原",
+        "views": 5390,
+        "workbook_id": "8c53c444-2ae8-8781-7660-d69989f01e4b"
+      }
+    ],
+    "hot_fields": [
+      {
+        "name": "销售航段张数",
+        "usage": 500,
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
+      },
+      {
+        "name": "出票日期筛选",
+        "usage": 104,
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
+      },
+      {
+        "name": "航班日期",
+        "usage": 93,
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
+      },
+      {
+        "name": "销售航段张数",
+        "usage": 83,
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
+      },
+      {
+        "name": "出票日期",
+        "usage": 78,
+        "datasource_id": "4a04e1e4-dd14-e5a5-a271-5691aeccd79e"
+      },
+      {
+        "name": "分摊票价_人民币",
+        "usage": 77,
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
+      },
+      {
+        "name": "航班班次",
+        "usage": 77,
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
+      },
+      {
+        "name": "实际销售_标识",
+        "usage": 72,
+        "datasource_id": "4a04e1e4-dd14-e5a5-a271-5691aeccd79e"
+      },
+      {
+        "name": "CLAZZ",
+        "usage": 69,
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
+      },
+      {
+        "name": "客票状态",
+        "usage": 67,
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
+      }
+    ],
+    "hot_datasources": [
+      {
+        "name": "销售航段",
+        "workbook_count": 16,
+        "id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
+      },
+      {
+        "name": "销售票面",
+        "workbook_count": 13,
+        "id": "b1b414eb-f6d8-929e-8e84-932bf07913c6"
+      },
+      {
+        "name": "航班信息表-中科",
+        "workbook_count": 4,
+        "id": "9760a8e3-3306-1cf3-3fbf-6bb10bbd600c"
+      },
+      {
+        "name": "未来预售-中科",
+        "workbook_count": 4,
+        "id": "c642c61a-9e4c-fd26-a4ba-4aa6f12a848d"
+      },
+      {
+        "name": "销售航段新",
+        "workbook_count": 3,
+        "id": "4a04e1e4-dd14-e5a5-a271-5691aeccd79e"
+      },
+      {
+        "name": "中转航段表",
+        "workbook_count": 3,
+        "id": "9fb266e6-2efd-9f8c-834d-019ebc202eb2"
+      },
+      {
+        "name": "代理人信息维护",
+        "workbook_count": 3,
+        "id": "a7a74e5d-a997-d109-8e09-f870110e7717"
+      },
+      {
+        "name": "融合表_周期_SQL定制数据",
+        "workbook_count": 2,
+        "id": "18cd18cf-e229-d958-a1c5-19213ee1de50"
+      },
+      {
+        "name": "中转航段数据关联代理人数据",
+        "workbook_count": 2,
+        "id": "1bd2a786-6d39-df33-3aec-7f235442d880"
+      },
+      {
+        "name": "特殊产品改期客票",
+        "workbook_count": 2,
+        "id": "1ffb278e-3106-41b5-ce10-f6a22a1c45e7"
+      }
+    ]
+  },
+  "project_distribution": {
+    "by_project": [
+      {
+        "name": "数据沙盒",
+        "id": "project_80919cdb",
+        "datasource_count": 42,
+        "workbook_count": 0,
+        "total_assets": 42
+      },
+      {
+        "name": "默认值",
+        "id": "project_225f3ed0",
+        "datasource_count": 2,
+        "workbook_count": 22,
+        "total_assets": 24
+      },
+      {
+        "name": "销售数据",
+        "id": "project_6f06be2d",
+        "datasource_count": 0,
+        "workbook_count": 15,
+        "total_assets": 15
+      },
+      {
+        "name": "Tableau 示例",
+        "id": "project_48667329",
+        "datasource_count": 7,
+        "workbook_count": 7,
+        "total_assets": 14
+      },
+      {
+        "name": "数据处理流程",
+        "id": "project_1456ec2c",
+        "datasource_count": 6,
+        "workbook_count": 2,
+        "total_assets": 8
+      },
+      {
+        "name": "Personal Space",
+        "id": "project_a651498b",
+        "datasource_count": 0,
+        "workbook_count": 8,
+        "total_assets": 8
+      },
+      {
+        "name": "收益管理",
+        "id": "project_ab2d22cd",
+        "datasource_count": 0,
+        "workbook_count": 6,
+        "total_assets": 6
+      },
+      {
+        "name": "OAG",
+        "id": "project_c1c00d64",
+        "datasource_count": 0,
+        "workbook_count": 5,
+        "total_assets": 5
+      },
+      {
+        "name": "国际",
+        "id": "project_9b3b28f4",
+        "datasource_count": 0,
+        "workbook_count": 4,
+        "total_assets": 4
+      },
+      {
+        "name": "综合",
+        "id": "project_88e7de9f",
+        "datasource_count": 0,
+        "workbook_count": 4,
+        "total_assets": 4
+      },
+      {
+        "name": "国内",
+        "id": "project_227dd1db",
+        "datasource_count": 0,
+        "workbook_count": 3,
+        "total_assets": 3
+      },
+      {
+        "name": "数据质量监控",
+        "id": "project_b9e8599f",
+        "datasource_count": 0,
+        "workbook_count": 2,
+        "total_assets": 2
+      },
+      {
+        "name": "致远数据",
+        "id": "project_d22e2ce8",
+        "datasource_count": 0,
+        "workbook_count": 1,
+        "total_assets": 1
+      },
+      {
+        "name": "市场情报",
+        "id": "project_2a969744",
+        "datasource_count": 0,
+        "workbook_count": 1,
+        "total_assets": 1
+      }
+    ]
+  },
+  "deduplication_stats": {
+    "regular_fields": {
+      "total_instances": 15296,
+      "unique_fields": 5987,
+      "dedup_ratio": 0.6086,
+      "avg_instances_per_field": 2.55,
+      "by_table_association": {
+        "has_table": 5274,
+        "no_table": 713
+      }
+    },
+    "calculated_fields": {
+      "total_instances": 4935,
+      "unique_fields": 1703,
+      "dedup_ratio": 0.6549,
+      "avg_instances_per_field": 2.9,
+      "by_complexity": {
+        "simple": 1703
+      }
+    }
+  },
+  "dedup_top_duplicates": {
+    "top_regular_fields": [
+      {
+        "name": "进港-国家",
+        "instances": 72,
+        "id": "faa8f6f6-c514-43ab-a200-2305d31409a9"
+      },
+      {
+        "name": "POD-地区",
+        "instances": 72,
+        "id": "e19774d3-ba8c-4602-94e8-12a241d08778"
+      },
+      {
+        "name": "POD-国家二字码",
+        "instances": 72,
+        "id": "ccdce0d5-15f5-4dea-98dc-fbaabb5b225c"
+      },
+      {
+        "name": "POD-C/R",
+        "instances": 72,
+        "id": "ba377822-d142-4bcf-8852-963da083f2a3"
+      },
+      {
+        "name": "出港-航协大区",
+        "instances": 72,
+        "id": "b25d6076-14b1-4d74-90f4-a0354cace033"
+      },
+      {
+        "name": "出港-排序",
+        "instances": 72,
+        "id": "abacd606-87aa-4e85-b7ec-1837c40e4799"
+      },
+      {
+        "name": "POD-是否免签",
+        "instances": 72,
+        "id": "956aa7d2-65e1-44c7-a471-922f21e839b0"
+      },
+      {
+        "name": "进港-航协次区",
+        "instances": 72,
+        "id": "9300ff45-bfd6-4e96-9a5a-5ea1494e613b"
+      },
+      {
+        "name": "POO-免签开始日期",
+        "instances": 72,
+        "id": "8215ab2e-d87a-4069-83eb-aa8c65226bda"
+      },
+      {
+        "name": "出港-机场代码",
+        "instances": 72,
+        "id": "7e069311-02d3-490a-a9c8-1aa162cf0ede"
+      }
+    ],
+    "top_calculated_fields": [
+      {
+        "name": "销售票面张数",
+        "instances": 27,
+        "id": "11814f8d-9582-466a-94c7-f0285e717ee8"
+      },
+      {
+        "name": "INDEX()",
+        "instances": 22,
+        "id": "18827a81-fdb3-464f-b190-d3c8c7687f40"
+      },
+      {
+        "name": "是否国际线",
+        "instances": 17,
+        "id": "d1cb837e-da0e-4389-9f09-20a48d3fc1e9"
+      },
+      {
+        "name": "平均票价-中位数",
+        "instances": 17,
+        "id": "36782072-5ebb-44d0-b8f5-f3978d482d48"
+      },
+      {
+        "name": "帕累托占比",
+        "instances": 15,
+        "id": "ab9defc5-05d5-4892-986b-b50640566827"
+      },
+      {
+        "name": "平均票价-航段含油",
+        "instances": 15,
+        "id": "1b294894-ba1a-45e5-b943-03f8d519be87"
+      },
+      {
+        "name": "分摊票价-欧澳区间",
+        "instances": 14,
+        "id": "fdcda48b-9ef1-4da3-8503-8f1fb5e1ed96"
+      },
+      {
+        "name": "中转(含往返)",
+        "instances": 14,
+        "id": "fd883c2c-c694-4632-83d9-f746fcade4a7"
+      },
+      {
+        "name": "销售航段张数",
+        "instances": 14,
+        "id": "fd204ddb-6bf9-4cfc-90c9-bd79d2efc5e0"
+      },
+      {
+        "name": "ASCII([DEPARTURE_AIRPORTCODE])",
+        "instances": 14,
+        "id": "f1764fb6-488f-465c-8014-b9dad17cb14b"
+      }
+    ]
+  },
+  "unestablished_lineage": {
+    "fields_without_datasource": 0,
+    "fields_without_table": 4953,
+    "fields_without_workbook": 3718,
+    "fields_without_views": 17168,
+    "penetration_failed": 1220,
+    "column_fields_without_upstream": 1232
+  }
+}
