@@ -434,12 +434,10 @@ class SyncReportGenerator:
             # 表类型分布
             table_type_dist = self.session.execute(text("""
                 SELECT 
-                    CASE 
-                        WHEN is_embedded = 1 THEN 'embedded'
-                        ELSE 'physical'
-                    END as table_type,
+                    CASE WHEN is_embedded = 1 THEN 'embedded' ELSE 'physical' END,
                     COUNT(*)
-                FROM tables GROUP BY table_type
+                FROM tables 
+                GROUP BY CASE WHEN is_embedded = 1 THEN 'embedded' ELSE 'physical' END
             """)).fetchall()
             result["table_types"] = {r[0]: r[1] for r in table_type_dist}
             

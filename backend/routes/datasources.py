@@ -273,7 +273,16 @@ def get_datasource_detail(ds_id):
     field_count = 0
     metric_count = 0
     
-    for f in ds.fields:
+    # 🔧 嵌入式数据源字段修复：引用发布式则从发布式获取字段列表
+    source_fields = ds.fields
+    if ds.is_embedded and ds.source_published_datasource_id:
+        published_ds = session.query(Datasource).filter_by(
+            id=ds.source_published_datasource_id
+        ).first()
+        if published_ds:
+            source_fields = published_ds.fields
+    
+    for f in source_fields:
         # 精简的字段摘要（避免返回完整对象和 N+1 查询）
         # 增加上游表信息用于前端分组显示
         summary = {

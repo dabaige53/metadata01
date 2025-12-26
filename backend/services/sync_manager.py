@@ -1667,9 +1667,18 @@ class MetadataSync:
                 ds.table_count = len(ds.tables) if ds.tables else 0
                 ds.workbook_count = len(ds.workbooks) if ds.workbooks else 0
                 
+                # 🔧 嵌入式数据源字段统计修复：引用发布式则从发布式获取
+                source_fields = ds.fields
+                if ds.is_embedded and ds.source_published_datasource_id:
+                    published_ds = self.session.query(Datasource).filter_by(
+                        id=ds.source_published_datasource_id
+                    ).first()
+                    if published_ds:
+                        source_fields = published_ds.fields
+                
                 field_count = 0
                 metric_count = 0
-                for f in (ds.fields or []):
+                for f in (source_fields or []):
                     if f.is_calculated:
                         if f.role == 'measure' or f.role is None:
                             metric_count += 1
