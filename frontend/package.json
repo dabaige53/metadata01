@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3200 --hostname 0.0.0.0",
-    "build": "next build",
-    "start": "next start -p 3200 --hostname 0.0.0.0",
+    "dev": "NEXT_USE_TURBOPACK=0 next dev -p ${PORT:-3200} --hostname 0.0.0.0",
+    "build": "NEXT_USE_TURBOPACK=0 next build",
+    "start": "NEXT_USE_TURBOPACK=0 next start -p ${PORT:-3200} --hostname 0.0.0.0",
     "lint": "eslint"
   },
   "dependencies": {

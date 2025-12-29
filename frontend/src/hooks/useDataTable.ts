@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { FacetConfig, ActiveFilters } from '@/components/data-table/FacetFilterBar';
 import type { SortState, SortConfig } from '@/components/data-table/SortButtons';
@@ -50,6 +50,14 @@ export function useDataTable<T extends Record<string, any>>({
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  // 使用 ref 存储回调，避免依赖变化导致 effect 重复触发
+  const onParamsChangeRef = useRef(onParamsChange);
+  onParamsChangeRef.current = onParamsChange;
+
+  const filterKeys = useMemo(() => {
+    return facetFields || DEFAULT_FACET_CONFIG[moduleName] || [];
+  }, [facetFields, moduleName]);
+
   // 从 URL 读取初始状态
   const initialSort = searchParams.get('sort') || '';
   const initialOrder = (searchParams.get('order') as 'asc' | 'desc') || 'desc';
@@ -88,14 +96,46 @@ export function useDataTable<T extends Record<string, any>>({
     setSearchTerm(initialSearch);
   }, [initialSearch]);
 
+  const areFiltersEqual = useCallback((left: ActiveFilters, right: ActiveFilters) => {
+    const leftKeys = Object.keys(left).filter((key) => left[key]?.length);
+    const rightKeys = Object.keys(right).filter((key) => right[key]?.length);
+    if (leftKeys.length !== rightKeys.length) return false;
+
+    for (const key of leftKeys) {
+      const leftValues = left[key] || [];
+      const rightValues = right[key] || [];
+      if (leftValues.length !== rightValues.length) return false;
+      for (let i = 0; i < leftValues.length; i += 1) {
+        if (leftValues[i] !== rightValues[i]) return false;
+      }
+    }
+    return true;
+  }, []);
+
+  useEffect(() => {
+    const parsedFilters: ActiveFilters = {};
+    filterKeys.forEach((key) => {
+      const value = searchParams.get(key);
+      if (value) {
+        parsedFilters[key] = value.split(',').filter(Boolean);
+      }
+    });
+
+    setActiveFilters((prev) => {
+      if (areFiltersEqual(prev, parsedFilters)) {
+        return prev;
+      }
+      return parsedFilters;
+    });
+  }, [filterKeys, searchParams, areFiltersEqual]);
+
   // 计算 Facets
   const facets = useMemo<FacetConfig>(() => {
     if (serverSide && facetsOverride) return facetsOverride;
 
-    const keys = facetFields || DEFAULT_FACET_CONFIG[moduleName] || [];
     const result: FacetConfig = {};
 
-    keys.forEach((key) => {
+    filterKeys.forEach((key) => {
       result[key] = {};
       data.forEach((item) => {
         // 特殊处理：metricType
@@ -110,10 +150,15 @@ export function useDataTable<T extends Record<string, any>>({
     });
 
     return result;
-  }, [data, moduleName, facetFields, serverSide, facetsOverride]);
+  }, [data, filterKeys, serverSide, facetsOverride]);
 
   // 应用筛选
   const filteredData = useMemo(() => {
+    // 服务器端模式下，筛选和搜索已由后端处理，直接返回
+    if (serverSide) {
+      return data;
+    }
+
     let result = [...data];
 
     // 搜索过滤 (使用回车确认后的值 appliedSearchTerm)
@@ -141,10 +186,15 @@ export function useDataTable<T extends Record<string, any>>({
     });
 
     return result;
-  }, [data, appliedSearchTerm, activeFilters, searchFields]);
+  }, [data, appliedSearchTerm, activeFilters, searchFields, serverSide]);
 
   // 应用排序
   const sortedData = useMemo(() => {
+    // 服务器端模式下，排序已由后端处理，直接返回
+    if (serverSide) {
+      return filteredData;
+    }
+
     if (!sortState.sortKey) return filteredData;
 
     return [...filteredData].sort((a, b) => {
@@ -157,7 +207,7 @@ export function useDataTable<T extends Record<string, any>>({
 
       return sortState.sortOrder === 'asc' ? comparison : -comparison;
     });
-  }, [filteredData, sortState]);
+  }, [filteredData, sortState, serverSide]);
 
   // 应用分页
   const paginationState: PaginationState = {
@@ -176,14 +226,14 @@ export function useDataTable<T extends Record<string, any>>({
 
   // 初始化请求 (仅服务器端模式)
   useEffect(() => {
-    if (serverSide && onParamsChange) {
+    if (serverSide && onParamsChangeRef.current) {
       // 构建初始参数
       const params: Record<string, any> = {};
       if (pageSize !== 50) params.page_size = pageSize.toString();
       params.page = '1';
 
       // 触发初始请求
-      onParamsChange(params);
+      onParamsChangeRef.current(params);
     }
   }, []); // 空依赖数组,仅在组件挂载时执行一次
 
@@ -211,8 +261,8 @@ export function useDataTable<T extends Record<string, any>>({
     router.replace(newUrl, { scroll: false });
 
     // 如果是服务器端模式，通知父组件参数变化以触发 API 请求
-    if (serverSide && onParamsChange) {
-      onParamsChange(params);
+    if (serverSide && onParamsChangeRef.current) {
+      onParamsChangeRef.current(params);
     }
   }, [sortState, currentPage, appliedSearchTerm, activeFilters, pageSize, router, serverSide]);
 

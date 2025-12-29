@@ -6,7 +6,7 @@
 
 const http = require('http');
 
-const FRONTEND_BASE = 'http://localhost:3100';
+const FRONTEND_BASE = process.env.FRONTEND_BASE || 'http://localhost:3200';
 
 const colors = {
   reset: '\x1b[0m',

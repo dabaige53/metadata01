@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useRef } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 import { Loader2, LayoutGrid, Search } from 'lucide-react';
 import FacetFilterBar from '@/components/data-table/FacetFilterBar';
@@ -11,6 +11,7 @@ import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 import ZeroAccessViewsAnalysis from '@/components/views/ZeroAccessViewsAnalysis';
 import HotViewsAnalysis from '@/components/views/HotViewsAnalysis';
 import { useCallback } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 
 interface ViewItem {
     id: string;
@@ -32,13 +33,17 @@ interface ViewItem {
 
 function ViewsContent() {
     const { openDrawer } = useDrawer();
+    const searchParams = useSearchParams();
+    const router = useRouter();
     const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'zeroAccess' | 'hot'>('dashboard');
 
     // 数据状态
     const [data, setData] = useState<ViewItem[]>([]);
     const [total, setTotal] = useState(0);
+    const [baseTotal, setBaseTotal] = useState(0);
     const [facetsData, setFacetsData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const requestIdRef = useRef(0);
 
     // 各 Tab 统计数量
     const [tabCounts, setTabCounts] = useState<{ [key: string]: number }>({
@@ -54,6 +59,8 @@ function ViewsContent() {
     }, []);
 
     const fetchViews = async (params: Record<string, any>) => {
+        const requestId = requestIdRef.current + 1;
+        requestIdRef.current = requestId;
         setLoading(true);
         try {
             const queryParams = new URLSearchParams();
@@ -63,18 +70,23 @@ function ViewsContent() {
 
             const res = await fetch(`/api/views?${queryParams.toString()}`);
             const result = await res.json();
+            if (requestId !== requestIdRef.current) return;
 
             setData(result.items || []);
             setTotal(result.total || 0);
+            setBaseTotal(result.base_total ?? result.total ?? 0);
             setFacetsData(result.facets || null);
             // 同步当前列表数量
             if (activeTab === 'dashboard' || activeTab === 'list') {
                 setTabCounts(prev => ({ ...prev, [activeTab]: result.total || 0 }));
             }
         } catch (error) {
+            if (requestId !== requestIdRef.current) return;
             console.error('Failed to fetch views:', error);
         } finally {
-            setLoading(false);
+            if (requestId === requestIdRef.current) {
+                setLoading(false);
+            }
         }
     };
 
@@ -128,6 +140,22 @@ function ViewsContent() {
         },
     });
 
+    useEffect(() => {
+        if (activeTab !== 'list' && activeTab !== 'dashboard') return;
+
+        const params: Record<string, any> = {};
+        searchParams.forEach((value, key) => {
+            params[key] = value;
+        });
+        if (activeTab === 'dashboard') {
+            params.include_standalone = 'true';
+        }
+
+        fetchViews(params);
+    }, [activeTab, searchParams]);
+
+    
+
     // 同步列表页数量 (如果有筛选)
     useEffect(() => {
         if (activeTab === 'dashboard' || activeTab === 'list') {
@@ -147,11 +175,11 @@ function ViewsContent() {
         label: activeTab === 'dashboard' ? '仪表盘' :
             activeTab === 'list' ? '全部视图' :
                 activeTab === 'zeroAccess' ? '零访问视图' : '热门视图',
-        total: total,
+        total: baseTotal,
         count: tabCounts[activeTab] || 0
     };
 
-    if (loading) {
+    if (loading && data.length === 0) {
         return (
             <div className="flex justify-center py-20">
                 <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />

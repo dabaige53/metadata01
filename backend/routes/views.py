@@ -19,12 +19,20 @@ def get_views_zero_access():
     
     只统计「仪表盘 + 独立Sheet」，排除被仪表盘包含的sheet，
     以保持与视图列表页面的总数一致。
+    
+    增强版：只统计有 luid 的视图（即 REST API 返回过访问统计的），
+    排除因 luid 缺失而无法验证访问量的视图。
+    
+    支持 summary_only=true 参数，只返回工作簿摘要（不含具体视图列表），用于快速加载。
     """
     session = g.db_session
     from sqlalchemy import text
     
+    summary_only = request.args.get('summary_only', 'false').lower() == 'true'
+    
     # 查询访问量为0的视图（仅仪表盘 + 独立sheet）
     # 排除被仪表盘包含的sheet，避免重复统计
+    # 🆕 增加 luid 条件：只统计有 luid 的视图（真正可验证的零访问）
     sql = """
         SELECT 
             v.id, v.name, v.view_type, v.workbook_id,
@@ -32,6 +40,7 @@ def get_views_zero_access():
         FROM views v
         LEFT JOIN workbooks w ON v.workbook_id = w.id
         WHERE (v.total_view_count IS NULL OR v.total_view_count = 0)
+          AND v.luid IS NOT NULL AND v.luid != ''
           AND (
               v.view_type = 'dashboard' 
               OR (v.view_type = 'sheet' AND v.id NOT IN (SELECT sheet_id FROM dashboard_to_sheet))
@@ -49,23 +58,62 @@ def get_views_zero_access():
             groups_map[wb_name] = {
                 'workbook_name': wb_name,
                 'workbook_id': row.workbook_id,
-                'views': []
+                'views': [] if not summary_only else None,  # summary_only 模式不返回视图列表
+                'view_count': 0
             }
         
-        groups_map[wb_name]['views'].append({
-            'id': row.id,
-            'name': row.name,
-            'view_type': row.view_type or 'sheet'
-        })
+        groups_map[wb_name]['view_count'] += 1
+        
+        if not summary_only:
+            groups_map[wb_name]['views'].append({
+                'id': row.id,
+                'name': row.name,
+                'view_type': row.view_type or 'sheet'
+            })
     
-    groups = sorted(groups_map.values(), key=lambda grp: len(grp['views']), reverse=True)
-    for grp in groups:
-        grp['view_count'] = len(grp['views'])
+    groups = sorted(groups_map.values(), key=lambda grp: grp['view_count'], reverse=True)
+    
+    # summary_only 模式下移除空的 views 列表
+    if summary_only:
+        for grp in groups:
+            del grp['views']
     
     return jsonify({
         'total_count': len(rows),
         'workbook_count': len(groups),
         'groups': groups
+    })
+
+
+@api_bp.route('/views/governance/zero-access/workbook/<workbook_id>')
+def get_zero_access_views_by_workbook(workbook_id):
+    """获取指定工作簿下的零访问视图列表（懒加载）"""
+    session = g.db_session
+    from sqlalchemy import text
+    
+    sql = """
+        SELECT v.id, v.name, v.view_type
+        FROM views v
+        WHERE v.workbook_id = :workbook_id
+          AND (v.total_view_count IS NULL OR v.total_view_count = 0)
+          AND (
+              v.view_type = 'dashboard' 
+              OR (v.view_type = 'sheet' AND v.id NOT IN (SELECT sheet_id FROM dashboard_to_sheet))
+          )
+        ORDER BY v.name
+    """
+    rows = session.execute(text(sql), {'workbook_id': workbook_id}).fetchall()
+    
+    views = [{
+        'id': row.id,
+        'name': row.name,
+        'view_type': row.view_type or 'sheet'
+    } for row in rows]
+    
+    return jsonify({
+        'workbook_id': workbook_id,
+        'views': views,
+        'count': len(views)
     })
 
 
@@ -139,17 +187,19 @@ def get_views():
     page_size = min(page_size, 10000)
     
     view_type = request.args.get('view_type', '')
+    workbook_name = request.args.get('workbook_name', '')
     include_standalone = request.args.get('include_standalone', '')
     
     offset = (page - 1) * page_size
-    query = session.query(View)
+    base_query = session.query(View)
+    query = base_query
     
     # 筛选逻辑
     if include_standalone == 'true':
         # 特殊模式：显示所有仪表盘 + 独立的 Sheet (不属于任何仪表盘)
         # 此模式通常用于"仪表盘列表" Tab
         from sqlalchemy import or_, and_, not_
-        query = query.filter(
+        base_query = base_query.filter(
             or_(
                 View.view_type == 'dashboard',
                 and_(
@@ -158,10 +208,25 @@ def get_views():
                 )
             )
         )
-    elif view_type:
-        # 普通筛选
-        query = query.filter(View.view_type == view_type)
+        query = base_query
+    
+    if view_type:
+        view_types = [value for value in view_type.split(',') if value]
+        if include_standalone == 'true' and 'sheet' in view_types and 'dashboard' not in view_types:
+            query = query.filter(View.view_type == 'sheet', ~View.parent_dashboards.any())
+        elif len(view_types) == 1:
+            query = query.filter(View.view_type == view_types[0])
+        else:
+            query = query.filter(View.view_type.in_(view_types))
+    
+    if workbook_name:
+        workbook_names = [value for value in workbook_name.split(',') if value]
+        if len(workbook_names) == 1:
+            query = query.filter(View.workbook.has(Workbook.name == workbook_names[0]))
+        else:
+            query = query.filter(View.workbook.has(Workbook.name.in_(workbook_names)))
         
+    base_total = base_query.count()
     total = query.count()
     
     # 排序
@@ -200,26 +265,52 @@ def get_views():
     # Facets 统计
     facets = {}
     
-    # view_type facet
-    view_type_stats = session.execute(text("""
-        SELECT view_type, COUNT(*) as cnt
-        FROM views
-        WHERE view_type IS NOT NULL
-        GROUP BY view_type
-    """)).fetchall()
-    facets['view_type'] = {row[0]: row[1] for row in view_type_stats if row[0]}
-    
-    # workbook_name facet
-    workbook_stats = session.execute(text("""
-        SELECT w.name as workbook_name, COUNT(*) as cnt
-        FROM views v
-        LEFT JOIN workbooks w ON v.workbook_id = w.id
-        WHERE w.name IS NOT NULL
-        GROUP BY w.name
-        ORDER BY cnt DESC
-        LIMIT 20
-    """)).fetchall()
-    facets['workbook_name'] = {row[0]: row[1] for row in workbook_stats if row[0]}
+    if include_standalone == 'true':
+        view_type_stats = session.execute(text("""
+            SELECT v.view_type, COUNT(*) as cnt
+            FROM views v
+            WHERE v.view_type IS NOT NULL
+              AND (
+                v.view_type = 'dashboard'
+                OR (v.view_type = 'sheet' AND v.id NOT IN (SELECT sheet_id FROM dashboard_to_sheet))
+              )
+            GROUP BY v.view_type
+        """)).fetchall()
+        facets['view_type'] = {row[0]: row[1] for row in view_type_stats if row[0]}
+        
+        workbook_stats = session.execute(text("""
+            SELECT w.name as workbook_name, COUNT(*) as cnt
+            FROM views v
+            LEFT JOIN workbooks w ON v.workbook_id = w.id
+            WHERE w.name IS NOT NULL
+              AND (
+                v.view_type = 'dashboard'
+                OR (v.view_type = 'sheet' AND v.id NOT IN (SELECT sheet_id FROM dashboard_to_sheet))
+              )
+            GROUP BY w.name
+            ORDER BY cnt DESC
+            LIMIT 20
+        """)).fetchall()
+        facets['workbook_name'] = {row[0]: row[1] for row in workbook_stats if row[0]}
+    else:
+        view_type_stats = session.execute(text("""
+            SELECT view_type, COUNT(*) as cnt
+            FROM views
+            WHERE view_type IS NOT NULL
+            GROUP BY view_type
+        """)).fetchall()
+        facets['view_type'] = {row[0]: row[1] for row in view_type_stats if row[0]}
+        
+        workbook_stats = session.execute(text("""
+            SELECT w.name as workbook_name, COUNT(*) as cnt
+            FROM views v
+            LEFT JOIN workbooks w ON v.workbook_id = w.id
+            WHERE w.name IS NOT NULL
+            GROUP BY w.name
+            ORDER BY cnt DESC
+            LIMIT 20
+        """)).fetchall()
+        facets['workbook_name'] = {row[0]: row[1] for row in workbook_stats if row[0]}
     
     results = []
     for v in views:
@@ -232,6 +323,7 @@ def get_views():
     return jsonify({
         'items': results,
         'total': total,
+        'base_total': base_total,
         'page': page,
         'page_size': page_size,
         'facets': facets

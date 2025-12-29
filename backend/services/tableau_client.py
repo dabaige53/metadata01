@@ -112,8 +112,15 @@ class TableauMetadataClient:
         else:
             raise RuntimeError(f"GraphQL 查询失败: {response.status_code} - {response.text}")
     
-    def fetch_views_usage(self) -> Dict[str, int]:
-        """从 REST API 获取视图使用统计 (REST API)"""
+    def fetch_views_usage(self) -> tuple:
+        """从 REST API 获取视图使用统计 (REST API)
+        
+        返回:
+            tuple: (usage_map, luid_map)
+                - usage_map: Dict[str, int] - {view_luid: total_view_count}
+                - luid_map: Dict[tuple, str] - {(workbook_id, view_name): view_luid}
+                  用于回溯补充 GraphQL 同步时缺失的 luid
+        """
         if not self.auth_token or not self.site_id:
             raise RuntimeError("未登录，请先调用 sign_in()")
         
@@ -126,6 +133,7 @@ class TableauMetadataClient:
         }
         
         usage_map = {}
+        luid_map = {}  # 新增：(workbook_id, view_name) -> view_luid 映射
         page_number = 1
         page_size = 100
         
@@ -153,12 +161,20 @@ class TableauMetadataClient:
                 
                 for view in views:
                     luid = view.get("id")
+                    view_name = view.get("name")
+                    workbook = view.get("workbook", {})
+                    workbook_id = workbook.get("id") if workbook else None
+                    
                     usage = view.get("usage", {})
                     # usage 可能是 None，也可能没有 totalViewCount
                     if usage:
                         total_count = usage.get("totalViewCount", 0)
                         if luid:
                             usage_map[luid] = int(total_count)
+                    
+                    # 构建 luid 映射用于回溯补充
+                    if luid and workbook_id and view_name:
+                        luid_map[(workbook_id, view_name)] = luid
                 
                 # Check pagination
                 pagination = data.get("pagination", {})
@@ -174,8 +190,9 @@ class TableauMetadataClient:
             except Exception as e:
                 print(f"  ❌ 获取视图统计异常: {e}")
                 break
-                
-        return usage_map    
+        
+        print(f"  📌 构建 luid 映射: {len(luid_map)} 条 (用于回溯补充)")
+        return usage_map, luid_map    
     def fetch_databases(self) -> List[Dict]:
         """获取所有数据库（增强版）"""
         query = """

@@ -1533,16 +1533,43 @@ class MetadataSync:
             print(f"⚠️ 报告生成失败: {e}")
     
     def sync_views_usage(self) -> int:
-        """同步视图使用统计（通过 REST API）并记录历史快照"""
+        """同步视图使用统计（通过 REST API）并记录历史快照
+        
+        增强版：利用 REST API 返回的 luid_map 回溯补充 GraphQL 同步时缺失的 luid
+        """
         print("\n📊 同步视图使用统计 (REST API)...")
         
         try:
-            usage_map = self.client.fetch_views_usage()
+            usage_map, luid_map = self.client.fetch_views_usage()
             
             if not usage_map:
                 print("  ⚠️ 未获取到视图使用统计")
                 return 0
             
+            # 🆕 第一阶段：回溯补充缺失的 luid
+            # 针对 GraphQL 同步时 luid 为空的视图，用 (workbook_luid, view_name) 匹配
+            from sqlalchemy import or_
+            
+            views_missing_luid = self.session.query(View).filter(
+                or_(View.luid == None, View.luid == '')
+            ).all()
+            
+            luid_filled = 0
+            for view in views_missing_luid:
+                # 获取工作簿的 luid
+                if view.workbook_id:
+                    workbook = self.session.query(Workbook).filter_by(id=view.workbook_id).first()
+                    if workbook and workbook.luid and view.name:
+                        key = (workbook.luid, view.name)
+                        if key in luid_map:
+                            view.luid = luid_map[key]
+                            luid_filled += 1
+            
+            if luid_filled > 0:
+                self.session.commit()
+                print(f"  🔧 回溯补充 {luid_filled} 个视图的 luid")
+            
+            # 第二阶段：更新使用统计
             updated = 0
             history_count = 0
             views = self.session.query(View).all()
@@ -1759,7 +1786,7 @@ class MetadataSync:
             self.session.execute(text("""
                 UPDATE calculated_fields SET reference_count = (
                     SELECT COUNT(*) FROM field_dependencies 
-                    WHERE field_dependencies.dependency_field_id = calculated_fields.id
+                    WHERE field_dependencies.dπependency_field_id = calculated_fields.id
                 )
             """))
 

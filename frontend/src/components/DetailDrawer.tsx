@@ -1517,7 +1517,10 @@ export default function DetailDrawer() {
             // 对于 workbooks 类型，获取其下所有视图的统计
             if (currentItem.type === 'views') {
                 const stats = await api.getViewUsageStats(currentItem.id);
-                setUsageStats(stats);
+                setUsageStats({
+                    ...stats,
+                    history: stats.history || []
+                });
             } else if (currentItem.type === 'workbooks' && data?.views) {
                 // 工作簿：汇总所有视图统计 (并行请求每个视图的统计)
                 let totalViews = 0;
@@ -1567,6 +1570,7 @@ export default function DetailDrawer() {
             );
         }
 
+        const history = usageStats.history || [];
         const isUnused = usageStats.totalViewCount === 0;
         const isHot = usageStats.totalViewCount > 100;
 
@@ -1609,11 +1613,11 @@ export default function DetailDrawer() {
                 )}
 
                 {/* 历史趋势 */}
-                {usageStats.history.length > 0 && (
+                {history.length > 0 && (
                     <div className="bg-gray-50 rounded-lg border p-4">
                         <div className="text-xs font-bold text-gray-700 mb-3">历史记录</div>
                         <div className="space-y-2">
-                            {usageStats.history.slice(0, 5).map((h, i) => (
+                            {history.slice(0, 5).map((h, i) => (
                                 <div key={i} className="flex justify-between text-xs">
                                     <span className="text-gray-500">{new Date(h.recordedAt).toLocaleString('zh-CN')}</span>
                                     <span className="font-mono text-gray-700">{h.count} 次</span>
@@ -1637,6 +1641,7 @@ export default function DetailDrawer() {
         if (isUserType) return (data.datasources?.length || 0) + (data.workbooks?.length || 0);
         if (type === 'tables') return data.stats?.workbook_count || data.workbooks?.length || 0;
         if (type === 'datasources') return data.stats?.workbook_count || data.workbooks?.length || 0;
+        if (type === 'views') return data.totalViewCount ?? data.total_view_count ?? data.hitsTotal ?? data.hits_total ?? 0;
         return data.views?.length || data.workbooks?.length || 0;
     };
 

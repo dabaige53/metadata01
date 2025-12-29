@@ -5,7 +5,7 @@
  * 检测所有API接口的响应时间,标记超过500ms的慢请求
  */
 
-const BACKEND_URL = 'http://localhost:8101';
+const BACKEND_URL = process.env.API_BASE || 'http://localhost:8201';
 const SLOW_THRESHOLD = 500; // 500ms阈值
 
 // 测试用例

@@ -22,11 +22,21 @@ BACKEND_PID_FILE = os.path.join(PID_DIR, 'backend.pid')
 FRONTEND_PID_FILE = os.path.join(PID_DIR, 'frontend.pid')
 LOG_DIR = os.path.join(PID_DIR, 'logs')
 
+# 是否强制清理占用端口的进程（默认开启）
+FORCE_KILL_PORTS = os.environ.get('FORCE_KILL_PORTS', '1') == '1'
+
+
+def get_ports():
+    backend_port = int(os.environ.get('BACKEND_PORT', os.environ.get('PORT', 8201)))
+    frontend_port = int(os.environ.get('FRONTEND_PORT', 3200))
+    return backend_port, frontend_port
+
 
 def check_port_availability():
     """检查端口是否可用，如果被占用则提示用户"""
-    ports = [8201, 3200]
-    port_names = {8201: "后端 Flask", 3200: "前端 Next.js"}
+    backend_port, frontend_port = get_ports()
+    ports = [backend_port, frontend_port]
+    port_names = {backend_port: "后端 Flask", frontend_port: "前端 Next.js"}
     occupied_ports = []
     
     # 清理 Next.js 锁文件（安全操作）
@@ -90,7 +100,7 @@ def check_port_availability():
     else:
         print(f"✓ 端口 {', '.join(map(str, ports))} 均可用")
 
-def run_command(command, cwd=None, name="", log_file=None):
+def run_command(command, cwd=None, name="", log_file=None, env=None):
     """运行子进程并重定向输出"""
     os.makedirs(LOG_DIR, exist_ok=True)
     
@@ -110,6 +120,7 @@ def run_command(command, cwd=None, name="", log_file=None):
         cwd=cwd,
         stdout=stdout,
         stderr=stderr,
+        env=env,
         start_new_session=True  # 现代推荐方式：在独立会话中运行子进程
     )
 
@@ -159,6 +170,8 @@ def is_safe_to_kill(pid):
     
     只有当进程明确属于本项目时才返回 True，避免误杀 IDE 服务
     """
+    if FORCE_KILL_PORTS:
+        return True
     name, args = get_process_info(pid)
     name = name.lower()
     args = args.lower()
@@ -274,8 +287,9 @@ def stop_services():
     print("=" * 50)
     
     stopped_any = False
-    ports = [8201, 3200]
-    port_names = {8201: "后端 Flask", 3200: "前端 Next.js"}
+    backend_port, frontend_port = get_ports()
+    ports = [backend_port, frontend_port]
+    port_names = {backend_port: "后端 Flask", frontend_port: "前端 Next.js"}
     
     # 步骤 1: 通过 PID 文件停止进程
     for pid_file, service_name in [(BACKEND_PID_FILE, "后端"), (FRONTEND_PID_FILE, "前端")]:
@@ -330,6 +344,7 @@ def start_services(is_daemon=False):
     """启动所有服务"""
     root_dir = os.path.dirname(os.path.abspath(__file__))
     frontend_dir = os.path.join(root_dir, "frontend")
+    backend_port, frontend_port = get_ports()
     
     # 先停止之前由本脚本启动的服务（通过 PID 文件）
     print("=" * 50)
@@ -364,8 +379,8 @@ def start_services(is_daemon=False):
         print("✓ 旧进程已清理")
     
     # 检查端口是否仍被占用
-    ports = [8201, 3200]
-    port_names = {8201: "后端 Flask", 3200: "前端 Next.js"}
+    ports = [backend_port, frontend_port]
+    port_names = {backend_port: "后端 Flask", frontend_port: "前端 Next.js"}
     occupied_ports = []
     
     for port in ports:
@@ -424,8 +439,9 @@ def start_services(is_daemon=False):
         backend_proc = run_command(
             "python3 run_backend.py",
             cwd=root_dir,
-            name="后端服务 (Port 8201)",
-            log_file=backend_log
+            name=f"后端服务 (Port {backend_port})",
+            log_file=backend_log,
+            env={**os.environ, "PORT": str(backend_port)}
         )
         save_pid(backend_proc.pid, BACKEND_PID_FILE)
         
@@ -436,14 +452,15 @@ def start_services(is_daemon=False):
         frontend_proc = run_command(
             "npm run dev",
             cwd=frontend_dir,
-            name="前端服务 (Port 3200)",
-            log_file=frontend_log
+            name=f"前端服务 (Port {frontend_port})",
+            log_file=frontend_log,
+            env={**os.environ, "PORT": str(frontend_port)}
         )
         save_pid(frontend_proc.pid, FRONTEND_PID_FILE)
         
         print("\n✨ 系统已全面启动！")
-        print("🔗 前端地址: http://localhost:3200 (本机)")
-        print("🔗 后端 API: http://localhost:8201/api (本机)")
+        print(f"🔗 前端地址: http://localhost:{frontend_port} (本机)")
+        print(f"🔗 后端 API: http://localhost:{backend_port}/api (本机)")
         
         # 获取本机内网 IP
         import socket
@@ -452,7 +469,7 @@ def start_services(is_daemon=False):
             s.connect(("8.8.8.8", 80))
             local_ip = s.getsockname()[0]
             s.close()
-            print(f"🌐 内网访问: http://{local_ip}:3200")
+            print(f"🌐 内网访问: http://{local_ip}:{frontend_port}")
         except:
             pass
 

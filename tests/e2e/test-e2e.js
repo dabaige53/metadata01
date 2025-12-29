@@ -11,8 +11,8 @@
 
 const http = require('http');
 
-const API_BASE = 'http://localhost:8101';
-const FRONTEND_BASE = 'http://localhost:3100';  // Next.js 默认端口
+const API_BASE = process.env.API_BASE || 'http://localhost:8201';
+const FRONTEND_BASE = process.env.FRONTEND_BASE || 'http://localhost:3200';
 
 // 颜色输出
 const colors = {
@@ -151,7 +151,7 @@ async function runTests() {
   log('blue', '═══════════════════════════════════════════════════════');
 
   // 测试 API 端点
-  log('yellow', '\n【阶段 1】测试后端 API (localhost:8001)');
+  log('yellow', `\n【阶段 1】测试后端 API (${API_BASE})`);
   log('yellow', '─────────────────────────────────────────────────────');
 
   await testAPIEndpoint('仪表盘分析', '/api/dashboard/analysis');
@@ -165,7 +165,7 @@ async function runTests() {
   await testAPIEndpoint('重复指标分析', '/api/quality/duplicates');
 
   // 测试前端页面
-  log('yellow', '\n【阶段 2】测试前端页面 (localhost:3001)');
+  log('yellow', `\n【阶段 2】测试前端页面 (${FRONTEND_BASE})`);
   log('yellow', '─────────────────────────────────────────────────────');
 
   await testFrontendPage('首页', '/');
