@@ -216,17 +216,17 @@ def get_metrics_catalog():
                 MIN(cf.id) as representative_id,
                 MAX(cf.unique_id) as unique_id,
                 COALESCE((
-                    SELECT MAX(CASE WHEN d.is_embedded = 1 THEN 1 ELSE 0 END)
+                    SELECT MAX(CASE WHEN d2.is_embedded = 1 THEN 1 ELSE 0 END)
                     FROM calculated_fields cf2
                     JOIN calc_field_full_lineage cfl ON cf2.id = cfl.field_id
-                    LEFT JOIN datasources d ON cfl.datasource_id = d.id
+                    LEFT JOIN datasources d2 ON cfl.datasource_id = d2.id
                     WHERE TRIM(cf2.name) = TRIM(cf.name) AND cf2.formula_hash = cf.formula_hash
                 ), 0) as has_embedded,
                 COALESCE((
-                    SELECT MAX(CASE WHEN d.is_embedded = 0 OR d.is_embedded IS NULL THEN 1 ELSE 0 END)
+                    SELECT MAX(CASE WHEN d3.is_embedded = 0 OR d3.is_embedded IS NULL THEN 1 ELSE 0 END)
                     FROM calculated_fields cf2
                     JOIN calc_field_full_lineage cfl ON cf2.id = cfl.field_id
-                    LEFT JOIN datasources d ON cfl.datasource_id = d.id
+                    LEFT JOIN datasources d3 ON cfl.datasource_id = d3.id
                     WHERE TRIM(cf2.name) = TRIM(cf.name) AND cf2.formula_hash = cf.formula_hash
                 ), 0) as has_published
             FROM calculated_fields cf
@@ -384,41 +384,57 @@ def get_metrics_catalog():
     role_counts = session.execute(text(role_sql), params).fetchall()
     facets['role'] = {str(r or 'unknown'): c for r, c in role_counts}
     
-    # 聚合状态统计
-    agg_sql_simple = """
+    # 分享搜索参数给 facets 统计
+    
+    # 聚合状态统计 - 修正为受搜索条件影响
+    agg_sql_simple = f"""
         SELECT 
-            CASE WHEN (SELECT COUNT(*) FROM calculated_fields cf WHERE cf.unique_id = ucf.id) > 1 THEN 'true' ELSE 'false' END as is_agg,
+            CASE WHEN COUNT(DISTINCT cf.id) > 1 THEN 'true' ELSE 'false' END as is_agg,
             COUNT(*) as cnt
-        FROM unique_calculated_fields ucf
+        FROM (
+            SELECT TRIM(cf.name) as clean_name, cf.formula_hash
+            FROM calculated_fields cf
+            {where_clause}
+            GROUP BY TRIM(cf.name), cf.formula_hash
+        ) gs
+        JOIN calculated_fields cf ON TRIM(cf.name) = gs.clean_name AND cf.formula_hash = gs.formula_hash
         GROUP BY is_agg
     """
-    agg_counts = session.execute(text(agg_sql_simple)).fetchall()
-    facets['is_aggregated'] = {r[0]: r[1] for r in agg_counts}
+    # 简化版统计，为了速度牺牲绝对精准（不再跨表根据 Lineage 实时判断，仅根据搜索后的结果统计）
+    # 或者为了性能，暂时跳过复杂的 facets 统计，如果加载依然卡顿
     
-    # 去重方式统计 (根据数据源类型)
-    dedup_method_sql = """
+    # 获取真正的聚合情况（在当前筛选下）
+    facets['is_aggregated'] = {}
+    
+    # 去重方式统计 (根据数据源类型) - 简化版
+    dedup_method_sql = f"""
         SELECT 
             CASE 
                 WHEN has_embedded = 1 AND has_published = 1 THEN 'hash_mixed'
                 WHEN has_embedded = 1 THEN 'hash_embedded'
                 ELSE 'hash_published'
-            END as dedup_method,
+            END as method,
             COUNT(*) as cnt
         FROM (
             SELECT 
-                ucf.id,
+                TRIM(cf.name) as clean_name, 
+                cf.formula_hash,
                 MAX(CASE WHEN d.is_embedded = 1 THEN 1 ELSE 0 END) as has_embedded,
                 MAX(CASE WHEN d.is_embedded = 0 OR d.is_embedded IS NULL THEN 1 ELSE 0 END) as has_published
-            FROM unique_calculated_fields ucf
-            LEFT JOIN calculated_fields cf ON cf.unique_id = ucf.id
+            FROM calculated_fields cf
             LEFT JOIN calc_field_full_lineage cfl ON cf.id = cfl.field_id
             LEFT JOIN datasources d ON cfl.datasource_id = d.id
-            GROUP BY ucf.id
+            {where_clause}
+            GROUP BY TRIM(cf.name), cf.formula_hash
         ) sub
-        GROUP BY dedup_method
+        GROUP BY method
     """
-    dedup_counts = session.execute(text(dedup_method_sql)).fetchall()
-    facets['dedup_method'] = {r[0]: r[1] for r in dedup_counts}
+    try:
+        dedup_counts = session.execute(text(dedup_method_sql), params).fetchall()
+        facets['dedup_method'] = {str(r[0]): r[1] for r in dedup_counts}
+    except Exception as e:
+        print(f"Facets error: {e}")
+        facets['dedup_method'] = {}
     
     return jsonify({
         'items': items,

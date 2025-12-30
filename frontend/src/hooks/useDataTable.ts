@@ -228,10 +228,10 @@ export function useDataTable<T extends Record<string, any>>({
     return sortedData.slice(start, end);
   }, [serverSide, data, sortedData, currentPage, pageSize]);
 
-  // 标记是否已完成首次请求，避免重复请求
-  const hasInitializedRef = useRef(false);
+  // 记录上一次请求参数，避免深度相等的参数重复请求
+  const lastParamsRef = useRef<string>('');
 
-  // 更新 URL 和通知父组件
+  // 更新 URL 和通知父组件 (合并初始化和更新逻辑)
   useEffect(() => {
     const params: Record<string, any> = {};
     if (sortState.sortKey) {
@@ -239,10 +239,9 @@ export function useDataTable<T extends Record<string, any>>({
       params.order = sortState.sortOrder;
     }
     if (currentPage > 1) params.page = currentPage.toString();
-    if (appliedSearchTerm) params.search = appliedSearchTerm; // 使用确认后的值
+    if (appliedSearchTerm) params.search = appliedSearchTerm;
     if (pageSize !== 50) params.page_size = pageSize.toString();
 
-    // 同时包含 activeFilters
     Object.entries(activeFilters).forEach(([k, v]) => {
       if (v && v.length > 0) params[k] = v.join(',');
     });
@@ -253,39 +252,20 @@ export function useDataTable<T extends Record<string, any>>({
     const queryString = urlParams.toString();
     const newUrl = queryString ? `?${queryString}` : '';
 
-    // 使用 window.history 直接更新 URL，避免 Next.js router 的异步行为
+    // 使用 window.history 直接更新 URL
     const currentPath = window.location.pathname;
     const fullUrl = newUrl ? `${currentPath}${newUrl}` : currentPath;
     window.history.replaceState(null, '', fullUrl);
 
-    // 如果是服务器端模式，通知父组件参数变化以触发 API 请求
-    // 首次挂载时也会触发，确保初始请求包含所有参数
-    if (serverSide && onParamsChangeRef.current && hasInitializedRef.current) {
-      onParamsChangeRef.current(params);
+    // 如果是服务器端模式，对比参数是否发生变化
+    if (serverSide && onParamsChangeRef.current) {
+      const currentParamsStr = JSON.stringify(params);
+      if (currentParamsStr !== lastParamsRef.current) {
+        lastParamsRef.current = currentParamsStr;
+        onParamsChangeRef.current(params);
+      }
     }
   }, [sortState, currentPage, appliedSearchTerm, activeFilters, pageSize, serverSide]);
-
-  // 初始化请求 (仅服务器端模式，首次挂载时执行)
-  useEffect(() => {
-    if (serverSide && onParamsChangeRef.current && !hasInitializedRef.current) {
-      hasInitializedRef.current = true;
-      // 构建初始参数，包含所有当前状态
-      const params: Record<string, any> = {};
-      if (sortState.sortKey) {
-        params.sort = sortState.sortKey;
-        params.order = sortState.sortOrder;
-      }
-      if (currentPage > 1) params.page = currentPage.toString();
-      if (appliedSearchTerm) params.search = appliedSearchTerm;
-      if (pageSize !== 50) params.page_size = pageSize.toString();
-      // 包含初始筛选参数
-      Object.entries(activeFilters).forEach(([k, v]) => {
-        if (v && v.length > 0) params[k] = v.join(',');
-      });
-      // 触发初始请求
-      onParamsChangeRef.current(params);
-    }
-  }, [serverSide, sortState, currentPage, appliedSearchTerm, activeFilters, pageSize]);
 
   // 处理筛选变化（单项）
   const handleFilterChange = useCallback((key: string, value: string, checked: boolean) => {
