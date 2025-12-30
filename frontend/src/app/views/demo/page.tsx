@@ -7,7 +7,6 @@ import {
     Info,
     Layout,
     Layers,
-    ShieldAlert,
     TrendingUp,
     XCircle
 } from 'lucide-react';
@@ -21,15 +20,44 @@ export default function ViewIntroDemoPage() {
                         <Layout className="w-7 h-7" />
                     </div>
                     <div className="min-w-0">
-                        <h1 className="text-2xl font-bold text-gray-900">视图详情页产品说明</h1>
-                        <p className="mt-2 text-sm text-gray-600">把一张视图的口径、来源与影响范围，集中在一个页面里看清楚。</p>
+                        <h1 className="text-2xl font-bold text-gray-900">视图详情页：这页在说什么</h1>
+                        <p className="mt-2 text-sm text-gray-600">
+                            这是“视图（View）详情抽屉”的说明页：告诉你这张视图是什么、用什么口径、从哪里来、影响到哪里。
+                        </p>
+                        <div className="mt-3 text-xs text-gray-500">
+                            你在任意视图详情抽屉右上角点击 <span className="font-semibold">“详情介绍”</span> 会进入本页。
+                        </div>
                     </div>
                 </div>
             </div>
 
             <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-                <div className="text-sm font-semibold text-gray-900">一图看全：这张视图的来源与口径</div>
-                <p className="mt-1 text-xs text-gray-500">上游到下游：数据库 → 表 → 列 → 字段 → 指标 → 视图 → 工作簿。</p>
+                <div className="text-sm font-semibold text-gray-900">1) 这是什么“详情页类型”</div>
+                <div className="mt-3 grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                        <div className="text-sm font-semibold text-gray-900">对象</div>
+                        <div className="mt-2 text-sm text-gray-700">
+                            <span className="font-semibold">视图（View）</span>：Tableau 里用户真正打开浏览的内容，可能是<span className="font-semibold">仪表板</span>或<span className="font-semibold">工作表</span>。
+                        </div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                        <div className="text-sm font-semibold text-gray-900">你在这里能拿到的答案</div>
+                        <ul className="mt-2 space-y-2 text-sm text-gray-700">
+                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-indigo-600" />它在用哪些字段/指标（口径）</li>
+                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-indigo-600" />这些口径追溯到哪些表/列（来源）</li>
+                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-indigo-600" />它是否常被访问、是否值得重点维护（价值）</li>
+                        </ul>
+                    </div>
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                        <div className="text-sm font-semibold text-gray-900">你会经常用它做什么</div>
+                        <div className="mt-2 text-sm text-gray-700">定位口径差异、排查上游变更影响、判断视图是否可治理/下线。</div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+                <div className="text-sm font-semibold text-gray-900">2) 血缘怎么理解（从上游到下游）</div>
+                <p className="mt-1 text-xs text-gray-500">上游到下游：数据库 → 表 → 原始列 → 字段 → 指标 → 视图 → 工作簿。</p>
 
                 <div className="mt-4 rounded-2xl border border-gray-100 bg-gray-50 p-5 overflow-auto">
                     <svg viewBox="0 0 1280 560" className="w-full h-auto min-w-[980px]">
@@ -111,57 +139,168 @@ export default function ViewIntroDemoPage() {
                             <Columns className="w-4 h-4 text-indigo-600" />
                             字段/指标
                         </div>
-                        <div className="mt-2 text-xs text-gray-600">解释视图在“算什么”。</div>
+                        <div className="mt-2 text-xs text-gray-600">解释视图在“算什么/用什么口径”。</div>
                     </div>
                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
                         <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
                             <Layers className="w-4 h-4 text-emerald-600" />
                             表/列/数据源
                         </div>
-                        <div className="mt-2 text-xs text-gray-600">解释视图“从哪里来”。</div>
+                        <div className="mt-2 text-xs text-gray-600">解释视图“数据从哪里来”。</div>
                     </div>
                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
                         <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
                             <TrendingUp className="w-4 h-4 text-amber-600" />
                             访问统计
                         </div>
-                        <div className="mt-2 text-xs text-gray-600">解释视图“值不值得维护”。</div>
+                        <div className="mt-2 text-xs text-gray-600">解释视图“是否常用、值不值得维护”。</div>
+                    </div>
+                </div>
+
+                <div className="mt-4 rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                        <GitBranch className="w-4 h-4 text-violet-600" />
+                        你在血缘里最该看的两件事
+                    </div>
+                    <div className="mt-2 grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm text-gray-700">
+                        <div className="rounded-xl border border-gray-100 bg-white p-4">
+                            <div className="font-semibold text-gray-900">口径链路</div>
+                            <div className="mt-1">字段/指标 → 视图：这张视图具体用到了什么。</div>
+                        </div>
+                        <div className="rounded-xl border border-gray-100 bg-white p-4">
+                            <div className="font-semibold text-gray-900">来源链路</div>
+                            <div className="mt-1">字段 → 原始列 → 表/数据库：这些口径最终落在什么物理数据上。</div>
+                        </div>
+                    </div>
+                    <div className="mt-3 text-[11px] text-gray-500">
+                        备注(技术): 血缘数据来自后端接口 <span className="font-mono">/api/lineage/views/:id</span>。
                     </div>
                 </div>
             </div>
 
             <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-                <div className="text-sm font-semibold text-gray-900">这页里有哪些信息</div>
+                <div className="text-sm font-semibold text-gray-900">3) 页面里每个“字段”是什么意思</div>
                 <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
                         <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
                             <Layout className="w-4 h-4 text-indigo-600" />
-                            Header（标题区）
+                            Header（标题区）常见字段
                         </div>
-                        <ul className="mt-3 space-y-2 text-sm text-gray-700">
-                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-indigo-600" />名称与归属：你现在在看哪张视图、属于哪本工作簿。</li>
-                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-indigo-600" />可信提示：是否认证、是否缺少描述（帮助判断可靠性）。</li>
-                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-indigo-600" />关键指标：视图展示“访问量”，字段/指标展示“引用量”。</li>
-                        </ul>
+                        <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-gray-700">
+                            <div className="rounded-xl border border-gray-100 bg-white p-4">
+                                <div className="font-semibold text-gray-900">名称 / 所属工作簿</div>
+                                <div className="mt-1">你现在在看哪张视图，以及它归属在哪本工作簿里。</div>
+                            </div>
+                            <div className="rounded-xl border border-gray-100 bg-white p-4">
+                                <div className="font-semibold text-gray-900">视图类型（仪表板 / 工作表）</div>
+                                <div className="mt-1">决定它是否会出现“包含视图”Tab（仪表板才会有）。</div>
+                            </div>
+                            <div className="rounded-xl border border-gray-100 bg-white p-4">
+                                <div className="font-semibold text-gray-900">认证状态</div>
+                                <div className="mt-1">表示这张视图是否经过官方确认，通常用于判断“优先相信谁”。</div>
+                            </div>
+                            <div className="rounded-xl border border-gray-100 bg-white p-4">
+                                <div className="font-semibold text-gray-900">字段数 / 指标数</div>
+                                <div className="mt-1">这张视图在展示时用到了多少字段/指标，是“口径复杂度”的直观信号。</div>
+                            </div>
+                            <div className="rounded-xl border border-gray-100 bg-white p-4">
+                                <div className="font-semibold text-gray-900">访问量（访问热度）</div>
+                                <div className="mt-1">回答“是否常用/是否值得维护”。（不是影响范围）</div>
+                            </div>
+                        </div>
                         <div className="mt-4 text-[11px] text-gray-500">
-                            备注(技术): 视图的 Header 数值来自 `totalViewCount`；字段/指标来自各自 `usageCount` 统计字段。
+                            备注(技术): 访问量来自视图 usage stats；字段数/指标数/认证等来自详情接口返回。
                         </div>
                     </div>
 
                     <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
                         <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-                            <BookOpen className="w-4 h-4 text-emerald-600" />
-                            Tabs（信息分区）
+                            <Info className="w-4 h-4 text-emerald-600" />
+                            列表项里常见字段
+                        </div>
+                        <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-gray-700">
+                            <div className="rounded-xl border border-gray-100 bg-white p-4">
+                                <div className="font-semibold text-gray-900">引用量（字段/指标）</div>
+                                <div className="mt-1">回答“影响范围”：这个字段/指标被多少视图使用，改动要不要谨慎。</div>
+                            </div>
+                            <div className="rounded-xl border border-gray-100 bg-white p-4">
+                                <div className="font-semibold text-gray-900">状态（使用中 / 仅关联 / 未使用）</div>
+                                <div className="mt-1">帮助你快速判断：这条资产到底有没有被真正用起来。</div>
+                            </div>
+                            <div className="rounded-xl border border-gray-100 bg-white p-4">
+                                <div className="font-semibold text-gray-900">更新时间</div>
+                                <div className="mt-1">用于判断近期是否有改动，配合血缘更容易定位“最近一次变更引发的问题”。</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+                <div className="text-sm font-semibold text-gray-900">4) 每个模块是如何“出来的”（为什么你会看到这些块）</div>
+                <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                            <BookOpen className="w-4 h-4 text-indigo-600" />
+                            Tabs 是“按数据动态出现”的
                         </div>
                         <ul className="mt-3 space-y-2 text-sm text-gray-700">
-                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-emerald-600" />概览：先告诉你“这张视图大概是什么”。</li>
-                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-emerald-600" />使用字段/使用指标：告诉你“它在用什么口径”。</li>
-                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-emerald-600" />访问统计：告诉你“它值不值得维护”。</li>
-                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-emerald-600" />血缘图：告诉你“它从哪里来、影响哪里”。</li>
+                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-indigo-600" />有“所属工作簿”信息 → 才显示 <span className="font-semibold">所属工作簿</span></li>
+                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-indigo-600" />有“使用字段/使用指标” → 才显示对应 Tab</li>
+                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-indigo-600" />是仪表板且包含子视图 → 才显示 <span className="font-semibold">包含视图</span></li>
+                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-indigo-600" /><span className="font-semibold">访问统计 / 血缘图</span> 在视图里属于核心能力，通常都会有</li>
                         </ul>
-                        <div className="mt-4 text-[11px] text-gray-500">
-                            备注(技术): Tabs 会按数据是否存在动态出现（例如仪表板才有“包含视图”）。
+                        <div className="mt-4 text-[11px] text-gray-500">备注(技术): Tabs 由详情抽屉组件按返回数据生成，不是写死的。</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                            <Layers className="w-4 h-4 text-emerald-600" />
+                            “模块块”对应你决策时的 3 个视角
                         </div>
+                        <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-gray-700">
+                            <div className="rounded-xl border border-gray-100 bg-white p-4">
+                                <div className="font-semibold text-gray-900">口径</div>
+                                <div className="mt-1">使用字段/使用指标：帮你确认“这张图到底怎么算”。</div>
+                            </div>
+                            <div className="rounded-xl border border-gray-100 bg-white p-4">
+                                <div className="font-semibold text-gray-900">来源</div>
+                                <div className="mt-1">血缘：把口径一路追溯到表/列，定位真正的数据来源。</div>
+                            </div>
+                            <div className="rounded-xl border border-gray-100 bg-white p-4">
+                                <div className="font-semibold text-gray-900">价值与风险</div>
+                                <div className="mt-1">访问统计 + 引用量：决定维护优先级与变更风险。</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+                <div className="text-sm font-semibold text-gray-900">5) 如何理解每个 Tab（建议用法）</div>
+                <div className="mt-4 grid grid-cols-1 gap-4">
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                        <div className="text-sm font-semibold text-gray-900">概览</div>
+                        <div className="mt-1 text-sm text-gray-700">先看“这张视图是什么 + 关键标签/状态”，再决定往哪块深挖。</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                        <div className="text-sm font-semibold text-gray-900">所属工作簿（可选）</div>
+                        <div className="mt-1 text-sm text-gray-700">确认归属、定位负责人/项目环境；很多治理动作是以工作簿为单位推进的。</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                        <div className="text-sm font-semibold text-gray-900">使用字段 / 使用指标（可选）</div>
+                        <div className="mt-1 text-sm text-gray-700">这是“口径清单”：看它用哪些字段/指标；遇到口径争议先从这里对齐。</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                        <div className="text-sm font-semibold text-gray-900">访问统计</div>
+                        <div className="mt-1 text-sm text-gray-700">回答“是否常用”：热门视图优先保障，冷门视图再结合血缘评估治理/下线。</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                        <div className="text-sm font-semibold text-gray-900">包含视图（仪表板才会有）</div>
+                        <div className="mt-1 text-sm text-gray-700">把仪表板拆成子视图看：口径与血缘往往要下钻到具体子视图才能说清。</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                        <div className="text-sm font-semibold text-gray-900">血缘图</div>
+                        <div className="mt-1 text-sm text-gray-700">回答“从哪里来/影响哪里”：用来评估上游改动风险，或反查口径来源是否一致。</div>
                     </div>
                 </div>
             </div>
@@ -200,59 +339,18 @@ export default function ViewIntroDemoPage() {
             </div>
 
             <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-                <div className="text-sm font-semibold text-gray-900">血缘能回答什么</div>
-                <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
-                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-                            <GitBranch className="w-4 h-4 text-violet-600" />
-                            你要改上游表/列
-                        </div>
-                        <div className="mt-2 text-sm text-gray-700">看血缘，判断这张视图会不会被影响，以及影响通过哪些字段/指标传导。</div>
-                        <div className="mt-3 text-xs text-gray-500">结论输出：影响范围 + 风险点（穿透失败/缺失链路）。</div>
-                    </div>
-                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-                            <ShieldAlert className="w-4 h-4 text-rose-600" />
-                            你发现口径不一致
-                        </div>
-                        <div className="mt-2 text-sm text-gray-700">从视图的“使用指标/使用字段”追到具体来源列，确认是不是同一字段、同一来源。</div>
-                        <div className="mt-3 text-xs text-gray-500">结论输出：口径来源是否一致 + 是否存在重复定义。</div>
-                    </div>
-                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-                            <TrendingUp className="w-4 h-4 text-amber-600" />
-                            你想治理冷门视图
-                        </div>
-                        <div className="mt-2 text-sm text-gray-700">先看访问量判断是否可下线；再看血缘判断下线是否会牵连关键指标/下游。</div>
-                        <div className="mt-3 text-xs text-gray-500">结论输出：下线建议 + 潜在影响。</div>
-                    </div>
-                </div>
-
-                <div className="mt-5 rounded-2xl border border-gray-100 bg-gray-50 p-5">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-                        <Info className="w-4 h-4 text-indigo-600" />
-                        可信度提示
-                    </div>
-                    <div className="mt-2 text-sm text-gray-700">
-                        主要看两个标签：<span className="font-semibold">血缘来源</span> 与 <span className="font-semibold">穿透状态</span>。
-                    </div>
-                    <div className="mt-3 text-[11px] text-gray-500">备注(技术): 标签由后端返回，前端在血缘 Tab 顶部展示。</div>
-                </div>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
                 <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
                     <XCircle className="w-4 h-4 text-gray-500" />
-                    常见坑：为什么我看到的数据“不完整”
+                    为什么有时候血缘/口径看起来“不完整”
                 </div>
                 <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
-                        <div className="text-sm font-semibold text-gray-800">血缘穿透失败</div>
-                        <div className="mt-2 text-sm text-gray-700">你可能只能看到“到字段/指标”为止，追不到原始列。解决方法：先以字段/指标为准，再逐步补齐上游。</div>
+                        <div className="text-sm font-semibold text-gray-800">缺少上游穿透</div>
+                        <div className="mt-2 text-sm text-gray-700">你可能只能看到到“字段/指标”为止，暂时追不到物理列/表。此时以字段/指标口径为准，再逐步补齐来源链路。</div>
                     </div>
                     <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
-                        <div className="text-sm font-semibold text-gray-800">缺少描述/认证</div>
-                        <div className="mt-2 text-sm text-gray-700">这不是“系统报错”，而是治理信号：说明维护不到位，风险更高。</div>
+                        <div className="text-sm font-semibold text-gray-800">统计口径差异</div>
+                        <div className="mt-2 text-sm text-gray-700">访问量（视图热度）与引用量（影响范围）不是一件事；先明确你要回答的问题再选指标。</div>
                     </div>
                 </div>
             </div>

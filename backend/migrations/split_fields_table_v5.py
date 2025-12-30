@@ -359,20 +359,28 @@ def migrate_lineage(session):
         WHERE f.is_calculated = 0 OR f.is_calculated IS NULL
     """))
     
-    # === 计算字段血缘：保持迁移逻辑一致性 ===
-    # 修正：直接从原 field_full_lineage 迁移，以继承 datasource_to_workbook 的关联
-    # 解决之前手动重建导致丢失发布数据源工作簿关联的问题
+    # === 计算字段血缘：修复逻辑 ===
+    # 1. 工作簿血缘基于实例归属 (calculated_fields.workbook_id)
+    # 2. 同时包含实际使用 (calc_field_to_view) 的工作簿
+    
+    # 步骤1：基于实例归属 (calculated_fields.workbook_id) 插入血缘
     session.execute(text("""
         INSERT INTO calc_field_full_lineage (
             field_id, table_id, datasource_id, workbook_id, lineage_type, lineage_path
         )
-        SELECT fl.field_id, fl.table_id, fl.datasource_id, fl.workbook_id, fl.lineage_type, fl.lineage_path
-        FROM field_full_lineage fl
-        JOIN fields f ON fl.field_id = f.id
-        WHERE f.is_calculated = 1
+        SELECT DISTINCT 
+            cf.id as field_id,
+            cf.table_id,
+            cf.datasource_id,
+            cf.workbook_id,
+            'direct' as lineage_type,
+            'CalcField -> Workbook (ownership)' as lineage_path
+        FROM calculated_fields cf
+        WHERE cf.workbook_id IS NOT NULL
     """))
     
-    # 补充基于实际使用的血缘 (如果 field_full_lineage 还没覆盖到的特殊情况)
+    # 步骤2：基于实际使用关系 (calc_field_to_view) 补充额外的工作簿血缘
+    # （某些情况下，计算字段可能被其他工作簿的视图使用）
     session.execute(text("""
         INSERT OR IGNORE INTO calc_field_full_lineage (
             field_id, table_id, datasource_id, workbook_id, lineage_type, lineage_path
@@ -394,8 +402,7 @@ def migrate_lineage(session):
           )
     """))
     
-    print("  ✅ 血缘数据迁移完成（计算字段同步继承 datasource_to_workbook 关联）")
-
+    print("  ✅ 血缘数据迁移完成（计算字段血缘基于实际使用）")
 
     print("\n[4.5/4] 补全所有权血缘 (Ownership Lineage)...")
     # 修复：对于没有使用的字段，也需要记录其归属的工作簿/数据源血缘

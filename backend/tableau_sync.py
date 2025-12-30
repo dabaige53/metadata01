@@ -48,9 +48,9 @@ def main():
             print("\n[仅同步视图使用统计模式]")
             sync.sync_views_usage()
         else:
-            # sync_all() 内部已包含 sync_views_usage() 和 calculate_stats()
-            # 无需额外调用
             sync.sync_all()
+            if not (args.skip_views or args.skip_usage):
+                sync.sync_views_usage()
         
         sync.close()
         print("\n✅ 同步完成")

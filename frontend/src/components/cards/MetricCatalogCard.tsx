@@ -77,7 +77,7 @@ export default function MetricCatalogCard({ metric, onClick }: MetricCatalogCard
     const usageCount = metric.total_usage || 0;
     const details = [
         {
-            label: '使用次数',
+            label: '引用数',
             value: `${usageCount} 次`,
             highlight: usageCount > 0,
         },

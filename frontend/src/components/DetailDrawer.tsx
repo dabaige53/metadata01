@@ -1780,7 +1780,7 @@ export default function DetailDrawer() {
         const getReferenceLabel = () => {
             if (isProjectType) return '包含资产';
             if (isUserType) return '拥有资产';
-            if (isFieldType) return '使用次数';
+            if (isFieldType) return '引用次数';
             if (type === 'datasources') return '关联工作簿';
             if (type === 'workbooks') return '包含视图';
             if (type === 'views') return '访问热度';  // 视图使用访问热度，而非引用数
@@ -2479,15 +2479,10 @@ export default function DetailDrawer() {
                                 <ShieldCheck className="w-3.5 h-3.5" />
                                 状态: {isCertified ? '已认证' : '未认证'}
                             </div>
-                            {/* 使用次数/访问热度徽章 - 根据类型动态显示对应术语 */}
+                            {/* 引用数/访问热度徽章 - 视图显示访问热度，其他显示引用数 */}
                             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gray-100 bg-gray-50 text-xs font-medium text-gray-600">
                                 <Flame className="w-3.5 h-3.5 text-orange-500" />
-                                {currentItem?.type === 'views' ? '访问热度' :
-                                    currentItem?.type === 'datasources' ? '关联工作簿' :
-                                        currentItem?.type === 'workbooks' ? '包含视图' :
-                                            currentItem?.type === 'projects' ? '包含资产' :
-                                                currentItem?.type === 'users' ? '拥有资产' :
-                                                    '使用次数'}: {getReferenceCount()}
+                                {currentItem?.type === 'views' ? '访问热度' : '引用数'}: {getReferenceCount()}
                             </div>
                         </div>
                     </div>

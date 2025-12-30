@@ -1,12 +1,10 @@
-"""
-数据库重置并全量同步脚本
-简化版：直接调用 sync_all()，确保与 tableau_sync.py 逻辑一致
-"""
 from backend.models import get_engine, init_db
 from backend.config import Config
 from backend.tableau_sync import MetadataSync, TableauMetadataClient
+from backend.migrations import split_fields_table_v5
 import os
 import logging
+import sys
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -32,6 +30,8 @@ if base_url.startswith("http://"):
 
 client = TableauMetadataClient(
     base_url,
+    username=Config.TABLEAU_USERNAME,
+    password=Config.TABLEAU_PASSWORD,
     pat_name=Config.TABLEAU_PAT_NAME,
     pat_secret=Config.TABLEAU_PAT_SECRET
 )
@@ -40,15 +40,51 @@ if client.sign_in():
     try:
         sync = MetadataSync(client)
         
-        # 使用 sync_all() 确保与 tableau_sync.py 逻辑一致
-        # sync_all() 内部已包含：
-        # - 按依赖顺序同步所有实体
-        # - sync_views_usage() 视图使用统计
-        # - calculate_stats() 预计算统计字段
-        # - split_fields_table_v5 V5迁移
-        sync.sync_all()
+        # Sync in order
+        print("\n=== STEP 1: Databases ===")
+        sync.sync_databases()
         
-        sync.close()
+        print("\n=== STEP 2: Tables ===")
+        sync.sync_tables()
+        
+        print("\n=== STEP 3: Datasources ===")
+        sync.sync_datasources()
+        
+        print("\n=== STEP 4: Workbooks ===")
+        sync.sync_workbooks()
+        
+        print("\n=== STEP 5: Fields (with Fixes) ===")
+        sync.sync_fields()
+        
+        print("\n=== STEP 5.1: Calculated Fields ===")
+        sync.sync_calculated_fields()
+        
+        print("\n=== STEP 5.2: Field to View Relations ===")
+        sync.sync_field_to_view()
+        
+        print("\n=== STEP 5.5: Structure Migration (Part 1) ===")
+        ms_session, ms_engine = split_fields_table_v5.get_session()
+        split_fields_table_v5.cleanup_tables(ms_session)
+        split_fields_table_v5.create_tables(ms_engine)
+        split_fields_table_v5.migrate_regular_fields(ms_session)
+        split_fields_table_v5.migrate_calculated_fields(ms_session)
+        ms_session.commit()
+        ms_session.close()
+
+        print("\n=== STEP 6: Lineage ===")
+        sync.sync_lineage()
+        
+        print("\n=== STEP 6.5: Calculate Stats (填充 field_full_lineage) ===")
+        sync.calculate_stats()
+        
+        print("\n=== STEP 7: Structure Migration (Part 2) ===")
+        ms_session_2, _ = split_fields_table_v5.get_session()
+        split_fields_table_v5.migrate_relations(ms_session_2)
+        split_fields_table_v5.update_statistics(ms_session_2)
+        split_fields_table_v5.migrate_lineage(ms_session_2)
+        split_fields_table_v5.verify_no_duplicates(ms_session_2)
+        ms_session_2.commit()
+        ms_session_2.close()
         
     except Exception as e:
         print(f"❌ Sync failed with error: {e}")
@@ -59,4 +95,3 @@ if client.sign_in():
     print("✅ Full Reset and Sync Completed.")
 else:
     print("❌ Failed to sign in.")
-

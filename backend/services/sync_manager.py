@@ -1664,8 +1664,9 @@ class MetadataSync:
                 
                 # 方案1：通过关联的数据源统计（更准确且包含未引用的资产）
                 for ds in (wb.datasources or []):
-                    # 不再盲目跳过嵌入式数据源，依靠 set 去重即可
-                    # 避免误跳过那些并非发布式副本的纯直连嵌入数据源
+                    # 仅统计非嵌入式数据源，除非工作簿本身没有发布式数据源
+                    if ds.is_embedded and len([d for d in wb.datasources if not d.is_embedded]) > 0:
+                        continue
                         
                     for f in (ds.fields or []):
                         if f.is_calculated:
