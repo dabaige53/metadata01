@@ -54,9 +54,14 @@ const FILTER_LABELS: Record<string, string> = {
     dashboard: '仪表盘',
     sheet: '工作表',
     all: '全部',
-    physical_table: '按物理表+列',  // 新增
-    embedded_table: '按嵌入式表',  // 新增
-    datasource: '按数据源+名称',  // 新增
+    physical_table: '按物理表+列',
+    embedded_table: '按嵌入式表',
+    datasource: '按数据源+名称',
+    is_aggregated: '是否聚合',
+    // 计算字段去重方式
+    hash_embedded: '公式哈希+嵌入式',
+    hash_published: '公式哈希+数据源',
+    hash_mixed: '公式哈希+混合',
 };
 
 // 值到中文标签的翻译函数
@@ -77,7 +82,7 @@ export default function FacetFilterBar({
 }: FacetFilterBarProps) {
     // 将 facets 转换为 DropdownFilter 需要的格式
     const facetEntries = Object.entries(facets).filter(
-        ([_, values]) => Object.keys(values).length > 0
+        ([, values]) => Object.keys(values).length > 0
     );
 
     // 计算是否有任何激活的筛选

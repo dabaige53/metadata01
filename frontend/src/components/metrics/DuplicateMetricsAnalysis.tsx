@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import { MetricCatalogItem } from '../cards/MetricCatalogCard';
 import FacetFilterBar from '../data-table/FacetFilterBar';
-import SortButtons from '../data-table/SortButtons';
 import Pagination from '../data-table/Pagination';
 import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 
@@ -33,7 +32,6 @@ const SORT_OPTIONS: SortConfig[] = [
 
 export default function DuplicateMetricsAnalysis({ onCountUpdate, onSortUpdate }: DuplicateMetricsAnalysisProps) {
     const [allData, setAllData] = useState<MetricCatalogItem[]>([]);
-    const [totalCount, setTotalCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
 

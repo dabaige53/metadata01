@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import { MetricCatalogItem } from '../cards/MetricCatalogCard';
 import FacetFilterBar from '../data-table/FacetFilterBar';
-import SortButtons from '../data-table/SortButtons';
 import Pagination from '../data-table/Pagination';
 import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 

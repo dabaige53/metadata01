@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Search, BookText, RefreshCw } from 'lucide-react';
 
 interface TermEnum {
@@ -49,23 +48,7 @@ export default function GlossaryPage() {
         setPage(1); // Reset page when filter changes
     }, [activeElement, searchQuery]);
 
-    useEffect(() => {
-        fetchData();
-    }, [activeElement, page]); // Fetch when filter or page changes
-
-    // Debounce search
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            if (page !== 1) {
-                setPage(1); // will trigger fetch via dependency
-            } else {
-                fetchData();
-            }
-        }, 500);
-        return () => clearTimeout(timer);
-    }, [searchQuery]);
-
-    async function fetchData() {
+    const fetchData = useCallback(async () => {
         setLoading(true);
         try {
             const res = await fetch(`/api/glossary?search=${encodeURIComponent(searchQuery)}&element=${activeElement}&page=${page}&page_size=${pageSize}`);
@@ -77,7 +60,23 @@ export default function GlossaryPage() {
         } finally {
             setLoading(false);
         }
-    }
+    }, [activeElement, page, pageSize, searchQuery]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]); // Fetch when filter or page changes
+
+    // Debounce search
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (page !== 1) {
+                setPage(1); // will trigger fetch via dependency
+            } else {
+                fetchData();
+            }
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [fetchData, page, searchQuery]);
 
     async function handleSync() {
         if (syncing) return;

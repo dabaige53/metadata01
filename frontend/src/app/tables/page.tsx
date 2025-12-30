@@ -51,7 +51,7 @@ function TablesContent() {
         setTabCounts(prev => ({ ...prev, [tab]: count }));
     }, []);
 
-    const fetchTables = async (params: Record<string, any>) => {
+    const fetchTables = useCallback(async (params: Record<string, any>) => {
         setLoading(true);
         try {
             const queryParams = new URLSearchParams();
@@ -77,7 +77,7 @@ function TablesContent() {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
     // 治理 Tab 的排序配置与状态
     const [govSortConfig, setGovSortConfig] = useState<{
@@ -124,13 +124,6 @@ function TablesContent() {
         },
     });
 
-    // 搜索框回车处理
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
-            handleSearch();
-        }
-    };
-
     // 监听 Tab 切换，重新获取数据
     useEffect(() => {
         if (activeTab === 'published' || activeTab === 'embedded') {
@@ -145,14 +138,14 @@ function TablesContent() {
                 handlePageChange(1);
             }
         }
-    }, [activeTab]);
+    }, [activeTab, fetchTables, handlePageChange, paginationState.page, paginationState.pageSize]);
 
     // 同步列表页数量
     useEffect(() => {
         if (activeTab === 'published' || activeTab === 'embedded') {
             handleTabCountUpdate(activeTab, paginationState.total);
         }
-    }, [paginationState.total, handleTabCountUpdate]);
+    }, [activeTab, paginationState.total, handleTabCountUpdate]);
 
     // 排序选项
     const sortOptions = [

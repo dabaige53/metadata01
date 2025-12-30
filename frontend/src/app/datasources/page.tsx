@@ -2,7 +2,6 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
-import { api } from '@/lib/api';
 import { Loader2, Layers, Search } from 'lucide-react';
 import FacetFilterBar from '@/components/data-table/FacetFilterBar';
 import SortButtons from '@/components/data-table/SortButtons';
@@ -58,7 +57,7 @@ function DatasourcesContent() {
         setTabCounts(prev => ({ ...prev, [tab]: count }));
     }, []);
 
-    const fetchDatasources = async (params: Record<string, any>) => {
+    const fetchDatasources = useCallback(async (params: Record<string, any>) => {
         setLoading(true);
         try {
             const queryParams = new URLSearchParams();
@@ -84,7 +83,7 @@ function DatasourcesContent() {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
     // 治理 Tab 的排序配置与状态
     const [govSortConfig, setGovSortConfig] = useState<{
@@ -146,14 +145,14 @@ function DatasourcesContent() {
                 handlePageChange(1);
             }
         }
-    }, [activeTab]);
+    }, [activeTab, fetchDatasources, handlePageChange, paginationState.page, paginationState.pageSize]);
 
     // 同步列表页数量 (如果有筛选) - 仅在总数变化时更新
     useEffect(() => {
         if (activeTab === 'published' || activeTab === 'embedded') {
             handleTabCountUpdate(activeTab, paginationState.total);
         }
-    }, [paginationState.total, handleTabCountUpdate]);
+    }, [activeTab, paginationState.total, handleTabCountUpdate]);
 
     // 排序选项
     const sortOptions = [

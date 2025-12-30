@@ -91,13 +91,13 @@ function SearchContent() {
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <h1 className="text-xl font-bold text-gray-900">
-                        搜索结果 <span className="text-gray-400 font-normal">"{query}"</span>
+                        搜索结果 <span className="text-gray-400 font-normal">&quot;{query}&quot;</span>
                     </h1>
                     <span className="text-sm text-gray-500">无结果</span>
                 </div>
                 <div className="text-center py-20">
                     <SearchX className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                    <p className="text-gray-500">没有找到 "{query}" 相关内容</p>
+                    <p className="text-gray-500">没有找到 &quot;{query}&quot; 相关内容</p>
                 </div>
             </div>
         );
@@ -107,7 +107,7 @@ function SearchContent() {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <h1 className="text-xl font-bold text-gray-900">
-                    搜索结果 <span className="text-gray-400 font-normal">"{query}"</span>
+                    搜索结果 <span className="text-gray-400 font-normal">&quot;{query}&quot;</span>
                 </h1>
                 <span className="text-sm text-gray-500">{data.total} 项</span>
             </div>

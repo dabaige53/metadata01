@@ -4,13 +4,11 @@ import { useEffect, useState } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 import {
     Loader2,
-    LayoutGrid,
-    EyeOff,
-    ExternalLink,
+    Search,
     CheckCircle2,
+    EyeOff,
     BarChart3,
-    AlertTriangle,
-    Search
+    ExternalLink
 } from 'lucide-react';
 import { useDataTable } from '@/hooks/useDataTable';
 import FacetFilterBar from '../data-table/FacetFilterBar';

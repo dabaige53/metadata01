@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import { MetricCatalogItem } from '../cards/MetricCatalogCard';
 import FacetFilterBar from '../data-table/FacetFilterBar';
-import SortButtons from '../data-table/SortButtons';
 import Pagination from '../data-table/Pagination';
 import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 
@@ -84,11 +83,7 @@ export default function ComplexMetricsAnalysis({ onCountUpdate, onSortUpdate }: 
     }, [sortState]);
 
     // 统计
-    const superComplex = allData.filter(m => (m.formula_length || 0) >= 500).length;
     const multiDatasourceCount = allData.filter(m => m.datasource_count > 1).length;
-    const avgLength = allData.length > 0
-        ? Math.round(allData.reduce((sum, m) => sum + (m.formula_length || 0), 0) / allData.length)
-        : 0;
 
     if (loading) {
         return (
@@ -196,8 +191,6 @@ export default function ComplexMetricsAnalysis({ onCountUpdate, onSortUpdate }: 
                         </div>
                     ) : (
                         displayData.map((item, idx) => {
-                            const formulaLen = item.formula_length || 0;
-                            // const level = ... (Removed legacy calculation)
                             return (
                                 <div
                                     key={`${item.name}-${item.formula_hash || idx}`}

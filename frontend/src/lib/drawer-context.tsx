@@ -20,7 +20,7 @@ interface DrawerContextType {
     currentItem: DrawerItem | null;
     history: DrawerItem[];
     prefetch: (id: string, type: string, mode?: string) => void;
-    getCachedItem: (id: string, type: string) => any;
+    getCachedItem: (id: string, type: string, mode?: string) => any;
 }
 
 const DrawerContext = createContext<DrawerContextType | undefined>(undefined);
@@ -50,8 +50,9 @@ export function DrawerProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    const getCachedItem = (id: string, type: string) => {
-        return cache[`${type}:${id}`] || null;
+    const getCachedItem = (id: string, type: string, mode?: string) => {
+        const key = mode ? `${type}:${id}:${mode}` : `${type}:${id}`;
+        return cache[key] || null;
     };
 
     const openDrawer = (id: string, type: string, name?: string, mode?: string) => {

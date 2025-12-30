@@ -178,6 +178,7 @@ export default function WorkbookCard({ workbook, onClick, onMouseEnter }: Workbo
       details={details}
       tags={tags}
       onClick={onClick}
+      onMouseEnter={onMouseEnter}
     />
   );
 }

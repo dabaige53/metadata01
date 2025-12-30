@@ -16,11 +16,6 @@ export default function DefinitionTooltip({ term, children, className = '' }: De
     const [position, setPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
     const triggerRef = useRef<HTMLSpanElement>(null);
 
-    // If no definition exists, just return children
-    if (!definition) {
-        return <>{children}</>;
-    }
-
     const handleMouseEnter = () => {
         if (triggerRef.current) {
             const rect = triggerRef.current.getBoundingClientRect();
@@ -47,6 +42,11 @@ export default function DefinitionTooltip({ term, children, className = '' }: De
         window.addEventListener('scroll', handleScroll, true);
         return () => window.removeEventListener('scroll', handleScroll, true);
     }, [isHovered]);
+
+    // If no definition exists, just return children
+    if (!definition) {
+        return <>{children}</>;
+    }
 
     return (
         <>

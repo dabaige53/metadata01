@@ -10,7 +10,6 @@ import {
     ArrowRight,
     Search
 } from 'lucide-react';
-import Pagination from '@/components/data-table/Pagination';
 import { useDataTable } from '@/hooks/useDataTable';
 import InlineFilter from '@/components/data-table/InlineFilter';
 import SortButtons from '@/components/data-table/SortButtons';

@@ -5,14 +5,11 @@ import { useDrawer } from '@/lib/drawer-context';
 import {
     Loader2,
     BookOpen,
-    Layers,
     ExternalLink,
     CheckCircle2,
-    AlertCircle,
     Search
 } from 'lucide-react';
 import FacetFilterBar from '../data-table/FacetFilterBar';
-import SortButtons from '../data-table/SortButtons';
 import Pagination from '../data-table/Pagination';
 import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 

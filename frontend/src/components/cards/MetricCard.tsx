@@ -1,5 +1,5 @@
 import React from 'react';
-import { FunctionSquare, AlertTriangle, Eye } from 'lucide-react';
+import { FunctionSquare, Eye } from 'lucide-react';
 import HorizontalCard from './HorizontalCard';
 import { formatDateWithRelative, isRecent } from '@/lib/date';
 

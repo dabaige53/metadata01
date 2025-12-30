@@ -1,12 +1,15 @@
 'use client';
 
-import { FunctionSquare, Layers, Code } from 'lucide-react';
+import { FunctionSquare, Code, GitMerge, Hash, Database } from 'lucide-react';
 import HorizontalCard from './HorizontalCard';
 
 export interface MetricCatalogItem {
     name: string;
     formula?: string;
     formula_hash?: string;
+    dedup_key?: string;
+    dedup_method?: 'hash_embedded' | 'hash_published' | 'hash_mixed';  // 新增
+    is_aggregated?: boolean;
     role?: string;
     data_type?: string;
     description?: string;
@@ -15,7 +18,7 @@ export interface MetricCatalogItem {
     complexity: number;
     complexity_level: string;
     total_references: number;
-    datasources: Array<{ id: string; name: string }>;
+    datasources: Array<{ id: string; name: string; is_embedded?: boolean }>;
     datasource_count: number;
     workbooks: Array<{ id: string; name: string }>;
     workbook_count: number;
@@ -51,14 +54,6 @@ export default function MetricCatalogCard({ metric, onClick }: MetricCatalogCard
         color: complexityColor,
     });
 
-    // 实例数徽章
-    if (metric.instance_count > 1) {
-        badges.push({
-            text: `${metric.instance_count} 个实例`,
-            color: 'purple',
-        });
-    }
-
     // 构建详情信息
     const details = [
         {
@@ -71,11 +66,11 @@ export default function MetricCatalogCard({ metric, onClick }: MetricCatalogCard
             value: `${metric.formula?.length || 0} 字符`,
         },
         {
-            label: '数据源',
+            label: '跨数据源',
             value: `${metric.datasource_count} 个`,
         },
         {
-            label: '工作簿',
+            label: '跨工作簿',
             value: `${metric.workbook_count} 个`,
         },
     ];
@@ -83,26 +78,50 @@ export default function MetricCatalogCard({ metric, onClick }: MetricCatalogCard
     // 构建标签
     const tags: Array<{ icon?: React.ReactNode; label: string; color: 'green' | 'blue' | 'gray' | 'purple' | 'yellow' | 'red' | 'orange' }> = [];
 
+    // 去重方式标签 (根据数据源类型区分)
+    const dedupMethodLabels: Record<string, { label: string; color: 'blue' | 'orange' | 'purple' }> = {
+        'hash_embedded': { label: '按公式哈希+嵌入式', color: 'orange' },
+        'hash_published': { label: '按公式哈希+数据源', color: 'blue' },
+        'hash_mixed': { label: '按公式哈希+混合', color: 'purple' },
+    };
+    const dedupInfo = dedupMethodLabels[metric.dedup_method || 'hash_published'] || dedupMethodLabels['hash_published'];
+    tags.push({
+        icon: <Hash className="w-3 h-3" />,
+        label: dedupInfo.label,
+        color: dedupInfo.color,
+    });
+
+    // 聚合数量标签 (仅当有多个实例时显示)
     if (metric.instance_count > 1) {
         tags.push({
-            icon: <Layers className="w-3 h-3" />,
-            label: `共有 ${metric.instance_count} 个实例`,
+            icon: <GitMerge className="w-3 h-3" />,
+            label: `${metric.instance_count} 实例 → 1 标准`,
             color: 'purple',
         });
     }
 
-    if (metric.formula) {
-        const truncatedFormula = metric.formula.length > 60
-            ? metric.formula.substring(0, 60) + '...'
-            : metric.formula;
+    // 数据源分布标签 (显示主要数据源名称)
+    if (metric.datasources && metric.datasources.length > 0) {
+        const dsNames = metric.datasources.slice(0, 2).map(ds => ds.name).join(', ');
+        const suffix = metric.datasources.length > 2 ? ` +${metric.datasources.length - 2}` : '';
         tags.push({
-            icon: <Code className="w-3 h-3" />,
-            label: `公式: ${truncatedFormula}`,
+            icon: <Database className="w-3 h-3" />,
+            label: `${dsNames}${suffix}`,
             color: 'gray',
         });
     }
 
-
+    // 公式预览标签
+    if (metric.formula) {
+        const truncatedFormula = metric.formula.length > 40
+            ? metric.formula.substring(0, 40) + '...'
+            : metric.formula;
+        tags.push({
+            icon: <Code className="w-3 h-3" />,
+            label: truncatedFormula,
+            color: 'gray',
+        });
+    }
 
     return (
         <div className="group">
@@ -117,3 +136,4 @@ export default function MetricCatalogCard({ metric, onClick }: MetricCatalogCard
         </div>
     );
 }
+

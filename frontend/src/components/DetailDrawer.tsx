@@ -1,14 +1,12 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 import { api } from '@/lib/api';
 import { formatDateWithRelative, isRecent } from '@/lib/date';
 import {
     X,
     Info,
-    ArrowUpCircle,
-    ArrowDownCircle,
     ArrowLeft,
     AlertTriangle,
     GitBranch,
@@ -51,6 +49,7 @@ interface DetailItem {
     certification_note?: string;
     stats?: any;
     // Upstream
+    upstream_column_name?: string;  // 新增
     upstream_column_info?: any;
     table_info?: any;
     database_info?: any;
@@ -100,7 +99,7 @@ const DetailSkeleton = () => (
 );
 
 export default function DetailDrawer() {
-    const { isOpen, closeDrawer, currentItem, openDrawer, history, pushItem, goBack, goToIndex, prefetch, getCachedItem } = useDrawer();
+    const { isOpen, closeDrawer, currentItem, history, pushItem, goBack, goToIndex, prefetch, getCachedItem } = useDrawer();
     const [activeTab, setActiveTab] = useState('overview');
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<DetailItem | null>(null);
@@ -121,42 +120,9 @@ export default function DetailDrawer() {
         setExpandedGroups(prev => ({ ...prev, [groupKey]: !prev[groupKey] }));
     };
 
-    useEffect(() => {
-        if (isOpen && currentItem) {
-            // 兼容性映射：处理单数类型标识符
-            if (currentItem.type === 'field') currentItem.type = 'fields';
-            if (currentItem.type === 'metric') currentItem.type = 'metrics';
-
-            // 如果 ID 变化，先清除旧数据
-            if (data && data.id !== currentItem.id) {
-                // Check cache immediately before clearing!
-                const cached = getCachedItem(currentItem.id, currentItem.type);
-                if (cached) {
-                    setData(cached);
-                } else {
-                    setData(null);
-                }
-            } else if (!data) {
-                // Check cache if we have no data
-                const cached = getCachedItem(currentItem.id, currentItem.type);
-                if (cached) setData(cached);
-            }
-
-            // 数据开始加载时立即开始滑入
-            setTimeout(() => setReadyToShow(true), 50);
-            loadData(currentItem.id, currentItem.type);
-            setActiveTab('overview');
-            setLineageData(null);
-            setUsageStats(null); // 重置访问统计，防止缓存问题
-        } else {
-            setData(null);
-            setReadyToShow(false);
-        }
-    }, [isOpen, currentItem]);
-
-    const loadData = async (id: string, type: string) => {
+    const loadData = useCallback(async (id: string, type: string, mode?: string) => {
         // 1. 优先使用缓存 (Instant Load)
-        const cached = getCachedItem(id, type);
+        const cached = getCachedItem(id, type, mode);
         if (cached) {
             setData(cached);
             setLoading(false);
@@ -166,7 +132,7 @@ export default function DetailDrawer() {
         setLoading(true);
         setError(null);
         try {
-            const result = await api.getDetail(type, id);
+            const result = await api.getDetail(type, id, mode);
             setData(result);
         } catch (err) {
             console.error(err);
@@ -174,7 +140,41 @@ export default function DetailDrawer() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [getCachedItem]);
+
+    useEffect(() => {
+        if (isOpen && currentItem) {
+            // 兼容性映射：处理单数类型标识符
+            if (currentItem.type === 'field') currentItem.type = 'fields';
+            if (currentItem.type === 'metric') currentItem.type = 'metrics';
+
+            // 1. 如果 ID 变化，检查缓存或重置数据
+            if (data && data.id !== currentItem.id) {
+                const cached = getCachedItem(currentItem.id, currentItem.type, currentItem.mode);
+                if (cached) {
+                    setData(cached);
+                } else {
+                    setData(null);
+                }
+                return; // 等待下一次渲染 (数据更新后)
+            }
+
+            // 2. 如果数据已加载且匹配，停止处理 (防止死循环)
+            if (data && data.id === currentItem.id) {
+                if (!readyToShow) setReadyToShow(true);
+                return;
+            }
+
+            // 3. 开始加载新数据 (此时 data 为 null)
+            setTimeout(() => setReadyToShow(true), 50);
+            loadData(currentItem.id, currentItem.type, currentItem.mode);
+            setLineageData(null);
+            setUsageStats(null); // 重置访问统计
+        } else {
+            setData(null);
+            setReadyToShow(false);
+        }
+    }, [currentItem, data, getCachedItem, isOpen, loadData, readyToShow]);
 
     const loadLineageGraph = async () => {
         if (!currentItem) return;
@@ -190,9 +190,9 @@ export default function DetailDrawer() {
         }
     };
 
-    const handleAssetClick = (id: string | undefined, type: string, name?: string) => {
+    const handleAssetClick = (id: string | undefined, type: string, name?: string, mode?: string) => {
         if (!id) return;
-        pushItem(id, type, name);
+        pushItem(id, type, name, mode);
     };
 
     if (!isOpen) return null;
@@ -440,8 +440,9 @@ export default function DetailDrawer() {
 
     /**
      * 通用的资产列表部分渲染函数（紧凑版）
+     * @param mode - 可选，用于计算字段区分聚合/实例模式
      */
-    const renderAssetSection = (title: string, icon: React.ElementType, items: any[], type: string, colorClass: string) => {
+    const renderAssetSection = (title: string, icon: React.ElementType, items: any[], type: string, colorClass: string, mode?: string) => {
         // 空数据时显示友好提示
         if (!items || items.length === 0) {
             return (
@@ -460,9 +461,8 @@ export default function DetailDrawer() {
                 <div className="space-y-1">
                     {(expandedGroups[groupKey] ? items : items.slice(0, 10)).map((asset: any, ai: number) => (
                         <div key={ai}
-                            onClick={() => handleAssetClick(asset.id, type, asset.name)}
-                            onMouseEnter={() => asset.id && prefetch(asset.id, type)}
-                            style={{ animationDelay: `${ai * 30}ms` }}
+                            onClick={() => handleAssetClick(asset.id, type, asset.name, mode)}
+                            onMouseEnter={() => asset.id && prefetch(asset.id, type, mode)}
                             className={`bg-white p-2.5 rounded border border-${colorClass}-100 ${asset.id ? 'cursor-pointer hover:border-${colorClass}-300 hover:bg-${colorClass}-50' : ''} transition-all shadow-sm animate-in fade-in slide-in-up fill-mode-backwards`}>
                             {/* 第一行：标题 + 专属标签 */}
                             <div className="flex items-center justify-between gap-2">
@@ -624,7 +624,7 @@ export default function DetailDrawer() {
                                 {/* 其他：描述预览 */}
                                 {type !== 'metrics' && asset.description && (
                                     <span className="text-gray-500 truncate max-w-[180px] flex-shrink-0 italic" title={asset.description}>
-                                        "{asset.description.length > 25 ? asset.description.slice(0, 25) + '...' : asset.description}"
+                                        &quot;{asset.description.length > 25 ? asset.description.slice(0, 25) + '...' : asset.description}&quot;
                                     </span>
                                 )}
                             </div>
@@ -1391,8 +1391,8 @@ export default function DetailDrawer() {
                 <div className="bg-purple-50/50 rounded-lg border border-purple-100 p-3">
                     <div className="space-y-2">
                         {instances.map((inst: any, i: number) => (
-                            <div key={inst.id} 
-                                onClick={() => handleAssetClick(inst.id, 'metrics', inst.name)}
+                            <div key={inst.id}
+                                onClick={() => handleAssetClick(inst.id, 'metrics', inst.name, 'instance')}
                                 style={{ animationDelay: `${i * 30}ms` }}
                                 className="bg-white p-2.5 rounded border border-purple-100 cursor-pointer hover:border-purple-300 hover:bg-purple-50 transition-all shadow-sm animate-in fade-in slide-in-up fill-mode-backwards">
                                 {/* 第一行：名称 + 使用状态 */}
@@ -1422,7 +1422,7 @@ export default function DetailDrawer() {
                                     {inst.datasourceProject && (
                                         <span className="text-[10px] text-gray-400">({inst.datasourceProject})</span>
                                     )}
-                                    
+
                                     {/* 工作簿 */}
                                     {inst.workbookName && (
                                         <>
@@ -1469,11 +1469,6 @@ export default function DetailDrawer() {
                 </div>
             );
         }
-        const nodeColors: Record<string, string> = {
-            field: '#3b82f6', metric: '#f59e0b', table: '#7c3aed',
-            datasource: '#10b981', workbook: '#e11d48', view: '#6366f1'
-        };
-
         // 血缘标签映射
         const sourceLabels: Record<string, { text: string; color: string }> = {
             'api': { text: 'API 直返', color: 'bg-blue-100 text-blue-700' },
@@ -1515,99 +1510,6 @@ export default function DetailDrawer() {
             </div>
         );
     };
-
-    // ========== 关联数据源渲染（增强版） ==========
-    const renderDatasourcesTab = () => {
-        // 优先使用 all_datasources (聚合的同名字段数据源), 其次 datasources (Tables)，兜底 datasource_info
-        let items = data?.all_datasources || data?.datasources || data?.related_datasources || [];
-
-        // 如果没有聚合数据，从 datasource_info 构造单条记录
-        if (items.length === 0 && data?.datasource_info) {
-            items = [data.datasource_info];
-        }
-
-        if (items.length === 0) return <div className="text-center text-gray-400 py-8">无关联数据源</div>;
-
-        return (
-            <div className="bg-indigo-50/50 rounded-lg border border-indigo-100 p-3 animate-in slide-in-up">
-                <h3 className="text-[13px] font-bold text-indigo-900 mb-3 flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-indigo-600" /> 包含此字段的数据源
-                </h3>
-                <div className="space-y-2">
-                    {items.map((ds: any, i: number) => (
-                        <div key={i}
-                            onClick={() => handleAssetClick(ds.id, 'datasources', ds.name)}
-                            className="bg-white p-2.5 rounded border border-indigo-100 cursor-pointer hover:bg-indigo-50/50 transition-all">
-                            {/* 第一行：数据源名称 + 认证状态 + 发布状态 */}
-                            <div className="flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                    <Layers className="w-4 h-4 text-indigo-500 flex-shrink-0" />
-                                    <span className="text-[13px] font-bold text-gray-900 truncate">{ds.name}</span>
-                                    {!!ds.is_certified && (
-                                        <span className="flex items-center gap-0.5 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium flex-shrink-0">
-                                            <ShieldCheck className="w-3 h-3" /> 认证
-                                        </span>
-                                    )}
-                                    {!!ds.is_published && (
-                                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium flex-shrink-0">
-                                            已发布
-                                        </span>
-                                    )}
-                                </div>
-                                <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                            </div>
-                            {/* 第二行：归属工作簿 + 项目 */}
-                            <div className="flex items-center gap-2 mt-1.5 text-[11px] text-gray-600 flex-wrap">
-                                {ds.workbook_name && (
-                                    <span className="flex items-center gap-1 bg-rose-50 px-1.5 py-0.5 rounded">
-                                        <BookOpen className="w-3 h-3 text-rose-500" />
-                                        <span className="truncate max-w-[140px] font-medium">{ds.workbook_name}</span>
-                                    </span>
-                                )}
-                                {(ds.project_name || ds.projectName) && (
-                                    <span className="text-gray-500">📁 {ds.project_name || ds.projectName}</span>
-                                )}
-                                {ds.owner && (
-                                    <span className="text-gray-500">👤 {ds.owner}</span>
-                                )}
-                                {ds.field_name && ds.field_name !== data?.name && (
-                                    <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">
-                                        重命名: {ds.field_name}
-                                    </span>
-                                )}
-                                {/* 新增：显示描述或认证说明 (即用户所谓的"标记") */}
-                                {(ds.description || ds.certification_note) && (
-                                    <span className="flex items-center gap-1 bg-gray-100 px-1.5 py-0.5 rounded text-gray-600 truncate max-w-[200px]" title={ds.description || ds.certification_note}>
-                                        <Info className="w-3 h-3 text-gray-500" />
-                                        {ds.description || ds.certification_note}
-                                    </span>
-                                )}
-                            </div>
-                            {/* 第三行：统计信息 */}
-                            <div className="flex items-center gap-3 mt-1.5 text-[11px] flex-wrap">
-                                {ds.field_count !== undefined && (
-                                    <span className="text-gray-500">📦 {ds.field_count}字段</span>
-                                )}
-                                {ds.metric_count !== undefined && (
-                                    <span className="text-gray-500">📈 {ds.metric_count}指标</span>
-                                )}
-                                {ds.workbook_count !== undefined && (
-                                    <span className="text-gray-500">📕 {ds.workbook_count}工作簿</span>
-                                )}
-                                {ds.usage_count !== undefined && ds.usage_count > 0 && (
-                                    <span className="flex items-center gap-0.5 text-orange-600 font-medium">
-                                        <Flame className="w-3 h-3" /> {ds.usage_count}次引用
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        );
-    };
-
-
 
     // ========== 访问统计 Tab ==========
 
@@ -1737,7 +1639,6 @@ export default function DetailDrawer() {
         const type = currentItem?.type;
         const isProjectType = type === 'projects';
         const isUserType = type === 'users';
-        const isFieldType = type === 'fields' || type === 'metrics';
 
         // 指标优先使用 stats.view_count (聚合后的视图数)，字段使用 usageCount
         if (type === 'metrics') return data.stats?.view_count ?? data.usageCount ?? data.usage_count ?? 0;
@@ -2108,7 +2009,7 @@ export default function DetailDrawer() {
                 {
                     isFieldType && (
                         <div className="relative pl-3 border-l-2 border-indigo-100 space-y-4 py-1">
-                            {data.upstreamColumnName && (
+                            {data.upstream_column_name && (
                                 <div>
                                     <div className="text-[10px] text-indigo-400 font-mono mb-0.5 flex items-center gap-1">
                                         原始列名
@@ -2117,7 +2018,7 @@ export default function DetailDrawer() {
                                         </span>
                                     </div>
                                     <div className="text-xs font-mono text-gray-500 bg-gray-50 inline-block px-1.5 py-0.5 rounded border border-gray-100">
-                                        {data.upstreamColumnName}
+                                        {data.upstream_column_name}
                                     </div>
                                 </div>
                             )}
@@ -2189,8 +2090,6 @@ export default function DetailDrawer() {
 
     const renderContent = () => {
         if (!data || !currentItem) return null;
-        const type = currentItem.type;
-
         switch (activeTab) {
             case 'overview': return renderOverviewTab();
             case 'duplicates': return renderDuplicatesTab();
@@ -2248,8 +2147,8 @@ export default function DetailDrawer() {
                         content: m.description // 只显示描述，不显示公式，因为公式太长影响体验
                     };
                 });
-                return renderAssetSection('下游受影响的指标', FunctionSquare, impactItems, 'metrics', 'amber');
-
+                // 影响指标是具体的计算字段实例，使用实例模式
+                return renderAssetSection('下游受影响的指标', FunctionSquare, impactItems, 'metrics', 'amber', 'instance');
             // 业务消费端
             case 'views':
                 const viewItems = (data.used_in_views || data.usedInViews || data.views || []).map((v: any) => ({
@@ -2309,14 +2208,18 @@ export default function DetailDrawer() {
                 }));
                 return renderAssetSection('包含/使用的字段', Columns, mappedFields, 'fields', 'blue');
             }
-            case 'metrics':
-                return renderAssetSection('包含/使用的指标', FunctionSquare, data.metrics || data.used_metrics || [], 'metrics', 'amber');
-            case 'embedded':
-                const embItems = (data.embedded_datasources || []).map((ds: any) => ({
+            case 'metrics': {
+                // 从工作簿/视图/数据源详情点击计算字段时，使用实例模式
+                const metricsMode = ['workbooks', 'views', 'datasources'].includes(currentItem?.type || '') ? 'instance' : undefined;
+                return renderAssetSection('包含/使用的指标', FunctionSquare, data.metrics || data.used_metrics || [], 'metrics', 'amber', metricsMode);
+            }
+            case 'embedded': {
+                const embItems = (data?.embedded_datasources || []).map((ds: any) => ({
                     ...ds,
                     subtitle: ds.workbook?.name ? `位于: ${ds.workbook.name}` : undefined
                 }));
                 return renderAssetSection('以此为源的嵌入式数据源', Copy, embItems, 'datasources', 'blue');
+            }
 
             default: return null;
         }

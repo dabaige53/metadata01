@@ -11,7 +11,7 @@ import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 import ZeroAccessViewsAnalysis from '@/components/views/ZeroAccessViewsAnalysis';
 import HotViewsAnalysis from '@/components/views/HotViewsAnalysis';
 import { useCallback } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 
 interface ViewItem {
     id: string;
@@ -34,7 +34,6 @@ interface ViewItem {
 function ViewsContent() {
     const { openDrawer } = useDrawer();
     const searchParams = useSearchParams();
-    const router = useRouter();
     const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'zeroAccess' | 'hot'>('dashboard');
 
     // 数据状态
@@ -58,7 +57,7 @@ function ViewsContent() {
         setTabCounts(prev => ({ ...prev, [tab]: count }));
     }, []);
 
-    const fetchViews = async (params: Record<string, any>) => {
+    const fetchViews = useCallback(async (params: Record<string, any>) => {
         const requestId = requestIdRef.current + 1;
         requestIdRef.current = requestId;
         setLoading(true);
@@ -88,7 +87,7 @@ function ViewsContent() {
                 setLoading(false);
             }
         }
-    };
+    }, [activeTab]);
 
     // 治理 Tab 的排序配置与状态
     const [govSortConfig, setGovSortConfig] = useState<{
@@ -152,7 +151,7 @@ function ViewsContent() {
         }
 
         fetchViews(params);
-    }, [activeTab, searchParams]);
+    }, [activeTab, fetchViews, searchParams]);
 
     
 
@@ -346,7 +345,6 @@ function ViewsContent() {
                     </>
                 ) : activeTab === 'zeroAccess' ? (
                     <ZeroAccessViewsAnalysis
-                        onSortUpdate={handleGovSortUpdate}
                         onCountUpdate={(count) => handleTabCountUpdate('zeroAccess', count)}
                     />
                 ) : (

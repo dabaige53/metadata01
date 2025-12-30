@@ -48,7 +48,7 @@ const FILTER_LABELS: Record<string, string> = {
 };
 
 export default function InlineFilter({ facets, activeFilters, onFilterChange }: InlineFilterProps) {
-  const facetEntries = Object.entries(facets).filter(([_, values]) => Object.keys(values).length > 0);
+  const facetEntries = Object.entries(facets).filter(([, values]) => Object.keys(values).length > 0);
 
   if (facetEntries.length === 0) {
     return null;

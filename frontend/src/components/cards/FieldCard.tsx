@@ -1,7 +1,6 @@
 import React from 'react';
-import { CircleDot, Eye, AlertCircle, Database } from 'lucide-react';
+import { CircleDot, Eye, AlertCircle } from 'lucide-react';
 import HorizontalCard from './HorizontalCard';
-import { formatDateWithRelative, isRecent } from '@/lib/date';
 
 export interface FieldCardData {
   id: string;
@@ -47,8 +46,6 @@ export default function FieldCard({ field, onClick }: FieldCardProps) {
   const dataType = field.data_type ?? field.dataType ?? 'unknown';
   const usedByMetrics = field.used_by_metrics ?? [];
   const usedInViews = field.used_in_views ?? field.usedInViews ?? [];
-  const createdAt = field.created_at ?? field.createdAt;
-  const updatedAt = field.updated_at ?? field.updatedAt;
 
   // 物理列名和别名
   const upstreamColumn = field.upstream_column_name ?? field.upstreamColumnName;

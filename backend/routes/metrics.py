@@ -188,7 +188,7 @@ def get_metrics_catalog():
             gs.formula,
             gs.representative_id,
             gs.unique_id,
-            (SELECT GROUP_CONCAT(DISTINCT cfl.datasource_id || '|' || COALESCE(d.name, 'Unknown')) 
+            (SELECT GROUP_CONCAT(DISTINCT cfl.datasource_id || '|' || COALESCE(d.name, 'Unknown') || '|' || COALESCE(d.is_embedded, 0)) 
              FROM calculated_fields cf2 
              JOIN calc_field_full_lineage cfl ON cf2.id = cfl.field_id 
              LEFT JOIN datasources d ON cfl.datasource_id = d.id 
@@ -234,16 +234,24 @@ def get_metrics_catalog():
     # 构建结果
     items = []
     for row in rows:
-        # 解析数据源列表（id|name,id|name,...）
+        # 解析数据源列表（id|name|is_embedded,...）
         datasources = []
+        has_embedded = False
+        has_published = False
         if row.datasource_info:
             for ds_pair in row.datasource_info.split(','):
-                if '|' in ds_pair:
-                    ds_id, ds_name = ds_pair.split('|', 1)
+                parts = ds_pair.split('|')
+                if len(parts) >= 2:
+                    ds_id, ds_name = parts[0], parts[1]
+                    is_embedded = parts[2] == '1' if len(parts) > 2 else False
                     if ds_id and ds_id != 'None':
-                        datasources.append({'id': ds_id, 'name': ds_name})
+                        datasources.append({'id': ds_id, 'name': ds_name, 'is_embedded': is_embedded})
+                        if is_embedded:
+                            has_embedded = True
+                        else:
+                            has_published = True
         
-        # 解析工作簿列表（id|name,id|name,...）
+        # 解析工作簿列表（id|name,...）
         workbooks = []
         if row.workbook_info:
             for wb_pair in row.workbook_info.split(','):
@@ -264,12 +272,29 @@ def get_metrics_catalog():
         else:
             complexity_level = '低'
         
+        # 构建去重键 (formula_hash 前8位)
+        dedup_key = row.formula_hash[:8] + '...' if row.formula_hash and len(row.formula_hash) > 8 else (row.formula_hash or '-')
+        
+        # 判断是否为聚合指标
+        is_aggregated = row.instance_count > 1
+        
+        # 判断去重方式 (根据数据源类型)
+        if has_embedded and has_published:
+            dedup_method = 'hash_mixed'  # 混合：既有嵌入式又有已发布
+        elif has_embedded:
+            dedup_method = 'hash_embedded'  # 公式哈希 + 嵌入式数据源
+        else:
+            dedup_method = 'hash_published'  # 公式哈希 + 已发布数据源
+        
         items.append({
             'representative_id': row.representative_id,
             'unique_id': row.unique_id,
             'name': row.name,
             'formula': row.formula,
             'formula_hash': row.formula_hash,
+            'dedup_key': dedup_key,  # 去重键 (hash 缩写)
+            'dedup_method': dedup_method,  # 新增：去重方式
+            'is_aggregated': is_aggregated,  # 是否为聚合指标
             'role': row.role,
             'data_type': row.data_type,
             'description': row.description or '',
@@ -284,7 +309,7 @@ def get_metrics_catalog():
             'datasource_count': len(datasources),
             'workbooks': workbooks,
             'workbook_count': len(workbooks),
-            'datasource_name': datasources[0]['name'] if datasources else '-' # 从解析后的结果中取主数据源
+            'datasource_name': datasources[0]['name'] if datasources else '-'
         })
     
     # Facets 统计
@@ -299,6 +324,42 @@ def get_metrics_catalog():
     """
     role_counts = session.execute(text(role_sql), params).fetchall()
     facets['role'] = {str(r or 'unknown'): c for r, c in role_counts}
+    
+    # 聚合状态统计
+    agg_sql_simple = """
+        SELECT 
+            CASE WHEN (SELECT COUNT(*) FROM calculated_fields cf WHERE cf.unique_id = ucf.id) > 1 THEN 'true' ELSE 'false' END as is_agg,
+            COUNT(*) as cnt
+        FROM unique_calculated_fields ucf
+        GROUP BY is_agg
+    """
+    agg_counts = session.execute(text(agg_sql_simple)).fetchall()
+    facets['is_aggregated'] = {r[0]: r[1] for r in agg_counts}
+    
+    # 去重方式统计 (根据数据源类型)
+    dedup_method_sql = """
+        SELECT 
+            CASE 
+                WHEN has_embedded = 1 AND has_published = 1 THEN 'hash_mixed'
+                WHEN has_embedded = 1 THEN 'hash_embedded'
+                ELSE 'hash_published'
+            END as dedup_method,
+            COUNT(*) as cnt
+        FROM (
+            SELECT 
+                ucf.id,
+                MAX(CASE WHEN d.is_embedded = 1 THEN 1 ELSE 0 END) as has_embedded,
+                MAX(CASE WHEN d.is_embedded = 0 OR d.is_embedded IS NULL THEN 1 ELSE 0 END) as has_published
+            FROM unique_calculated_fields ucf
+            LEFT JOIN calculated_fields cf ON cf.unique_id = ucf.id
+            LEFT JOIN calc_field_full_lineage cfl ON cf.id = cfl.field_id
+            LEFT JOIN datasources d ON cfl.datasource_id = d.id
+            GROUP BY ucf.id
+        ) sub
+        GROUP BY dedup_method
+    """
+    dedup_counts = session.execute(text(dedup_method_sql)).fetchall()
+    facets['dedup_method'] = {r[0]: r[1] for r in dedup_counts}
     
     return jsonify({
         'items': items,

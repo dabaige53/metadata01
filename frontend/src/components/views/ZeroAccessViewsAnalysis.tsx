@@ -13,13 +13,6 @@ import {
     ChevronUp,
     BookOpen
 } from 'lucide-react';
-import { SortState, SortConfig } from '@/hooks/useDataTable';
-
-// 定义排序选项
-const SORT_OPTIONS: SortConfig[] = [
-    { key: 'view_count', label: '视图数' },
-    { key: 'name', label: '名称' }
-];
 
 interface ViewItem {
     id: string;
@@ -38,14 +31,9 @@ interface WorkbookGroup {
 
 interface ZeroAccessViewsAnalysisProps {
     onCountUpdate?: (count: number) => void;
-    onSortUpdate?: (config: {
-        options: SortConfig[];
-        state: SortState;
-        onChange: (key: string) => void;
-    }) => void;
 }
 
-export default function ZeroAccessViewsAnalysis({ onCountUpdate, onSortUpdate }: ZeroAccessViewsAnalysisProps) {
+export default function ZeroAccessViewsAnalysis({ onCountUpdate }: ZeroAccessViewsAnalysisProps) {
     const [groups, setGroups] = useState<WorkbookGroup[]>([]);
     const [totalCount, setTotalCount] = useState(0);
     const [loading, setLoading] = useState(true);

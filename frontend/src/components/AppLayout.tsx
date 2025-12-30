@@ -60,7 +60,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const router = useRouter();
 
     useEffect(() => {
-        // @ts-ignore
         api.getStats().then(setStats).catch(console.error);
     }, []);
 

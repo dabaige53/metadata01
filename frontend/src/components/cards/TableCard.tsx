@@ -1,5 +1,5 @@
 import React from 'react';
-import { Table2, CheckCircle } from 'lucide-react';
+import { Table2 } from 'lucide-react';
 import HorizontalCard from './HorizontalCard';
 import { formatDateWithRelative, isRecent } from '@/lib/date';
 

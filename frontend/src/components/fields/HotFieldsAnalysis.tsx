@@ -14,8 +14,6 @@ import {
 } from 'lucide-react';
 import { FieldCatalogItem } from '../cards/FieldCatalogCard';
 import FacetFilterBar from '../data-table/FacetFilterBar';
-import SortButtons from '../data-table/SortButtons';
-import Pagination from '../data-table/Pagination';
 import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 
 // 定义排序选项
@@ -37,7 +35,6 @@ interface HotFieldsAnalysisProps {
 export default function HotFieldsAnalysis({ onCountUpdate, onSortUpdate }: HotFieldsAnalysisProps) {
     const [allData, setAllData] = useState<FieldCatalogItem[]>([]);
     const [maxUsage, setMaxUsage] = useState(0);
-    const [avgUsage, setAvgUsage] = useState(0);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
 
@@ -61,8 +58,6 @@ export default function HotFieldsAnalysis({ onCountUpdate, onSortUpdate }: HotFi
         sortState,
         handleSortChange,
         paginationState,
-        handlePageChange,
-        handlePageSizeChange,
         searchTerm,
         setSearchTerm,
         handleSearch,

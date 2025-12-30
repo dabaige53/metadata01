@@ -251,6 +251,7 @@ def get_fields_catalog():
         SELECT 
             urf.id as representative_id,
             urf.name as canonical_name,
+            urf.upstream_column_name,
             urf.table_id,
             t.name as table_name,
             t.schema as table_schema,
@@ -339,6 +340,7 @@ def get_fields_catalog():
         items.append({
             'representative_id': row.representative_id,
             'canonical_name': row.canonical_name,
+            'upstream_column_name': row.upstream_column_name,  # 原表物理列名
             'table_id': row.table_id,
             'table_name': row.table_name or '-',
             'table_schema': row.table_schema,
@@ -766,7 +768,7 @@ def get_field_detail(field_id):
     unique_sql = """
         SELECT 
             urf.id, urf.name, urf.description, urf.remote_type,
-            urf.table_id, urf.upstream_column_id, urf.created_at,
+            urf.table_id, urf.upstream_column_id, urf.upstream_column_name, urf.created_at,
             t.name as table_name, t.schema as table_schema,
             db.name as database_name, db.id as database_id,
             -- 获取一个实例的血缘标签
@@ -807,6 +809,7 @@ def get_field_detail(field_id):
             'id': unique_row.id,
             'uniqueId': unique_row.id,
             'name': unique_row.name,
+            'upstream_column_name': unique_row.upstream_column_name,
             'description': unique_row.description or '',
             'remoteType': unique_row.remote_type,
             'role': stats.role if stats else None,
@@ -837,7 +840,7 @@ def get_field_detail(field_id):
             SELECT 
                 rf.id, rf.name, rf.data_type, rf.remote_type, rf.description,
                 rf.role, rf.aggregation, rf.is_hidden, rf.usage_count,
-                rf.upstream_column_id, rf.table_id, rf.datasource_id, rf.workbook_id,
+                rf.upstream_column_id, rf.upstream_column_name, rf.table_id, rf.datasource_id, rf.workbook_id,
                 rf.unique_id, rf.created_at, rf.updated_at,
                 rf.lineage_source, rf.penetration_status,
                 d.name as datasource_name, d.project_name as ds_project_name, d.owner as ds_owner, 
@@ -863,6 +866,7 @@ def get_field_detail(field_id):
             'id': field_row.id,
             'uniqueId': field_row.unique_id,
             'name': field_row.name,
+            'upstream_column_name': field_row.upstream_column_name,
             'data_type': field_row.data_type,
             'remoteType': field_row.remote_type,
             'description': field_row.description or '',

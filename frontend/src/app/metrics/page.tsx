@@ -8,7 +8,7 @@ import MetricCatalog from '@/components/metrics/MetricCatalog';
 import FacetFilterBar from '@/components/data-table/FacetFilterBar';
 import SortButtons from '@/components/data-table/SortButtons';
 import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
-import { Suspense, useEffect, useState, useCallback, useMemo } from 'react';
+import { Suspense, useState, useCallback } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 
 function MetricsContent() {
@@ -95,7 +95,7 @@ function MetricsContent() {
     } = useDataTable({
         moduleName: 'metrics',
         data: data,
-        facetFields: ['metric_type'],
+        facetFields: ['role', 'is_aggregated', 'dedup_method'],  // 角色、聚合状态、去重方式
         serverSide: true,
         totalOverride: total,
         facetsOverride: facetsData,

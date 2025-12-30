@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 import FacetFilterBar from '../data-table/FacetFilterBar';
-import SortButtons from '../data-table/SortButtons';
 import Pagination from '../data-table/Pagination';
 
 // 定义排序选项

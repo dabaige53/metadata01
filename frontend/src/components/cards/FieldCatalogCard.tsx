@@ -6,6 +6,7 @@ import HorizontalCard from './HorizontalCard';
 
 export interface FieldCatalogItem {
     canonical_name: string;
+    upstream_column_name?: string;  // 原表物理列名
     table_id?: string;
     table_name?: string;
     table_schema?: string;
@@ -19,7 +20,7 @@ export interface FieldCatalogItem {
     total_usage: number;
     datasources: Array<{ id: string; name: string }>;
     datasource_count: number;
-    dedup_method?: 'physical_table' | 'embedded_table' | 'datasource';  // 新增
+    dedup_method?: 'physical_table' | 'embedded_table' | 'datasource';
 }
 
 export interface FieldCatalogCardProps {
@@ -28,6 +29,18 @@ export interface FieldCatalogCardProps {
 }
 
 export default function FieldCatalogCard({ field, onClick }: FieldCatalogCardProps) {
+    // 计算显示名称逻辑
+    const physicalName = field.upstream_column_name;
+    const tableauAlias = field.canonical_name;
+
+    // 判断是否有有效的物理列名，以及别名是否不同
+    const hasPhysicalName = physicalName && physicalName.trim() !== '';
+    // 主标题：优先显示物理列名，否则显示 Tableau 别名
+    const displayTitle = hasPhysicalName ? physicalName : tableauAlias;
+
+    const hasAlias = tableauAlias && tableauAlias.trim() !== '';
+    const aliasIsDifferent = hasPhysicalName && hasAlias && physicalName !== tableauAlias;
+    const displaySubtitle = aliasIsDifferent ? `Tableau 别名: ${tableauAlias}` : undefined;
 
     const isMeasure = field.role?.toLowerCase() === 'measure';
     const roleName = isMeasure ? '度量' : (field.role?.toLowerCase() === 'dimension' ? '维度' : field.role || '未知');
@@ -40,11 +53,11 @@ export default function FieldCatalogCard({ field, onClick }: FieldCatalogCardPro
     };
     const dedupInfo = dedupMethodLabels[field.dedup_method || ''] || dedupMethodLabels['datasource'];
 
-    // 构建去重键显示
+    // 构建去重键显示 - 使用物理列名
     const hasTable = field.table_name && field.table_name !== '-';
     const dedupKey = hasTable
-        ? `${field.table_name}.${field.canonical_name}`
-        : field.canonical_name;
+        ? `${field.table_name}.${displayTitle}`
+        : displayTitle;
 
     // 构建徽章
     const badges: Array<{ text: string; color: 'green' | 'blue' | 'gray' | 'red' | 'purple' | 'orange' }> = [
@@ -122,7 +135,8 @@ export default function FieldCatalogCard({ field, onClick }: FieldCatalogCardPro
                 <div className="flex-1">
                     <HorizontalCard
                         icon={<Hash className="w-5 h-5" />}
-                        title={field.canonical_name}
+                        title={displayTitle}
+                        subtitle={displaySubtitle}
                         badges={badges}
                         details={details}
                         tags={tags}

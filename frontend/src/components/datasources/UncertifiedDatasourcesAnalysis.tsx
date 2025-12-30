@@ -5,13 +5,10 @@ import { api } from '@/lib/api';
 import { useDrawer } from '@/lib/drawer-context';
 import {
     Loader2,
-    Layers,
-    Shield,
-    ShieldOff,
-    ExternalLink,
     CheckCircle2,
-    AlertCircle,
-    Search
+    Search,
+    Layers,
+    ExternalLink
 } from 'lucide-react';
 import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 import FacetFilterBar from '../data-table/FacetFilterBar';

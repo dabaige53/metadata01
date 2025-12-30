@@ -35,7 +35,7 @@ function WorkbooksContent() {
     const [loading, setLoading] = useState(true);
 
     // 预取函数 (暂时为空)
-    const prefetch = useCallback((id: string, type: string) => {
+    const prefetch = useCallback(() => {
         // TODO: 实现预取逻辑
     }, []);
 

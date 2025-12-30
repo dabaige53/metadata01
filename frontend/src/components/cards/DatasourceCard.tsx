@@ -76,7 +76,6 @@ function formatRefreshTime(dateString?: string): string {
 
 export default function DatasourceCard({ datasource, onClick }: DatasourceCardProps) {
   const projectName = datasource.project_name ?? datasource.projectName; // Allow undefined to filter
-  const tableCount = datasource.table_count ?? datasource.tableCount ?? 0;
   const embeddedTableCount = datasource.embedded_table_count ?? datasource.embeddedTableCount ?? 0;
   const regularTableCount = datasource.regular_table_count ?? datasource.regularTableCount ?? 0;
   const fieldCount = datasource.field_count ?? datasource.fieldCount ?? 0;

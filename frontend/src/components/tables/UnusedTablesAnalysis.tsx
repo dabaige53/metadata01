@@ -7,7 +7,6 @@ import {
     Database,
     Table2,
     ExternalLink,
-    AlertCircle,
     CheckCircle2,
     Search
 } from 'lucide-react';

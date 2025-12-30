@@ -144,7 +144,7 @@ export const api = {
     getDashboardAnalysis: () => request<DashboardAnalysis>('/dashboard/analysis'),
 
     // 通用详情获取 - 将单数类型映射到复数 API 路径
-    getDetail: (type: string, id: string) => {
+    getDetail: (type: string, id: string, mode?: string) => {
         const typeToPath: Record<string, string> = {
             'field': 'fields',
             'metric': 'metrics',
@@ -158,7 +158,9 @@ export const api = {
         };
         const path = typeToPath[type] || type;
         // 添加时间戳参数以强制禁用缓存，解决聚合数据显示滞后的问题
-        return request<any>(`/${path}/${id}?_t=${Date.now()}`);
+        const params = new URLSearchParams({ _t: String(Date.now()) });
+        if (mode) params.set('mode', mode);
+        return request<any>(`/${path}/${id}?${params.toString()}`);
     },
 
     // 数据库
