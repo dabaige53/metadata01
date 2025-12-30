@@ -42,6 +42,7 @@ const FILTER_LABELS: Record<string, string> = {
     view_type: '视图类型',
     owner: '负责人',
     isCalculated: '计算字段',
+    dedup_method: '去重方式',  // 新增
 
     // 值翻译
     measure: '度量',
@@ -53,6 +54,9 @@ const FILTER_LABELS: Record<string, string> = {
     dashboard: '仪表盘',
     sheet: '工作表',
     all: '全部',
+    physical_table: '按物理表+列',  // 新增
+    embedded_table: '按嵌入式表',  // 新增
+    datasource: '按数据源+名称',  // 新增
 };
 
 // 值到中文标签的翻译函数

@@ -197,6 +197,7 @@ def get_fields_catalog():
     # 筛选参数
     search = request.args.get('search', '')
     role_filter = request.args.get('role', '')
+    dedup_method_filter = request.args.get('dedup_method', '')  # 新增：去重方式筛选
     sort = request.args.get('sort', 'total_usage')
     order = request.args.get('order', 'desc')
     
@@ -215,6 +216,18 @@ def get_fields_catalog():
     if role_filter:
         conditions.append("rf.role = :role")
         params['role'] = role_filter
+    
+    # 3. 去重方式筛选
+    if dedup_method_filter:
+        if dedup_method_filter == 'physical_table':
+            # 按物理表+列去重：有 table_id 且表非嵌入式
+            conditions.append("urf.table_id IS NOT NULL AND (t.is_embedded = 0 OR t.is_embedded IS NULL)")
+        elif dedup_method_filter == 'embedded_table':
+            # 按嵌入式表去重：有 table_id 且表是嵌入式
+            conditions.append("urf.table_id IS NOT NULL AND t.is_embedded = 1")
+        elif dedup_method_filter == 'datasource':
+            # 按数据源+名称去重：无 table_id
+            conditions.append("urf.table_id IS NULL")
         
     where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
     
@@ -241,6 +254,7 @@ def get_fields_catalog():
             urf.table_id,
             t.name as table_name,
             t.schema as table_schema,
+            t.is_embedded as table_is_embedded,
             db.name as database_name,
             urf.description as description,
             fs.role,
@@ -312,6 +326,15 @@ def get_fields_catalog():
                     wb_id, wb_name = wb_pair.split('|', 1)
                     if wb_id and wb_id != 'None':
                         workbooks.append({'id': wb_id, 'name': wb_name})
+        
+        # 判断去重方式 (区分物理表/嵌入式表/数据源)
+        if row.table_id:
+            if getattr(row, 'table_is_embedded', False):
+                dedup_method = 'embedded_table'
+            else:
+                dedup_method = 'physical_table'
+        else:
+            dedup_method = 'datasource'
 
         items.append({
             'representative_id': row.representative_id,
@@ -329,7 +352,8 @@ def get_fields_catalog():
             'datasources': datasources,
             'datasource_count': len(datasources),
             'workbooks': workbooks,
-            'workbook_count': len(workbooks)
+            'workbook_count': len(workbooks),
+            'dedup_method': dedup_method  # 新增：去重方式
         })
     
     # Facets 统计
@@ -355,6 +379,22 @@ def get_fields_catalog():
     
     role_counts = session.execute(text(role_sql), params).fetchall()
     facets['role'] = {str(r or 'unknown'): c for r, c in role_counts}
+    
+    # 去重方式统计 (区分物理表/嵌入式表/数据源)
+    dedup_sql = """
+        SELECT 
+            CASE 
+                WHEN urf.table_id IS NULL THEN 'datasource'
+                WHEN t.is_embedded = 1 THEN 'embedded_table'
+                ELSE 'physical_table'
+            END as dedup_method,
+            COUNT(*) as cnt
+        FROM unique_regular_fields urf
+        LEFT JOIN tables t ON urf.table_id = t.id
+        GROUP BY dedup_method
+    """
+    dedup_counts = session.execute(text(dedup_sql)).fetchall()
+    facets['dedup_method'] = {r[0]: r[1] for r in dedup_counts}
     
     return jsonify({
         'items': items,

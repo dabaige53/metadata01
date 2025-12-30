@@ -7,18 +7,19 @@ export interface DrawerItem {
     id: string;
     type: string;
     name?: string;
+    mode?: string;  // 'aggregate' | 'instance' - 用于计算字段区分聚合/实例模式
 }
 
 interface DrawerContextType {
-    openDrawer: (id: string, type: string, name?: string) => void;
-    pushItem: (id: string, type: string, name?: string) => void;
+    openDrawer: (id: string, type: string, name?: string, mode?: string) => void;
+    pushItem: (id: string, type: string, name?: string, mode?: string) => void;
     goBack: () => void;
     goToIndex: (index: number) => void;
     closeDrawer: () => void;
     isOpen: boolean;
     currentItem: DrawerItem | null;
     history: DrawerItem[];
-    prefetch: (id: string, type: string) => void;
+    prefetch: (id: string, type: string, mode?: string) => void;
     getCachedItem: (id: string, type: string) => any;
 }
 
@@ -30,12 +31,12 @@ export function DrawerProvider({ children }: { children: ReactNode }) {
     const [cache, setCache] = useState<Record<string, any>>({});
 
     // 预加载数据 (Prefetching)
-    const prefetch = async (id: string, type: string) => {
-        const key = `${type}:${id}`;
+    const prefetch = async (id: string, type: string, mode?: string) => {
+        const key = mode ? `${type}:${id}:${mode}` : `${type}:${id}`;
         if (cache[key]) return; // 如果已有缓存，直接跳过 (假设数据短期内不变)
 
         try {
-            const data = await api.getDetail(type, id);
+            const data = await api.getDetail(type, id, mode);
             setCache(prev => ({ ...prev, [key]: data }));
         } catch (e: any) {
             // 静默处理 404 错误（孤立引用导致的数据不一致），仅开发模式下打印 warn
@@ -53,13 +54,13 @@ export function DrawerProvider({ children }: { children: ReactNode }) {
         return cache[`${type}:${id}`] || null;
     };
 
-    const openDrawer = (id: string, type: string, name?: string) => {
-        setHistory([{ id, type, name }]);
+    const openDrawer = (id: string, type: string, name?: string, mode?: string) => {
+        setHistory([{ id, type, name, mode }]);
         setIsOpen(true);
     };
 
-    const pushItem = (id: string, type: string, name?: string) => {
-        setHistory(prev => [...prev, { id, type, name }]);
+    const pushItem = (id: string, type: string, name?: string, mode?: string) => {
+        setHistory(prev => [...prev, { id, type, name, mode }]);
     };
 
     const goBack = () => {

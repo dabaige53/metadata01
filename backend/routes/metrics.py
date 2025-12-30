@@ -695,10 +695,136 @@ def get_metrics():
 
 @api_bp.route('/metrics/<metric_id>')
 def get_metric_detail(metric_id):
-    """获取单条指标详情 - 优先查询 unique_calculated_fields (标准指标)"""
+    """获取单条指标详情
+    
+    支持两种模式：
+    1. 聚合模式（默认）：显示标准指标的聚合统计，包括所有实例的汇总
+    2. 实例模式（mode=instance）：显示单个计算字段实例的详情
+    
+    入口场景：
+    - 计算字段列表卡片 → 聚合模式（传 unique_id 或 representative_id）
+    - 工作簿/数据源详情→计算字段 → 实例模式（传实例 id + mode=instance）
+    - 同定义指标Tab→点击实例 → 实例模式（传实例 id + mode=instance）
+    """
     session = g.db_session
     from sqlalchemy import text
+    from flask import request
     
+    # 获取模式参数
+    mode = request.args.get('mode', 'aggregate')  # 默认为聚合模式
+    is_instance_mode = mode == 'instance'
+    
+    # ========== 实例模式：直接查询单个计算字段实例 ==========
+    if is_instance_mode:
+        metric_sql = """
+            SELECT 
+                cf.id, cf.name, cf.description, cf.role, cf.data_type,
+                cf.formula, cf.formula_hash, cf.complexity_score, cf.reference_count,
+                cf.usage_count, cf.unique_id, cf.dependency_count,
+                cf.datasource_id, cf.workbook_id, cf.created_at, cf.updated_at,
+                d.name as datasource_name, d.project_name as ds_project_name, d.owner as ds_owner, 
+                d.is_certified as ds_certified, d.vizportal_url_id,
+                w.name as workbook_name, w.project_name as wb_project_name, w.owner as wb_owner
+            FROM calculated_fields cf
+            LEFT JOIN datasources d ON cf.datasource_id = d.id
+            LEFT JOIN workbooks w ON cf.workbook_id = w.id
+            WHERE cf.id = :metric_id
+        """
+        metric_row = session.execute(text(metric_sql), {'metric_id': metric_id}).first()
+        
+        if not metric_row:
+            return jsonify({'error': 'Not found'}), 404
+        
+        # 构建实例详情数据
+        data = {
+            'id': metric_row.id,
+            'uniqueId': metric_row.unique_id,
+            'name': metric_row.name,
+            'description': metric_row.description or '',
+            'formula': metric_row.formula,
+            'formulaHash': metric_row.formula_hash,
+            'role': metric_row.role,
+            'dataType': metric_row.data_type,
+            'complexity': metric_row.complexity_score or 0,
+            'referenceCount': metric_row.reference_count or 0,
+            'usageCount': metric_row.usage_count or 0,
+            'dependencyCount': metric_row.dependency_count or 0,
+            'datasourceId': metric_row.datasource_id,
+            'datasourceName': metric_row.datasource_name or '-',
+            'workbookId': metric_row.workbook_id,
+            'workbookName': metric_row.workbook_name,
+            'createdAt': str(metric_row.created_at) if metric_row.created_at else None,
+            'updatedAt': str(metric_row.updated_at) if metric_row.updated_at else None,
+            'mode': 'instance',  # 标记为实例模式
+            'instanceCount': 1,  # 实例模式只显示自己
+        }
+        
+        # 实例模式：只查询该实例自己的依赖字段
+        metric_deps = session.execute(text("""
+            SELECT DISTINCT cfd.dependency_name, cfd.dependency_regular_field_id, 
+                   rf.name as field_name, rf.role, rf.data_type
+            FROM calc_field_dependencies cfd
+            LEFT JOIN regular_fields rf ON cfd.dependency_regular_field_id = rf.id
+            WHERE cfd.source_field_id = :field_id
+        """), {'field_id': metric_id}).fetchall()
+        
+        data['dependencyFields'] = [{
+            'name': row[0], 'id': row[1], 'fieldName': row[2],
+            'role': row[3], 'dataType': row[4]
+        } for row in metric_deps]
+        
+        # 实例模式：只查询该实例的视图
+        views_result = session.execute(text("""
+            SELECT v.id, v.name, v.view_type, v.workbook_id, w.name as wb_name, w.project_name, w.owner
+            FROM calc_field_to_view cfv
+            JOIN views v ON cfv.view_id = v.id
+            LEFT JOIN workbooks w ON v.workbook_id = w.id
+            WHERE cfv.field_id = :field_id
+        """), {'field_id': metric_id}).fetchall()
+        
+        views_data = [{
+            'id': row[0], 'name': row[1], 'view_type': row[2],
+            'workbook_id': row[3], 'workbook_name': row[4]
+        } for row in views_result]
+        
+        data['used_in_views'] = views_data
+        data['usedInViews'] = views_data
+        
+        # 实例模式：单个实例没有"同定义指标"概念，但可以显示归属的标准指标
+        data['instances'] = []  # 不显示同定义指标Tab
+        data['similar'] = []  # 不显示同名定义Tab
+        
+        # 血缘：只显示该实例的
+        data['all_datasources'] = [{
+            'id': metric_row.datasource_id, 'name': metric_row.datasource_name,
+            'project_name': metric_row.ds_project_name, 'owner': metric_row.ds_owner,
+            'is_certified': bool(metric_row.ds_certified) if metric_row.ds_certified else False
+        }] if metric_row.datasource_id else []
+        
+        data['all_workbooks'] = [{
+            'id': metric_row.workbook_id, 'name': metric_row.workbook_name,
+            'project_name': metric_row.wb_project_name, 'owner': metric_row.wb_owner
+        }] if metric_row.workbook_id else []
+        
+        # Tableau URL
+        if metric_row.vizportal_url_id:
+            data['tableau_url'] = build_tableau_url('datasource', vizportal_url_id=metric_row.vizportal_url_id)
+        else:
+            data['tableau_url'] = None
+        
+        # Stats
+        data['stats'] = {
+            'view_count': len(views_data),
+            'workbook_count': 1 if metric_row.workbook_id else 0,
+            'dependency_count': len(data['dependencyFields']),
+            'duplicate_count': 0,
+            'datasource_count': 1 if metric_row.datasource_id else 0,
+            'table_count': 0
+        }
+        
+        return jsonify(data)
+    
+    # ========== 聚合模式：查询标准指标的聚合统计 ==========
     # 1. 尝试查询 Unique Metric (标准指标)
     unique_sql = """
         SELECT 
@@ -751,6 +877,7 @@ def get_metric_detail(metric_id):
             'datasourceName': '多数据源聚合',
             'workbookId': None,
             'workbookName': None,
+            'mode': 'aggregate',  # 标记为聚合模式
         }
         
     else:
@@ -778,6 +905,16 @@ def get_metric_detail(metric_id):
         representative_metric_id = metric_row.id
         vizportal_url_id = metric_row.vizportal_url_id
         
+        # 聚合模式：即使传入的是实例ID，也要聚合所有同定义实例的统计
+        agg_stats = session.execute(text("""
+            SELECT 
+                COUNT(*) as instance_count,
+                COALESCE(SUM(usage_count), 0) as total_usage,
+                COALESCE(SUM(reference_count), 0) as total_references
+            FROM calculated_fields
+            WHERE unique_id = :unique_id
+        """), {'unique_id': unique_id}).first()
+        
         data = {
             'id': metric_row.id,
             'uniqueId': metric_row.unique_id,
@@ -788,14 +925,16 @@ def get_metric_detail(metric_id):
             'role': metric_row.role,
             'dataType': metric_row.data_type,
             'complexity': metric_row.complexity_score or 0,
-            'referenceCount': metric_row.reference_count or 0,
-            'usageCount': metric_row.usage_count or 0,
+            'referenceCount': agg_stats.total_references if agg_stats else 0,  # 聚合统计
+            'usageCount': agg_stats.total_usage if agg_stats else 0,  # 聚合统计
+            'instanceCount': agg_stats.instance_count if agg_stats else 1,  # 实例数量
             'datasourceId': metric_row.datasource_id,
             'datasourceName': metric_row.datasource_name or '-',
             'workbookId': metric_row.workbook_id,
             'workbookName': metric_row.workbook_name,
             'createdAt': str(metric_row.created_at) if metric_row.created_at else None,
-            'updatedAt': str(metric_row.updated_at) if metric_row.updated_at else None
+            'updatedAt': str(metric_row.updated_at) if metric_row.updated_at else None,
+            'mode': 'aggregate',  # 标记为聚合模式
         }
 
     formula_hash = data.get('formulaHash')
@@ -827,6 +966,28 @@ def get_metric_detail(metric_id):
 
     # Common Logic: Lineage & Associations (Based on Unique ID if available)
     if unique_id:
+        # 2a. 获取同定义指标实例列表（相同 unique_id 的所有实例）
+        instances_result = session.execute(text("""
+            SELECT 
+                cf.id, cf.name, cf.datasource_id, cf.workbook_id, 
+                cf.usage_count, cf.reference_count,
+                d.name as datasource_name, d.project_name as ds_project,
+                w.name as workbook_name, w.project_name as wb_project
+            FROM calculated_fields cf
+            LEFT JOIN datasources d ON cf.datasource_id = d.id
+            LEFT JOIN workbooks w ON cf.workbook_id = w.id
+            WHERE cf.unique_id = :unique_id
+            ORDER BY cf.usage_count DESC, cf.name
+        """), {'unique_id': unique_id}).fetchall()
+        
+        data['instances'] = [{
+            'id': row[0], 'name': row[1], 
+            'datasourceId': row[2], 'workbookId': row[3],
+            'usageCount': row[4] or 0, 'referenceCount': row[5] or 0,
+            'datasourceName': row[6] or '-', 'datasourceProject': row[7],
+            'workbookName': row[8], 'workbookProject': row[9]
+        } for row in instances_result]
+        
         # 2. 获取依赖字段 (聚合所有实例)
         metric_deps = session.execute(text("""
             SELECT DISTINCT cfd.dependency_name, cfd.dependency_regular_field_id, 

@@ -72,7 +72,7 @@ function FieldsContent() {
     } = useDataTable({
         moduleName: 'fields',
         data: data,
-        facetFields: ['role'],
+        facetFields: ['role', 'dedup_method'],  // 新增 dedup_method 筛选
         serverSide: true,
         totalOverride: total,
         facetsOverride: facetsData,
@@ -184,7 +184,7 @@ function FieldsContent() {
                     {/* 去重说明 */}
                     <div className="flex items-center gap-1.5 text-[11px] text-gray-400 bg-gray-50/50 px-2 py-1 rounded-md border border-gray-100">
                         <HelpCircle className="w-3.5 h-3.5 text-gray-400" />
-                        <span>③ 去重说明：原始字段按『物理名+所属表』聚合，不同数据源中的同名物理列仅计为1项</span>
+                        <span>去重规则：同一物理表的同一列 → 聚合为 1 个标准字段 | 数据来源：unique_regular_fields 表</span>
                     </div>
                 </div>
 

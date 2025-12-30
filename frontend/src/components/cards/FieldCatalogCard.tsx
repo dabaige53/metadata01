@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Hash, Database, Layers, Zap } from 'lucide-react';
+import { Hash, Database, Table2, GitMerge, Layers } from 'lucide-react';
 import HorizontalCard from './HorizontalCard';
 
 export interface FieldCatalogItem {
@@ -9,6 +9,7 @@ export interface FieldCatalogItem {
     table_id?: string;
     table_name?: string;
     table_schema?: string;
+    database_name?: string;
     role?: string;
     data_type?: string;
     remote_type?: string;
@@ -18,6 +19,7 @@ export interface FieldCatalogItem {
     total_usage: number;
     datasources: Array<{ id: string; name: string }>;
     datasource_count: number;
+    dedup_method?: 'physical_table' | 'embedded_table' | 'datasource';  // 新增
 }
 
 export interface FieldCatalogCardProps {
@@ -30,6 +32,20 @@ export default function FieldCatalogCard({ field, onClick }: FieldCatalogCardPro
     const isMeasure = field.role?.toLowerCase() === 'measure';
     const roleName = isMeasure ? '度量' : (field.role?.toLowerCase() === 'dimension' ? '维度' : field.role || '未知');
 
+    // 使用后端返回的去重方式（支持三种：physical_table/embedded_table/datasource）
+    const dedupMethodLabels: Record<string, { label: string; icon: 'table' | 'embedded' | 'datasource' }> = {
+        'physical_table': { label: '按物理表+列', icon: 'table' },
+        'embedded_table': { label: '按嵌入式表', icon: 'embedded' },
+        'datasource': { label: '按数据源+名称', icon: 'datasource' },
+    };
+    const dedupInfo = dedupMethodLabels[field.dedup_method || ''] || dedupMethodLabels['datasource'];
+
+    // 构建去重键显示
+    const hasTable = field.table_name && field.table_name !== '-';
+    const dedupKey = hasTable
+        ? `${field.table_name}.${field.canonical_name}`
+        : field.canonical_name;
+
     // 构建徽章
     const badges: Array<{ text: string; color: 'green' | 'blue' | 'gray' | 'red' | 'purple' | 'orange' }> = [
         {
@@ -37,14 +53,6 @@ export default function FieldCatalogCard({ field, onClick }: FieldCatalogCardPro
             color: isMeasure ? 'green' : 'blue',
         },
     ];
-
-    // 实例数徽章
-    if (field.instance_count > 1) {
-        badges.push({
-            text: `${field.instance_count} 个实例`,
-            color: 'purple',
-        });
-    }
 
     // 热门徽章
     if (field.total_usage > 50) {
@@ -54,20 +62,21 @@ export default function FieldCatalogCard({ field, onClick }: FieldCatalogCardPro
         });
     }
 
-    // 构建详情信息
+    // 构建详情信息 - 包含去重键
     const details = [
+        {
+            label: '去重键',
+            value: dedupKey,
+            highlight: true,
+        },
         {
             label: '总热度',
             value: `${field.total_usage} 次`,
             highlight: field.total_usage > 0,
         },
         {
-            label: '数据源数',
+            label: '跨数据源',
             value: `${field.datasource_count} 个`,
-        },
-        field.table_name && field.table_name !== '-' && {
-            label: '所属表',
-            value: field.table_name,
         },
         field.data_type && {
             label: '类型',
@@ -76,21 +85,33 @@ export default function FieldCatalogCard({ field, onClick }: FieldCatalogCardPro
     ].filter((item): item is { label: string; value: string; highlight?: boolean } =>
         Boolean(item && item.value !== undefined && item.value !== null && item.value !== ''));
 
-    // 构建标签
+    // 构建标签 - 显示具体的去重方式
     const tags: Array<{ icon?: React.ReactNode; label: string; color: 'green' | 'blue' | 'gray' | 'purple' | 'yellow' | 'red' | 'orange' }> = [];
 
+    // 去重方式标签 (根据类型使用不同图标和颜色)
+    const iconElement = dedupInfo.icon === 'table' ? <Table2 className="w-3 h-3" />
+        : dedupInfo.icon === 'embedded' ? <Layers className="w-3 h-3" />
+            : <Database className="w-3 h-3" />;
+    tags.push({
+        icon: iconElement,
+        label: dedupInfo.label,
+        color: dedupInfo.icon === 'embedded' ? 'orange' : 'blue',
+    });
+
+    // 聚合数量标签 (仅当有多个实例时显示)
     if (field.instance_count > 1) {
         tags.push({
-            icon: <Layers className="w-3 h-3" />,
-            label: `共有 ${field.instance_count} 个实例`,
+            icon: <GitMerge className="w-3 h-3" />,
+            label: `${field.instance_count} 实例 → 1 标准`,
             color: 'purple',
         });
     }
 
+    // 物理类型
     if (field.remote_type) {
         tags.push({
-            icon: <Database className="w-3 h-3" />,
-            label: `物理类型: ${field.remote_type}`,
+            icon: <Layers className="w-3 h-3" />,
+            label: field.remote_type,
             color: 'gray',
         });
     }
@@ -113,3 +134,4 @@ export default function FieldCatalogCard({ field, onClick }: FieldCatalogCardPro
         </div>
     );
 }
+

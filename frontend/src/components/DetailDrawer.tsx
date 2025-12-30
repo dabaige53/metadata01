@@ -407,6 +407,11 @@ export default function DetailDrawer() {
             tabs.push({ id: 'duplicates', label: `同名定义 (${data.similarMetrics.length})`, icon: Copy });
         }
 
+        // 同定义指标实例 - 只在 metrics 模块显示，且有多个实例时才显示
+        if (type === 'metrics' && data.instances && data.instances.length > 1) {
+            tabs.push({ id: 'instances', label: `同定义指标 (${data.instances.length})`, icon: Copy });
+        }
+
         // 血缘 - 支持所有核心资产模块
         if (['fields', 'metrics', 'datasources', 'tables', 'databases', 'workbooks', 'views'].includes(type)) {
             tabs.push({ id: 'lineage', label: '血缘图', icon: GitBranch });
@@ -1351,6 +1356,103 @@ export default function DetailDrawer() {
     };
 
 
+    // ========== 同定义指标实例渲染 ==========
+    const renderInstancesTab = () => {
+        const instances = data?.instances || [];
+        if (instances.length === 0) return <div className="text-center text-gray-400 py-8">无同定义指标实例</div>;
+
+        // 计算总计
+        const totalUsage = instances.reduce((sum: number, inst: any) => sum + (inst.usageCount || 0), 0);
+        const totalRef = instances.reduce((sum: number, inst: any) => sum + (inst.referenceCount || 0), 0);
+
+        return (
+            <div className="space-y-3">
+                {/* 统计卡片 */}
+                <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border border-purple-100 p-3">
+                    <h3 className="text-[13px] font-bold text-purple-800 mb-2 flex items-center gap-2">
+                        <Copy className="w-4 h-4 text-purple-600" />
+                        同定义指标实例 <span className="text-purple-500 font-normal text-[11px]">(共 {instances.length} 个副本)</span>
+                    </h3>
+                    <div className="flex items-center gap-4 text-[11px]">
+                        <div className="flex items-center gap-1.5">
+                            <Flame className="w-3.5 h-3.5 text-orange-500" />
+                            <span className="text-gray-600">总引用次数:</span>
+                            <span className="font-bold text-orange-600">{totalUsage}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                            <GitBranch className="w-3.5 h-3.5 text-blue-500" />
+                            <span className="text-gray-600">总依赖次数:</span>
+                            <span className="font-bold text-blue-600">{totalRef}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 实例列表 */}
+                <div className="bg-purple-50/50 rounded-lg border border-purple-100 p-3">
+                    <div className="space-y-2">
+                        {instances.map((inst: any, i: number) => (
+                            <div key={inst.id} 
+                                onClick={() => handleAssetClick(inst.id, 'metrics', inst.name)}
+                                style={{ animationDelay: `${i * 30}ms` }}
+                                className="bg-white p-2.5 rounded border border-purple-100 cursor-pointer hover:border-purple-300 hover:bg-purple-50 transition-all shadow-sm animate-in fade-in slide-in-up fill-mode-backwards">
+                                {/* 第一行：名称 + 使用状态 */}
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                                        <span className="text-[13px] font-bold text-purple-900 truncate">{inst.name}</span>
+                                        {inst.usageCount > 0 ? (
+                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium flex-shrink-0">
+                                                使用中
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-medium flex-shrink-0">
+                                                未使用
+                                            </span>
+                                        )}
+                                    </div>
+                                    <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                </div>
+
+                                {/* 第二行：来源路径 */}
+                                <div className="flex items-center gap-2 mt-1.5 text-[11px] text-gray-600 flex-wrap">
+                                    {/* 数据源 */}
+                                    <span className="flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                        <Layers className="w-3 h-3 text-indigo-500" />
+                                        <span className="truncate max-w-[150px] font-medium">{inst.datasourceName}</span>
+                                    </span>
+                                    {inst.datasourceProject && (
+                                        <span className="text-[10px] text-gray-400">({inst.datasourceProject})</span>
+                                    )}
+                                    
+                                    {/* 工作簿 */}
+                                    {inst.workbookName && (
+                                        <>
+                                            <span className="text-gray-400">→</span>
+                                            <span className="flex items-center gap-1 bg-rose-50 px-1.5 py-0.5 rounded">
+                                                <BookOpen className="w-3 h-3 text-rose-500" />
+                                                <span className="truncate max-w-[120px] font-medium">{inst.workbookName}</span>
+                                            </span>
+                                        </>
+                                    )}
+                                </div>
+
+                                {/* 第三行：统计指标 */}
+                                <div className="flex items-center gap-3 mt-1.5 text-[11px]">
+                                    <span className="flex items-center gap-0.5 text-orange-600 font-medium">
+                                        <Flame className="w-3 h-3" /> {inst.usageCount || 0}个视图
+                                    </span>
+                                    {inst.referenceCount > 0 && (
+                                        <span className="flex items-center gap-0.5 text-blue-600 font-medium">
+                                            <GitBranch className="w-3 h-3" /> {inst.referenceCount}次依赖
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    };
 
     // ========== 血缘图渲染 (保留原有逻辑) ==========
     const renderLineageTab = () => {
@@ -1635,13 +1737,17 @@ export default function DetailDrawer() {
         const type = currentItem?.type;
         const isProjectType = type === 'projects';
         const isUserType = type === 'users';
+        const isFieldType = type === 'fields' || type === 'metrics';
 
-        if (data.referenceCount !== undefined) return data.referenceCount;
+        // 指标优先使用 stats.view_count (聚合后的视图数)，字段使用 usageCount
+        if (type === 'metrics') return data.stats?.view_count ?? data.usageCount ?? data.usage_count ?? 0;
+        if (type === 'fields') return data.usageCount ?? data.usage_count ?? data.stats?.view_count ?? 0;
         if (isProjectType) return (data.stats?.datasource_count || 0) + (data.stats?.workbook_count || 0);
         if (isUserType) return (data.datasources?.length || 0) + (data.workbooks?.length || 0);
         if (type === 'tables') return data.stats?.workbook_count || data.workbooks?.length || 0;
         if (type === 'datasources') return data.stats?.workbook_count || data.workbooks?.length || 0;
         if (type === 'views') return data.totalViewCount ?? data.total_view_count ?? data.hitsTotal ?? data.hits_total ?? 0;
+        if (data.referenceCount !== undefined) return data.referenceCount;
         return data.views?.length || data.workbooks?.length || 0;
     };
 
@@ -1673,6 +1779,7 @@ export default function DetailDrawer() {
             if (isFieldType) return '引用次数';
             if (type === 'datasources') return '关联工作簿';
             if (type === 'workbooks') return '包含视图';
+            if (type === 'views') return '访问热度';  // 视图使用访问热度，而非引用数
             return '关联资产';
         };
 
@@ -1794,8 +1901,8 @@ export default function DetailDrawer() {
                                 <div className="flex items-center gap-2">
                                     <span className="text-[10px] text-gray-500">来源方式:</span>
                                     <span className={`text-[10px] px-2 py-1 rounded font-medium ${(data.lineage_source || data.lineageSource) === 'api' ? 'bg-blue-100 text-blue-700' :
-                                            (data.lineage_source || data.lineageSource) === 'derived' ? 'bg-amber-100 text-amber-700' :
-                                                'bg-purple-100 text-purple-700'
+                                        (data.lineage_source || data.lineageSource) === 'derived' ? 'bg-amber-100 text-amber-700' :
+                                            'bg-purple-100 text-purple-700'
                                         }`}>
                                         {(data.lineage_source || data.lineageSource) === 'api' ? '🔗 API 直接返回' :
                                             (data.lineage_source || data.lineageSource) === 'derived' ? '🔄 智能重连推导' :
@@ -1808,7 +1915,7 @@ export default function DetailDrawer() {
                                 <div className="flex items-center gap-2">
                                     <span className="text-[10px] text-gray-500">穿透状态:</span>
                                     <span className={`text-[10px] px-2 py-1 rounded font-medium ${(data.penetration_status || data.penetrationStatus) === 'success' ? 'bg-green-100 text-green-700' :
-                                            'bg-red-100 text-red-700'
+                                        'bg-red-100 text-red-700'
                                         }`}>
                                         {(data.penetration_status || data.penetrationStatus) === 'success' ? '✅ 穿透成功' : '❌ 穿透失败'}
                                     </span>
@@ -2087,6 +2194,7 @@ export default function DetailDrawer() {
         switch (activeTab) {
             case 'overview': return renderOverviewTab();
             case 'duplicates': return renderDuplicatesTab();
+            case 'instances': return renderInstancesTab();
             case 'lineage': return renderLineageTab();
             case 'usage': return renderUsageTab();
 
@@ -2323,10 +2431,10 @@ export default function DetailDrawer() {
                                 <ShieldCheck className="w-3.5 h-3.5" />
                                 状态: {isCertified ? '已认证' : '未认证'}
                             </div>
-                            {/* 引用数徽章 */}
+                            {/* 引用数/访问热度徽章 - 视图显示访问热度，其他显示引用数 */}
                             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gray-100 bg-gray-50 text-xs font-medium text-gray-600">
                                 <Flame className="w-3.5 h-3.5 text-orange-500" />
-                                引用数: {getReferenceCount()}
+                                {currentItem?.type === 'views' ? '访问热度' : '引用数'}: {getReferenceCount()}
                             </div>
                         </div>
                     </div>

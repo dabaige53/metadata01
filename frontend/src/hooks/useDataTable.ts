@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import type { FacetConfig, ActiveFilters } from '@/components/data-table/FacetFilterBar';
 import type { SortState, SortConfig } from '@/components/data-table/SortButtons';
 import type { PaginationState } from '@/components/data-table/Pagination';
@@ -47,25 +47,35 @@ export function useDataTable<T extends Record<string, any>>({
   facetsOverride,
   onParamsChange,
 }: UseDataTableOptions<T>) {
-  const router = useRouter();
   const searchParams = useSearchParams();
 
   // 使用 ref 存储回调，避免依赖变化导致 effect 重复触发
   const onParamsChangeRef = useRef(onParamsChange);
-  onParamsChangeRef.current = onParamsChange;
+  useEffect(() => {
+    onParamsChangeRef.current = onParamsChange;
+  }, [onParamsChange]);
 
   const filterKeys = useMemo(() => {
     return facetFields || DEFAULT_FACET_CONFIG[moduleName] || [];
   }, [facetFields, moduleName]);
 
-  // 从 URL 读取初始状态
+  // 从 URL 读取初始状态（仅用于首次挂载）
   const initialSort = searchParams.get('sort') || '';
   const initialOrder = (searchParams.get('order') as 'asc' | 'desc') || 'desc';
   const initialPage = parseInt(searchParams.get('page') || '1');
   const initialSearch = searchParams.get('search') || '';
 
-  // 状态管理
-  const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
+  // 从 URL 读取初始筛选状态（使用函数初始化，只在首次挂载时执行）
+  const [activeFilters, setActiveFilters] = useState<ActiveFilters>(() => {
+    const filters: ActiveFilters = {};
+    filterKeys.forEach((key) => {
+      const value = searchParams.get(key);
+      if (value) {
+        filters[key] = value.split(',').filter(Boolean);
+      }
+    });
+    return filters;
+  });
   const [sortState, setSortState] = useState<SortState>({
     sortKey: initialSort,
     sortOrder: initialOrder,
@@ -95,39 +105,6 @@ export function useDataTable<T extends Record<string, any>>({
     setAppliedSearchTerm(initialSearch);
     setSearchTerm(initialSearch);
   }, [initialSearch]);
-
-  const areFiltersEqual = useCallback((left: ActiveFilters, right: ActiveFilters) => {
-    const leftKeys = Object.keys(left).filter((key) => left[key]?.length);
-    const rightKeys = Object.keys(right).filter((key) => right[key]?.length);
-    if (leftKeys.length !== rightKeys.length) return false;
-
-    for (const key of leftKeys) {
-      const leftValues = left[key] || [];
-      const rightValues = right[key] || [];
-      if (leftValues.length !== rightValues.length) return false;
-      for (let i = 0; i < leftValues.length; i += 1) {
-        if (leftValues[i] !== rightValues[i]) return false;
-      }
-    }
-    return true;
-  }, []);
-
-  useEffect(() => {
-    const parsedFilters: ActiveFilters = {};
-    filterKeys.forEach((key) => {
-      const value = searchParams.get(key);
-      if (value) {
-        parsedFilters[key] = value.split(',').filter(Boolean);
-      }
-    });
-
-    setActiveFilters((prev) => {
-      if (areFiltersEqual(prev, parsedFilters)) {
-        return prev;
-      }
-      return parsedFilters;
-    });
-  }, [filterKeys, searchParams, areFiltersEqual]);
 
   // 计算 Facets
   const facets = useMemo<FacetConfig>(() => {
@@ -224,18 +201,8 @@ export function useDataTable<T extends Record<string, any>>({
     return sortedData.slice(start, end);
   }, [serverSide, data, sortedData, currentPage, pageSize]);
 
-  // 初始化请求 (仅服务器端模式)
-  useEffect(() => {
-    if (serverSide && onParamsChangeRef.current) {
-      // 构建初始参数
-      const params: Record<string, any> = {};
-      if (pageSize !== 50) params.page_size = pageSize.toString();
-      params.page = '1';
-
-      // 触发初始请求
-      onParamsChangeRef.current(params);
-    }
-  }, []); // 空依赖数组,仅在组件挂载时执行一次
+  // 标记是否已完成首次请求，避免重复请求
+  const hasInitializedRef = useRef(false);
 
   // 更新 URL 和通知父组件
   useEffect(() => {
@@ -258,13 +225,40 @@ export function useDataTable<T extends Record<string, any>>({
 
     const queryString = urlParams.toString();
     const newUrl = queryString ? `?${queryString}` : '';
-    router.replace(newUrl, { scroll: false });
+    
+    // 使用 window.history 直接更新 URL，避免 Next.js router 的异步行为
+    const currentPath = window.location.pathname;
+    const fullUrl = newUrl ? `${currentPath}${newUrl}` : currentPath;
+    window.history.replaceState(null, '', fullUrl);
 
     // 如果是服务器端模式，通知父组件参数变化以触发 API 请求
-    if (serverSide && onParamsChangeRef.current) {
+    // 首次挂载时也会触发，确保初始请求包含所有参数
+    if (serverSide && onParamsChangeRef.current && hasInitializedRef.current) {
       onParamsChangeRef.current(params);
     }
-  }, [sortState, currentPage, appliedSearchTerm, activeFilters, pageSize, router, serverSide]);
+  }, [sortState, currentPage, appliedSearchTerm, activeFilters, pageSize, serverSide]);
+
+  // 初始化请求 (仅服务器端模式，首次挂载时执行)
+  useEffect(() => {
+    if (serverSide && onParamsChangeRef.current && !hasInitializedRef.current) {
+      hasInitializedRef.current = true;
+      // 构建初始参数，包含所有当前状态
+      const params: Record<string, any> = {};
+      if (sortState.sortKey) {
+        params.sort = sortState.sortKey;
+        params.order = sortState.sortOrder;
+      }
+      if (currentPage > 1) params.page = currentPage.toString();
+      if (appliedSearchTerm) params.search = appliedSearchTerm;
+      if (pageSize !== 50) params.page_size = pageSize.toString();
+      // 包含初始筛选参数
+      Object.entries(activeFilters).forEach(([k, v]) => {
+        if (v && v.length > 0) params[k] = v.join(',');
+      });
+      // 触发初始请求
+      onParamsChangeRef.current(params);
+    }
+  }, [serverSide, sortState, currentPage, appliedSearchTerm, activeFilters, pageSize]);
 
   // 处理筛选变化（单项）
   const handleFilterChange = useCallback((key: string, value: string, checked: boolean) => {
