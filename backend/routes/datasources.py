@@ -17,6 +17,11 @@ def get_datasources():
     sort = request.args.get('sort', '')
     order = request.args.get('order', 'asc')
     is_embedded = request.args.get('is_embedded', None)  # 新增: 嵌入式筛选
+    is_certified = request.args.get('is_certified', '')
+    project_name = request.args.get('project_name', '')
+
+    def parse_list(value: str) -> list[str]:
+        return [item.strip() for item in value.split(',') if item.strip()]
     
     from sqlalchemy.orm import selectinload
     from sqlalchemy import text
@@ -35,6 +40,25 @@ def get_datasources():
     
     if search: 
         query = query.filter(Datasource.name.ilike(f'%{search}%'))
+
+    # 认证状态筛选
+    if is_certified:
+        certified_values = []
+        for raw in parse_list(is_certified):
+            if raw.lower() in ('true', '1', 'yes'):
+                certified_values.append(True)
+            elif raw.lower() in ('false', '0', 'no'):
+                certified_values.append(False)
+        if certified_values:
+            query = query.filter(Datasource.is_certified.in_(certified_values))
+
+    # 项目筛选
+    if project_name:
+        project_values = parse_list(project_name)
+        if len(project_values) == 1:
+            query = query.filter(Datasource.project_name == project_values[0])
+        elif project_values:
+            query = query.filter(Datasource.project_name.in_(project_values))
     
     # 分页参数
     page = request.args.get('page', 1, type=int)

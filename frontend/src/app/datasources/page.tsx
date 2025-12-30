@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useRef } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 import { Loader2, Layers, Search } from 'lucide-react';
 import FacetFilterBar from '@/components/data-table/FacetFilterBar';
@@ -11,6 +11,7 @@ import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 import UncertifiedDatasourcesAnalysis from '@/components/datasources/UncertifiedDatasourcesAnalysis';
 import OrphanDatasourcesAnalysis from '@/components/datasources/OrphanDatasourcesAnalysis';
 import { useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 interface DatasourceItem {
     id: string;
@@ -37,6 +38,8 @@ interface DatasourceItem {
 function DatasourcesContent() {
     const { openDrawer } = useDrawer();
     const [activeTab, setActiveTab] = useState<'published' | 'embedded' | 'uncertified' | 'orphan'>('published');
+    const searchParams = useSearchParams();
+    const prevTabRef = useRef(activeTab);
 
     // 数据状态
     const [data, setData] = useState<DatasourceItem[]>([]);
@@ -84,6 +87,14 @@ function DatasourcesContent() {
             setLoading(false);
         }
     }, []);
+
+    const buildParamsFromSearch = useCallback(() => {
+        const params: Record<string, any> = {};
+        searchParams.forEach((value, key) => {
+            params[key] = value;
+        });
+        return params;
+    }, [searchParams]);
 
     // 治理 Tab 的排序配置与状态
     const [govSortConfig, setGovSortConfig] = useState<{
@@ -133,19 +144,20 @@ function DatasourcesContent() {
     // 同步列表页数量 (如果有筛选)
     // 监听 Tab 切换，重新获取数据
     useEffect(() => {
-        if (activeTab === 'published' || activeTab === 'embedded') {
-            // 切换 Tab 时，重置为第一页，并获取对应的数据
-            fetchDatasources({
-                page: 1,
-                page_size: paginationState.pageSize,
-                is_embedded: activeTab === 'embedded' ? '1' : '0'
-            });
-            // 如果不在第一页，更新页码状态
-            if (paginationState.page !== 1) {
-                handlePageChange(1);
-            }
+        if (activeTab !== 'published' && activeTab !== 'embedded') return;
+        if (prevTabRef.current === activeTab) return;
+
+        prevTabRef.current = activeTab;
+        const params = buildParamsFromSearch();
+        params.page = '1';
+        params.page_size = paginationState.pageSize;
+        params.is_embedded = activeTab === 'embedded' ? '1' : '0';
+        fetchDatasources(params);
+
+        if (paginationState.page !== 1) {
+            handlePageChange(1);
         }
-    }, [activeTab, fetchDatasources, handlePageChange, paginationState.page, paginationState.pageSize]);
+    }, [activeTab, buildParamsFromSearch, fetchDatasources, handlePageChange, paginationState.page, paginationState.pageSize]);
 
     // 同步列表页数量 (如果有筛选) - 仅在总数变化时更新
     useEffect(() => {
@@ -157,7 +169,7 @@ function DatasourcesContent() {
     // 排序选项
     const sortOptions = [
         { key: 'table_count', label: '表数量' },
-        { key: 'workbook_count', label: '引用数' },
+        { key: 'workbook_count', label: '关联工作簿' },
         { key: 'last_refresh', label: '更新时间' },
         { key: 'name', label: '名称' },
     ];

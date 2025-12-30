@@ -7,7 +7,7 @@ from sqlalchemy import text, bindparam, func
 from sqlalchemy.orm import selectinload
 from . import api_bp
 from .utils import build_tableau_url
-from ..models import View, Field, Workbook, Datasource
+from ..models import View, Field, Workbook, Datasource, field_to_view
 
 # ==================== 视图接口 ====================
 
@@ -185,6 +185,7 @@ def get_views():
     page = request.args.get('page', 1, type=int)
     page_size = request.args.get('page_size', 50, type=int)
     page_size = min(page_size, 10000)
+    search = request.args.get('search', '').strip()
     
     view_type = request.args.get('view_type', '')
     workbook_name = request.args.get('workbook_name', '')
@@ -225,6 +226,12 @@ def get_views():
             query = query.filter(View.workbook.has(Workbook.name == workbook_names[0]))
         else:
             query = query.filter(View.workbook.has(Workbook.name.in_(workbook_names)))
+
+    if search:
+        query = query.filter(
+            (View.name.ilike(f'%{search}%')) |
+            (View.workbook.has(Workbook.name.ilike(f'%{search}%')))
+        )
         
     base_total = base_query.count()
     total = query.count()
@@ -233,8 +240,16 @@ def get_views():
     sort = request.args.get('sort', '')
     order = request.args.get('order', 'asc')
 
-    if sort == 'total_view_count':
+    if sort in ('total_view_count', 'hits_total'):
         query = query.order_by(View.total_view_count.desc() if order == 'desc' else View.total_view_count.asc())
+    elif sort == 'field_count':
+        field_count_subq = session.query(
+            field_to_view.c.view_id.label('view_id'),
+            func.count(func.distinct(field_to_view.c.field_id)).label('field_count')
+        ).group_by(field_to_view.c.view_id).subquery()
+        query = query.outerjoin(field_count_subq, View.id == field_count_subq.c.view_id)
+        count_order = func.coalesce(field_count_subq.c.field_count, 0)
+        query = query.order_by(count_order.desc() if order == 'desc' else count_order.asc())
     elif sort == 'name':
          query = query.order_by(View.name.desc() if order == 'desc' else View.name.asc())
     elif include_standalone == 'true':

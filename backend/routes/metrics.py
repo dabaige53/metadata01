@@ -135,8 +135,21 @@ def get_metrics_catalog():
     # 筛选参数
     search = request.args.get('search', '')
     role_filter = request.args.get('role', '')
+    is_aggregated = request.args.get('is_aggregated', '')
+    dedup_method_filter = request.args.get('dedup_method', '')
     sort = request.args.get('sort', 'total_references')
     order = request.args.get('order', 'desc')
+
+    def parse_list(value: str) -> list[str]:
+        return [item.strip() for item in value.split(',') if item.strip()]
+
+    def build_in_clause(prefix: str, values: list[str], params_map: dict) -> str:
+        keys = []
+        for idx, value in enumerate(values):
+            key = f"{prefix}_{idx}"
+            params_map[key] = value
+            keys.append(f":{key}")
+        return f"({', '.join(keys)})"
     
     # 构建动态条件（直接使用 calculated_fields 表）
     conditions = []
@@ -147,8 +160,13 @@ def get_metrics_catalog():
         params['search'] = f'%{search}%'
     
     if role_filter:
-        conditions.append("cf.role = :role")
-        params['role'] = role_filter
+        role_values = parse_list(role_filter)
+        if len(role_values) == 1:
+            conditions.append("cf.role = :role")
+            params['role'] = role_values[0]
+        elif role_values:
+            role_clause = build_in_clause('role', role_values, params)
+            conditions.append(f"cf.role IN {role_clause}")
     
     where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
     
@@ -156,24 +174,64 @@ def get_metrics_catalog():
     # 修正：使用 unique_id 进行聚合，区分不同数据源的同名指标
     # 聚合查询 - 引入 Lineage 中台表进行精准聚合 (统一卡片与详情页口径)
     # 聚合查询 - 使用子查询聚合确保口径绝对统一 (由列表项驱动血缘聚合)
+    outer_conditions = []
+
+    if is_aggregated:
+        agg_values = {value.lower() for value in parse_list(is_aggregated)}
+        agg_clauses = []
+        if 'true' in agg_values or '1' in agg_values or 'yes' in agg_values:
+            agg_clauses.append("gs.instance_count > 1")
+        if 'false' in agg_values or '0' in agg_values or 'no' in agg_values:
+            agg_clauses.append("gs.instance_count <= 1")
+        if agg_clauses:
+            outer_conditions.append(f"({' OR '.join(agg_clauses)})")
+
+    if dedup_method_filter:
+        dedup_values = parse_list(dedup_method_filter)
+        if dedup_values:
+            dedup_clause = build_in_clause('dedup_method', dedup_values, params)
+            outer_conditions.append(
+                "CASE "
+                "WHEN gs.has_embedded = 1 AND gs.has_published = 1 THEN 'hash_mixed' "
+                "WHEN gs.has_embedded = 1 THEN 'hash_embedded' "
+                "ELSE 'hash_published' "
+                f"END IN {dedup_clause}"
+            )
+
+    outer_where = f"WHERE {' AND '.join(outer_conditions)}" if outer_conditions else ""
+
     base_sql = f"""
         WITH metric_groups AS (
             SELECT 
-                TRIM(name) as clean_name, 
-                formula_hash,
-                COUNT(DISTINCT id) as instance_count,
-                COALESCE(SUM(reference_count), 0) as total_references,
-                COALESCE(SUM(usage_count), 0) as total_usage,
-                MAX(role) as role,
-                MAX(data_type) as data_type,
-                MAX(description) as description,
-                MAX(complexity_score) as complexity,
-                MAX(formula) as formula,
-                MIN(id) as representative_id,
-                MAX(unique_id) as unique_id
-            FROM calculated_fields
-            {where_clause.replace('cf.', '')}
-            GROUP BY TRIM(name), formula_hash
+                TRIM(cf.name) as clean_name, 
+                cf.formula_hash,
+                COUNT(DISTINCT cf.id) as instance_count,
+                COALESCE(SUM(cf.reference_count), 0) as total_references,
+                COALESCE(SUM(cf.usage_count), 0) as total_usage,
+                MAX(cf.role) as role,
+                MAX(cf.data_type) as data_type,
+                MAX(cf.description) as description,
+                MAX(cf.complexity_score) as complexity,
+                MAX(cf.formula) as formula,
+                MIN(cf.id) as representative_id,
+                MAX(cf.unique_id) as unique_id,
+                COALESCE((
+                    SELECT MAX(CASE WHEN d.is_embedded = 1 THEN 1 ELSE 0 END)
+                    FROM calculated_fields cf2
+                    JOIN calc_field_full_lineage cfl ON cf2.id = cfl.field_id
+                    LEFT JOIN datasources d ON cfl.datasource_id = d.id
+                    WHERE TRIM(cf2.name) = TRIM(cf.name) AND cf2.formula_hash = cf.formula_hash
+                ), 0) as has_embedded,
+                COALESCE((
+                    SELECT MAX(CASE WHEN d.is_embedded = 0 OR d.is_embedded IS NULL THEN 1 ELSE 0 END)
+                    FROM calculated_fields cf2
+                    JOIN calc_field_full_lineage cfl ON cf2.id = cfl.field_id
+                    LEFT JOIN datasources d ON cfl.datasource_id = d.id
+                    WHERE TRIM(cf2.name) = TRIM(cf.name) AND cf2.formula_hash = cf.formula_hash
+                ), 0) as has_published
+            FROM calculated_fields cf
+            {where_clause}
+            GROUP BY TRIM(cf.name), cf.formula_hash
         )
         SELECT 
             gs.clean_name as name,
@@ -199,6 +257,7 @@ def get_metrics_catalog():
              LEFT JOIN workbooks w ON cfl.workbook_id = w.id 
              WHERE TRIM(cf2.name) = gs.clean_name AND cf2.formula_hash = gs.formula_hash) as workbook_info
         FROM metric_groups gs
+        {outer_where}
     """
 
     

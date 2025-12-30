@@ -18,7 +18,7 @@ import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 // 排序选项定义在组件外部，保证引用稳定
 const SORT_OPTIONS: SortConfig[] = [
     { key: 'complexity', label: '复杂度' },
-    { key: 'total_references', label: '引用数' },
+    { key: 'total_references', label: '视图引用' },
     { key: 'name', label: '名称' }
 ];
 

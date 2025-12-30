@@ -1,27 +1,30 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## AI回复语言
+简体中文，包括思考过程，task任务和相关交付件都必须是简体中文。
 
 ## 项目概述
 
 Tableau 元数据治理平台前端 - 基于 Next.js 构建的现代化 Web 应用，提供数据治理分析界面。后端 API 由 Flask 提供，存储于 SQLite 数据库。参考开源项目设计、元数据采集、元数据管理、血缘分析等理念，<https://github.com/datahub-project/datahub>
 
-**最新版本**: v2.0 (2025-12-18)
+**最新版本**: v2.1 (2025-12-30)
 
 - ✅ 完整的筛选、排序、分页功能
 - ✅ 统一的数据表格组件系统
-- ✅ 通过 39 项 E2E 测试
+- ✅ 术语表（Glossary）模块
+- ✅ 指标分析与重复检测
 
 ## 技术栈
 
-- **框架**: Next.js 16 + React 19
+- **框架**: Next.js 16.0.10 + React 19.2.1
 - **语言**: TypeScript 5
-- **样式**: Tailwind CSS 4
-- **图标**: Lucide React
+- **样式**: Tailwind CSS 4.x
+- **图标**: Lucide React 0.561+
 - **后端 API**: Flask 3.0（运行于 localhost:8101）
 - **数据库**: SQLite (metadata.db)
 - **Tableau 集成**: Metadata API (GraphQL) + REST API 认证
 - **UI 风格**: 参考 [ui_style.md](docs/ui_style.md)
+- **图表**: Mermaid 11.x（用于血缘可视化）
 
 ## 快速开始
 
@@ -66,8 +69,8 @@ python3 deploy.py
 
 ### 访问地址
 
-- **本机访问**: <http://localhost:3100> ⭐ 主要使用
-- **内网访问**: 启动时会显示内网 IP，如 `http://192.168.x.x:3100`
+- **本机访问**: <http://localhost:3200> ⭐ 主要使用
+- **内网访问**: 启动时会显示内网 IP，如 `http://192.168.x.x:3200`
 - **Flask 后端 API**: <http://localhost:8101/api/>*
 
 ## 常用命令
@@ -123,7 +126,7 @@ python3 backend/tableau_sync.py --db-path data/metadata.db
 ```bash
 cd frontend
 
-# 开发模式
+# 开发模式（默认端口 3200）
 npm run dev
 
 # 生产构建
@@ -140,13 +143,13 @@ npm run lint
 
 ```bash
 # 基础 E2E 测试（12项：API + 页面加载）
-node tests/e2e/test-e2e.js
+node tests/e2e/test-e2e.mjs
 
 # 功能测试（27项：筛选/排序/分页）
-node tests/e2e/test-features.js
+node tests/e2e/test-features.mjs
 
 # 性能测试
-node tests/e2e/test-performance.js
+node tests/e2e/test-performance.mjs
 ```
 
 ### 工具脚本
@@ -165,6 +168,9 @@ python3 scripts/validation/cross_validate_lineage.py # 血缘交叉验证
 python3 scripts/maintenance/update_datasource_stats.py  # 更新数据源统计
 python3 scripts/maintenance/cleanup_embedded_tables.py  # 清理嵌入式表
 python3 scripts/maintenance/calculate_complexity.py     # 计算字段复杂度
+
+# 术语表初始化
+python3 scripts/seed_glossary_terms.py                  # 初始化业务术语
 
 # 可视化生成（scripts/generation/）
 python3 scripts/generation/generate_sankey.py       # 生成 Sankey 血缘图
@@ -206,13 +212,18 @@ metadata分析/
 │   │   │   ├── views/          # 视图模块
 │   │   │   ├── fields/         # 原始字段模块 ⭐
 │   │   │   ├── metrics/        # 计算字段模块 ⭐
+│   │   │   ├── glossary/       # 术语表模块
 │   │   │   ├── projects/       # 项目模块
 │   │   │   ├── users/          # 用户模块
 │   │   │   └── search/         # 全局搜索
 │   │   ├── components/         # 可复用组件
 │   │   │   ├── AppLayout.tsx   # 应用布局
 │   │   │   ├── DetailDrawer.tsx # 详情抽屉
-│   │   │   └── data-table/     # 表格组件系统
+│   │   │   ├── data-table/     # 表格组件系统
+│   │   │   ├── cards/          # 卡片组件
+│   │   │   ├── metrics/        # 指标相关组件
+│   │   │   ├── fields/         # 字段相关组件
+│   │   │   └── views/          # 视图相关组件
 │   │   ├── hooks/              # 自定义 Hooks
 │   │   │   └── useDataTable.ts # 核心表格逻辑
 │   │   └── lib/                # 工具库
@@ -230,7 +241,9 @@ metadata分析/
 │   │   ├── fields.py           # 字段接口
 │   │   ├── metrics.py          # 指标接口
 │   │   ├── lineage.py          # 血缘接口
-│   │   └── api_legacy.py       # 其他接口
+│   │   ├── glossary.py         # 术语表接口
+│   │   ├── utils.py            # 工具函数
+│   │   └── api_legacy.py       # 兼容接口
 │   ├── services/               # 业务逻辑层
 │   │   ├── tableau_client.py   # Tableau API 客户端
 │   │   └── sync_manager.py     # 同步管理器
@@ -246,10 +259,13 @@ metadata分析/
 ├── data/
 │   └── metadata.db             # SQLite 数据库
 ├── logs/                       # 日志目录
+├── tests/                      # 测试目录
+│   ├── e2e/                    # E2E 测试
+│   └── validation/             # 验证测试
 ├── dev.py                      # 一键启动脚本
+├── deploy.py                   # 生产部署脚本
 ├── run_backend.py              # 后端启动入口
-├── test-e2e.js                 # E2E 测试
-└── test-features.js            # 功能测试
+└── requirements.txt            # Python 依赖
 ```
 
 ### 后端架构
@@ -300,7 +316,7 @@ metadata.db
 
 ## 核心功能
 
-### v2.0 升级亮点
+### v2.1 升级亮点
 
 **数据表格组件系统**：
 - `InlineFilter`: Chip 样式筛选器，支持多选、动态计数
@@ -313,8 +329,10 @@ metadata.db
 - `/tables` - 数据表：新增"原始列数"、"预览字段"列，智能状态标识
 - `/metrics` - 计算字段：增强依赖字段可视化（头像叠加）
 - `/workbooks` - 工作簿：美化上游数据源标签
+- `/glossary` - 术语表：业务术语定义与管理
+- `/views` - 视图分析：无访问视图按工作簿分组展示
 
-详见：`升级完成报告.md`
+详见：`docs/升级完成报告.md`
 
 ## 核心数据模型与血缘
 
@@ -405,8 +423,8 @@ Next.js Frontend
    - 在 `frontend/src/lib/api.ts` 添加 API 类型定义
 
 3. **测试**：
-   - 在 `tests/e2e/test-e2e.js` 添加 API 测试
-   - 在 `tests/e2e/test-features.js` 添加功能测试
+   - 在 `tests/e2e/test-e2e.mjs` 添加 API 测试
+   - 在 `tests/e2e/test-features.mjs` 添加功能测试
 
 ### 代码规范
 
@@ -416,27 +434,11 @@ Next.js Frontend
 - ✅ 组件使用 TypeScript 严格类型，文件使用 PascalCase/camelCase 命名
 - ✅ 使用 Tailwind CSS 进行样式开发，使用 useMemo/useCallback 优化性能
 
-### 数据治理 Tab 设计
-
-每个模块采用 Tab 切换展示不同治理场景（资产列表 vs 治理分析）：
-
-- **样式**: 容器 `bg-gray-100/80 rounded-lg`，激活态 `bg-white text-indigo-600 shadow-sm`
-- **参考实现**: `frontend/src/app/metrics/page.tsx`（计算字段列表 vs 重复指标分析）
-
-**各模块治理场景建议**：
-| 模块     | Tab 1 (默认) | Tab 2+ (治理分析)           |
-| -------- | ------------ | --------------------------- |
-| 计算字段 | 列表         | 重复指标分析                |
-| 原始字段 | 列表         | 无描述字段 / 孤立字段       |
-| 数据表   | 列表         | 未使用表 / 宽表分析         |
-| 数据源   | 列表         | 未认证数据源 / 孤立数据源   |
-| 工作簿   | 列表         | 无视图工作簿 / 单源依赖分析 |
-
 ## 重要说明
 
 ### 环境配置
 
-- **前端端口**: 3100（Next.js）
+- **前端端口**: 3200（Next.js）
 - **后端端口**: 8101（Flask）
 - **数据库**: `data/metadata.db`（SQLite，自动创建）
 - **Tableau 连接**: 需在 `.env` 配置 PAT 令牌
@@ -448,3 +450,18 @@ Next.js Frontend
 2. **数据同步是核心功能**，统计数据全部预计算，API 层只读取不计算
 3. **只读模式**：所有 PUT/POST/DELETE 请求返回 405
 4. **真实数据**：不使用 mock 数据，所有展示基于 Tableau 同步数据
+5. **数据同步修复**（2025-12-25）：
+   - 修复了仪表板字段关联缺失问题（原逻辑只查询 sheets，未查询 dashboards）
+   - 修复了85%字段无视图关联的问题
+   - 旧逻辑已归档至 `backend/services/archived/`
+   - 建议重新同步数据以获取完整血缘关系
+
+## 文档资源
+
+| 文档                         | 用途         | 读者          |
+| ---------------------------- | ------------ | ------------- |
+| `docs/快速启动指南.md`       | 启动和使用   | 用户/测试人员 |
+| `docs/E2E测试报告.md`        | 测试结果详情 | 测试人员/QA   |
+| `docs/升级完成报告.md`       | 技术实现细节 | 开发者        |
+| `docs/差异分析和修复方案.md` | 完整规划     | 架构师/规划者 |
+| `docs/元数据血缘关系说明.md` | 血缘模型详解 | 开发者        |

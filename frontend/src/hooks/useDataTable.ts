@@ -316,7 +316,7 @@ export function useDataTable<T extends Record<string, any>>({
   const handleClearAllFilters = useCallback(() => {
     setActiveFilters({});
     setSearchTerm('');
-    // setAppliedSearchTerm(''); // 由防抖 Effect 处理
+    setAppliedSearchTerm('');
     setCurrentPage(1);
   }, []);
 

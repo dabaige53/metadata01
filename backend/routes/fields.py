@@ -200,6 +200,17 @@ def get_fields_catalog():
     dedup_method_filter = request.args.get('dedup_method', '')  # 新增：去重方式筛选
     sort = request.args.get('sort', 'total_usage')
     order = request.args.get('order', 'desc')
+
+    def parse_list(value: str) -> list[str]:
+        return [item.strip() for item in value.split(',') if item.strip()]
+
+    def build_in_clause(prefix: str, values: list[str], params_map: dict) -> str:
+        keys = []
+        for idx, value in enumerate(values):
+            key = f"{prefix}_{idx}"
+            params_map[key] = value
+            keys.append(f":{key}")
+        return f"({', '.join(keys)})"
     
     # 构建动态条件
     conditions = []
@@ -214,20 +225,27 @@ def get_fields_catalog():
     # 2. 角色筛选 (针对实例属性 - 只要有一个实例匹配即可)
     # 注意：这需要在 JOIN regular_fields 后应用，或者在 WHERE 中
     if role_filter:
-        conditions.append("rf.role = :role")
-        params['role'] = role_filter
+        role_values = parse_list(role_filter)
+        if len(role_values) == 1:
+            conditions.append("rf.role = :role")
+            params['role'] = role_values[0]
+        elif role_values:
+            role_clause = build_in_clause('role', role_values, params)
+            conditions.append(f"rf.role IN {role_clause}")
     
     # 3. 去重方式筛选
     if dedup_method_filter:
-        if dedup_method_filter == 'physical_table':
-            # 按物理表+列去重：有 table_id 且表非嵌入式
-            conditions.append("urf.table_id IS NOT NULL AND (t.is_embedded = 0 OR t.is_embedded IS NULL)")
-        elif dedup_method_filter == 'embedded_table':
-            # 按嵌入式表去重：有 table_id 且表是嵌入式
-            conditions.append("urf.table_id IS NOT NULL AND t.is_embedded = 1")
-        elif dedup_method_filter == 'datasource':
-            # 按数据源+名称去重：无 table_id
-            conditions.append("urf.table_id IS NULL")
+        dedup_values = parse_list(dedup_method_filter)
+        dedup_clauses = []
+        for value in dedup_values:
+            if value == 'physical_table':
+                dedup_clauses.append("(urf.table_id IS NOT NULL AND (t.is_embedded = 0 OR t.is_embedded IS NULL))")
+            elif value == 'embedded_table':
+                dedup_clauses.append("(urf.table_id IS NOT NULL AND t.is_embedded = 1)")
+            elif value == 'datasource':
+                dedup_clauses.append("(urf.table_id IS NULL)")
+        if dedup_clauses:
+            conditions.append(f"({' OR '.join(dedup_clauses)})")
         
     where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
     
@@ -716,16 +734,39 @@ def get_fields():
     conditions = []
     params = {}
     
+    def parse_list(value: str) -> list[str]:
+        return [item.strip() for item in value.split(',') if item.strip()]
+
+    def build_in_clause(prefix: str, values: list[str], params_map: dict) -> str:
+        keys = []
+        for idx, value in enumerate(values):
+            key = f"{prefix}_{idx}"
+            params_map[key] = value
+            keys.append(f":{key}")
+        return f"({', '.join(keys)})"
+
     if role:
-        conditions.append("rf.role = :role")
-        params['role'] = role
+        role_values = parse_list(role)
+        if len(role_values) == 1:
+            conditions.append("rf.role = :role")
+            params['role'] = role_values[0]
+        elif role_values:
+            role_clause = build_in_clause('role', role_values, params)
+            conditions.append(f"rf.role IN {role_clause}")
+
     if data_type:
-        conditions.append("rf.data_type = :data_type")
-        params['data_type'] = data_type
-        if has_description.lower() == 'true':
-            conditions.append("rf.description IS NOT NULL AND rf.description != ''")
-        elif has_description.lower() == 'false':
-            conditions.append("(rf.description IS NULL OR rf.description = '')")
+        type_values = parse_list(data_type)
+        if len(type_values) == 1:
+            conditions.append("rf.data_type = :data_type")
+            params['data_type'] = type_values[0]
+        elif type_values:
+            type_clause = build_in_clause('data_type', type_values, params)
+            conditions.append(f"rf.data_type IN {type_clause}")
+
+    if has_description.lower() == 'true':
+        conditions.append("rf.description IS NOT NULL AND rf.description != ''")
+    elif has_description.lower() == 'false':
+        conditions.append("(rf.description IS NULL OR rf.description = '')")
 
     if search:
         conditions.append("(rf.name LIKE :search OR rf.description LIKE :search)")

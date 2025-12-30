@@ -24,7 +24,7 @@ interface FormulaDuplicateMetricsAnalysisProps {
 const SORT_OPTIONS: SortConfig[] = [
     { key: 'name_count', label: '名称数' },
     { key: 'instance_count', label: '实例数' },
-    { key: 'total_references', label: '引用数' },
+    { key: 'total_references', label: '视图引用' },
     { key: 'name', label: '名称' }
 ];
 

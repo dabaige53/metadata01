@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, AlertTriangle, Eye } from 'lucide-react';
+import { BookOpen, AlertTriangle } from 'lucide-react';
 import HorizontalCard from './HorizontalCard';
 import { formatDateWithRelative, isRecent } from '@/lib/date';
 
@@ -46,10 +46,6 @@ export default function WorkbookCard({ workbook, onClick, onMouseEnter }: Workbo
     {
       text: status,
       color: statusColor as 'gray' | 'purple' | 'green',
-    },
-    {
-      text: `${viewCount}个视图`,
-      color: 'blue',
     },
   ];
 
@@ -105,20 +101,6 @@ export default function WorkbookCard({ workbook, onClick, onMouseEnter }: Workbo
     });
   }
 
-  // Explicitly add Usage Metrics (Field & Metric counts)
-  if (workbook.fieldCount !== undefined && workbook.fieldCount > 0) {
-    details.push({
-      label: '使用字段',
-      value: `${workbook.fieldCount} 个`
-    });
-  }
-
-  if (workbook.metricCount !== undefined && workbook.metricCount > 0) {
-    details.push({
-      label: '使用指标',
-      value: `${workbook.metricCount} 个`
-    });
-  }
 
   // 构建标签
   const tags = [];
@@ -138,20 +120,6 @@ export default function WorkbookCard({ workbook, onClick, onMouseEnter }: Workbo
     });
   }
 
-  if (datasourceCount > 3) {
-    tags.push({
-      label: '多数据源',
-      color: 'blue' as const,
-    });
-  }
-
-  if (viewCount > 0) {
-    tags.push({
-      icon: <Eye className="w-3 h-3" />,
-      label: `${viewCount}个视图`,
-      color: 'green' as const,
-    });
-  }
 
   if (workbook.description) {
     tags.push({

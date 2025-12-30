@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense, useCallback } from 'react';
+import { useEffect, useState, Suspense, useCallback, useRef } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 import { Loader2, Table2, Search } from 'lucide-react';
 import FacetFilterBar from '@/components/data-table/FacetFilterBar';
@@ -9,6 +9,7 @@ import Pagination from '@/components/data-table/Pagination';
 import TableCard from '@/components/cards/TableCard';
 import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 import UnusedTablesAnalysis from '@/components/tables/UnusedTablesAnalysis';
+import { useSearchParams } from 'next/navigation';
 
 interface TableItem {
     id: string;
@@ -38,6 +39,8 @@ function TablesContent() {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'published' | 'embedded' | 'analysis'>('published');
     const { openDrawer } = useDrawer();
+    const searchParams = useSearchParams();
+    const prevTabRef = useRef(activeTab);
 
     // 各 Tab 统计数量
     const [tabCounts, setTabCounts] = useState<{ [key: string]: number }>({
@@ -78,6 +81,14 @@ function TablesContent() {
             setLoading(false);
         }
     }, []);
+
+    const buildParamsFromSearch = useCallback(() => {
+        const params: Record<string, any> = {};
+        searchParams.forEach((value, key) => {
+            params[key] = value;
+        });
+        return params;
+    }, [searchParams]);
 
     // 治理 Tab 的排序配置与状态
     const [govSortConfig, setGovSortConfig] = useState<{
@@ -126,19 +137,20 @@ function TablesContent() {
 
     // 监听 Tab 切换，重新获取数据
     useEffect(() => {
-        if (activeTab === 'published' || activeTab === 'embedded') {
-            // 切换 Tab 时，重置为第一页，并获取对应的数据
-            fetchTables({
-                page: 1,
-                page_size: paginationState.pageSize,
-                is_embedded: activeTab === 'embedded' ? '1' : '0'
-            });
-            // 如果不在第一页，更新页码状态
-            if (paginationState.page !== 1) {
-                handlePageChange(1);
-            }
+        if (activeTab !== 'published' && activeTab !== 'embedded') return;
+        if (prevTabRef.current === activeTab) return;
+
+        prevTabRef.current = activeTab;
+        const params = buildParamsFromSearch();
+        params.page = '1';
+        params.page_size = paginationState.pageSize;
+        params.is_embedded = activeTab === 'embedded' ? '1' : '0';
+        fetchTables(params);
+
+        if (paginationState.page !== 1) {
+            handlePageChange(1);
         }
-    }, [activeTab, fetchTables, handlePageChange, paginationState.page, paginationState.pageSize]);
+    }, [activeTab, buildParamsFromSearch, fetchTables, handlePageChange, paginationState.page, paginationState.pageSize]);
 
     // 同步列表页数量
     useEffect(() => {

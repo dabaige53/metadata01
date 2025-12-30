@@ -1752,7 +1752,21 @@ export default function DetailDrawer() {
         if (type === 'tables') return data.stats?.workbook_count || 0;
         if (type === 'datasources') return data.stats?.workbook_count || 0;
         if (type === 'views') return data.totalViewCount || 0;
+        if (type === 'workbooks') return data.stats?.view_count || data.views?.length || 0;
         return 0;
+    };
+
+    const getBadgeReferenceLabel = () => {
+        const type = currentItem?.type;
+        if (type === 'metrics') return '视图引用';
+        if (type === 'fields') return '视图引用';
+        if (type === 'projects') return '包含资产';
+        if (type === 'users') return '拥有资产';
+        if (type === 'tables') return '关联工作簿';
+        if (type === 'datasources') return '关联工作簿';
+        if (type === 'views') return '访问热度';
+        if (type === 'workbooks') return '包含视图';
+        return '引用数';
     };
 
     // ========== 概览 Tab 重构 PRO (Description List 风格) ==========
@@ -2479,10 +2493,10 @@ export default function DetailDrawer() {
                                 <ShieldCheck className="w-3.5 h-3.5" />
                                 状态: {isCertified ? '已认证' : '未认证'}
                             </div>
-                            {/* 引用数/访问热度徽章 - 视图显示访问热度，其他显示引用数 */}
+                            {/* 引用数徽章 - 根据类型显示不同标签 */}
                             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gray-100 bg-gray-50 text-xs font-medium text-gray-600">
                                 <Flame className="w-3.5 h-3.5 text-orange-500" />
-                                {currentItem?.type === 'views' ? '访问热度' : '引用数'}: {getReferenceCount()}
+                                {getBadgeReferenceLabel()}: {getReferenceCount()}
                             </div>
                         </div>
                     </div>

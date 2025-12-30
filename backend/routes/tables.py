@@ -7,7 +7,7 @@ from sqlalchemy import func, text, bindparam
 from sqlalchemy.orm import selectinload
 from . import api_bp
 from .utils import build_tableau_url
-from ..models import DBTable, DBColumn, Field
+from ..models import DBTable, DBColumn, Field, Database
 
 
 # -------------------- 数据表治理分析专用 API --------------------
@@ -86,9 +86,13 @@ def get_tables():
     session = g.db_session
     search = request.args.get('search', '')
     schema_filter = request.args.get('schema', '')
+    database_name = request.args.get('database_name', '')
     sort = request.args.get('sort', '')
     order = request.args.get('order', 'asc')
     is_embedded = request.args.get('is_embedded', None)
+
+    def parse_list(value: str) -> list[str]:
+        return [item.strip() for item in value.split(',') if item.strip()]
     
     # 分页参数
     page = request.args.get('page', 1, type=int)
@@ -113,7 +117,20 @@ def get_tables():
         query = query.filter(DBTable.name.ilike(f'%{search}%'))
     
     if schema_filter:
-        query = query.filter(DBTable.schema == schema_filter)
+        schema_values = parse_list(schema_filter)
+        if len(schema_values) == 1:
+            query = query.filter(DBTable.schema == schema_values[0])
+        elif schema_values:
+            query = query.filter(DBTable.schema.in_(schema_values))
+
+    if database_name:
+        database_values = parse_list(database_name)
+        if database_values:
+            query = query.join(DBTable.database)
+            if len(database_values) == 1:
+                query = query.filter(Database.name == database_values[0])
+            else:
+                query = query.filter(Database.name.in_(database_values))
     
     # 排序
     if sort == 'name':

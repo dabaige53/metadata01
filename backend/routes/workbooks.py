@@ -88,11 +88,21 @@ def get_workbooks():
     """获取工作簿列表 - 增加动态统计"""
     session = g.db_session
     search = request.args.get('search', '')
+    project_name = request.args.get('project_name', '')
     sort = request.args.get('sort', 'name') # 默认按名称排序
     order = request.args.get('order', 'asc')
+
+    def parse_list(value: str) -> list[str]:
+        return [item.strip() for item in value.split(',') if item.strip()]
     
     query = session.query(Workbook)
     if search: query = query.filter(Workbook.name.ilike(f'%{search}%'))
+    if project_name:
+        project_values = parse_list(project_name)
+        if len(project_values) == 1:
+            query = query.filter(Workbook.project_name == project_values[0])
+        elif project_values:
+            query = query.filter(Workbook.project_name.in_(project_values))
     
     # SQL 级别排序
     if sort == 'viewCount':
