@@ -34,7 +34,7 @@ class Config:
     PORT = int(os.environ.get('PORT', 8201))
     
     # Tableau 配置 (吉祥航空 Tableau Server)
-    TABLEAU_BASE_URL = os.environ.get('TABLEAU_BASE_URL', 'http://tbi.juneyaoair.com')
+    TABLEAU_BASE_URL = os.environ.get('TABLEAU_BASE_URL', 'https://tbi.juneyaoair.com')
     TABLEAU_USERNAME = os.environ.get('TABLEAU_USERNAME', '')
     TABLEAU_PASSWORD = os.environ.get('TABLEAU_PASSWORD', '')
     TABLEAU_PAT_NAME = os.environ.get('TABLEAU_PAT_NAME', '')

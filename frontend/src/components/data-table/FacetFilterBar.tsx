@@ -91,6 +91,12 @@ export default function FacetFilterBar({
     // 获取所有已选条件（用于展示已选汇总）
     const selectedChips: { facetKey: string; value: string; label: string }[] = [];
     Object.entries(activeFilters).forEach(([facetKey, values]) => {
+        // 如果全选了（选中数量等于选项数量），则不显示单个 Tag
+        const allOptionsCount = Object.keys(facets[facetKey] || {}).length;
+        if (values.length === allOptionsCount && allOptionsCount > 0) {
+            return;
+        }
+
         values.forEach(value => {
             selectedChips.push({
                 facetKey,

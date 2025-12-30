@@ -376,74 +376,357 @@ def get_metrics_catalog():
 @api_bp.route('/metrics/catalog/duplicate')
 def get_metrics_catalog_duplicate():
     """
-    获取重复指标分析 - 聚合视角
+    获取同名称不同公式的重复指标分析
     
-    聚合规则：按 (name + formula_hash) 分组
-    筛选条件：instance_count > 1 的指标（同一公式在多个数据源使用）
+    聚合规则：按 name 分组
+    筛选条件：同名下存在多个不同 formula_hash
+    """
+    session = g.db_session
+    from sqlalchemy import text, bindparam
+    
+    name_stats_sql = """
+        SELECT 
+            TRIM(name) as name,
+            COUNT(*) as instance_count,
+            COUNT(DISTINCT formula_hash) as formula_count,
+            COALESCE(SUM(reference_count), 0) as total_references,
+            COALESCE(SUM(usage_count), 0) as total_usage
+        FROM calculated_fields
+        GROUP BY TRIM(name)
+        HAVING formula_count > 1
+        ORDER BY formula_count DESC, instance_count DESC, name
+    """
+    name_rows = session.execute(text(name_stats_sql)).fetchall()
+    if not name_rows:
+        return jsonify({
+            'total_count': 0,
+            'items': []
+        })
+    
+    names = [row.name for row in name_rows]
+    variants_sql = text("""
+        WITH variants AS (
+            SELECT 
+                TRIM(name) as name,
+                formula_hash,
+                MAX(formula) as formula,
+                COUNT(*) as instance_count,
+                COALESCE(SUM(reference_count), 0) as total_references,
+                COALESCE(SUM(usage_count), 0) as total_usage,
+                MAX(complexity_score) as complexity,
+                MAX(description) as description,
+                MIN(id) as representative_id
+            FROM calculated_fields
+            WHERE TRIM(name) IN :names
+            GROUP BY TRIM(name), formula_hash
+        )
+        SELECT 
+            v.name,
+            v.formula_hash,
+            v.formula,
+            v.instance_count,
+            v.total_references,
+            v.total_usage,
+            v.complexity,
+            v.description,
+            v.representative_id,
+            (SELECT GROUP_CONCAT(DISTINCT cfl.datasource_id || '|' || COALESCE(d.name, 'Unknown') || '|' || COALESCE(d.is_embedded, 0))
+             FROM calc_field_full_lineage cfl 
+             LEFT JOIN datasources d ON cfl.datasource_id = d.id 
+             WHERE cfl.field_id = v.representative_id) as datasource_info,
+            (SELECT GROUP_CONCAT(DISTINCT cfl.workbook_id || '|' || COALESCE(w.name, 'Unknown'))
+             FROM calc_field_full_lineage cfl 
+             LEFT JOIN workbooks w ON cfl.workbook_id = w.id 
+             WHERE cfl.field_id = v.representative_id) as workbook_info,
+            (SELECT GROUP_CONCAT(DISTINCT cfl.table_id || '|' || COALESCE(t.name, 'Unknown'))
+             FROM calc_field_full_lineage cfl 
+             LEFT JOIN tables t ON cfl.table_id = t.id 
+             WHERE cfl.field_id = v.representative_id) as table_info
+        FROM variants v
+        ORDER BY v.name, v.total_references DESC, v.instance_count DESC
+    """).bindparams(bindparam('names', expanding=True))
+    variant_rows = session.execute(variants_sql, {'names': names}).fetchall()
+    
+    items_map = {
+        row.name: {
+            'name': row.name,
+            'formula_count': row.formula_count,
+            'instance_count': row.instance_count,
+            'total_references': row.total_references or 0,
+            'total_usage': row.total_usage or 0,
+            'variants': []
+        }
+        for row in name_rows
+    }
+    
+    for row in variant_rows:
+        datasources = []
+        if row.datasource_info:
+            for ds_pair in row.datasource_info.split(','):
+                parts = ds_pair.split('|')
+                if len(parts) >= 2:
+                    ds_id, ds_name = parts[0], parts[1]
+                    is_embedded = parts[2] == '1' if len(parts) > 2 else False
+                    if ds_id and ds_id != 'None':
+                        datasources.append({'id': ds_id, 'name': ds_name, 'is_embedded': is_embedded})
+
+        workbooks = []
+        if row.workbook_info:
+            for wb_pair in row.workbook_info.split(','):
+                if '|' in wb_pair:
+                    wb_id, wb_name = wb_pair.split('|', 1)
+                    if wb_id and wb_id != 'None':
+                        workbooks.append({'id': wb_id, 'name': wb_name})
+
+        tables = []
+        if row.table_info:
+            for tb_pair in row.table_info.split(','):
+                if '|' in tb_pair:
+                    tb_id, tb_name = tb_pair.split('|', 1)
+                    if tb_id and tb_id != 'None':
+                        tables.append({'id': tb_id, 'name': tb_name})
+
+        items_map[row.name]['variants'].append({
+            'formula_hash': row.formula_hash,
+            'formula': row.formula,
+            'instance_count': row.instance_count,
+            'total_references': row.total_references or 0,
+            'total_usage': row.total_usage or 0,
+            'complexity': row.complexity or 0,
+            'representative_id': row.representative_id,
+            'datasources': datasources,
+            'datasource_count': len(datasources),
+            'workbooks': workbooks,
+            'workbook_count': len(workbooks),
+            'tables': tables,
+            'table_count': len(tables)
+        })
+    
+    items = list(items_map.values())
+    return jsonify({
+        'total_count': len(items),
+        'items': items
+    })
+
+
+@api_bp.route('/metrics/catalog/duplicate-formula')
+def get_metrics_catalog_duplicate_formula():
+    """
+    获取同公式不同名称的重复指标分析
+    
+    聚合规则：按 formula_hash 分组
+    筛选条件：同一公式存在多个不同名称
     """
     session = g.db_session
     from sqlalchemy import text
     
-    # 直接从 calculated_fields 表查询（新的四表架构）
-    # 重复分析：这里依然保持按 formula_hash 聚合，因为我们要找的是"逻辑重复"（可能跨数据源也可能同数据源）
-    # 但由于 v5 迁移策略消除了同数据源重复，这里主要会发现跨数据源重复
-    # 为了治理方便，我们也返回 unique_id 列表，以便前端展示
     sql = """
+        WITH formula_groups AS (
+            SELECT 
+                formula_hash,
+                COUNT(*) as instance_count,
+                COUNT(DISTINCT TRIM(name)) as name_count,
+                COALESCE(SUM(reference_count), 0) as total_references,
+                COALESCE(SUM(usage_count), 0) as total_usage,
+                MAX(role) as role,
+                MAX(data_type) as data_type,
+                MAX(description) as description,
+                MAX(complexity_score) as complexity,
+                MAX(formula) as formula
+            FROM calculated_fields
+            GROUP BY formula_hash
+            HAVING name_count > 1
+        )
         SELECT 
-            MIN(cf.id) as representative_id,
-            GROUP_CONCAT(DISTINCT cf.unique_id) as unique_ids,
-            cf.name,
-            cf.formula,
-            cf.formula_hash,
-            MAX(cf.role) as role,
-            MAX(cf.data_type) as data_type,
-            MAX(cf.description) as description,
-            COUNT(*) as instance_count,
-            MAX(cf.complexity_score) as complexity,
-            COALESCE(SUM(cf.reference_count), 0) as total_references,
-            GROUP_CONCAT(DISTINCT cf.datasource_id) as datasource_ids,
-            GROUP_CONCAT(DISTINCT d.name) as datasource_names,
-            GROUP_CONCAT(DISTINCT cf.workbook_id) as workbook_ids,
-            GROUP_CONCAT(DISTINCT w.name) as workbook_names
-        FROM calculated_fields cf
-        LEFT JOIN datasources d ON cf.datasource_id = d.id
-        LEFT JOIN workbooks w ON cf.workbook_id = w.id
-        GROUP BY cf.name, cf.formula_hash
-        HAVING COUNT(*) > 1
-        ORDER BY instance_count DESC, cf.name
+            fg.formula_hash,
+            fg.instance_count,
+            fg.name_count,
+            fg.total_references,
+            fg.total_usage,
+            fg.role,
+            fg.data_type,
+            fg.description,
+            fg.complexity,
+            fg.formula,
+            (SELECT cf.id FROM calculated_fields cf 
+             WHERE cf.formula_hash = fg.formula_hash 
+             ORDER BY cf.usage_count DESC, cf.reference_count DESC, cf.id 
+             LIMIT 1) as representative_id,
+            (SELECT cf.name FROM calculated_fields cf 
+             WHERE cf.formula_hash = fg.formula_hash 
+             ORDER BY cf.usage_count DESC, cf.reference_count DESC, cf.id 
+             LIMIT 1) as representative_name,
+            (SELECT GROUP_CONCAT(DISTINCT cfl.datasource_id || '|' || COALESCE(d.name, 'Unknown') || '|' || COALESCE(d.is_embedded, 0)) 
+             FROM calculated_fields cf2 
+             JOIN calc_field_full_lineage cfl ON cf2.id = cfl.field_id 
+             LEFT JOIN datasources d ON cfl.datasource_id = d.id 
+             WHERE cf2.formula_hash = fg.formula_hash) as datasource_info,
+            (SELECT GROUP_CONCAT(DISTINCT cfl.workbook_id || '|' || COALESCE(w.name, 'Unknown')) 
+             FROM calculated_fields cf2 
+             JOIN calc_field_full_lineage cfl ON cf2.id = cfl.field_id 
+             LEFT JOIN workbooks w ON cfl.workbook_id = w.id 
+             WHERE cf2.formula_hash = fg.formula_hash) as workbook_info,
+            (SELECT GROUP_CONCAT(DISTINCT cfl.table_id || '|' || COALESCE(t.name, 'Unknown'))
+             FROM calculated_fields cf2
+             JOIN calc_field_full_lineage cfl ON cf2.id = cfl.field_id
+             LEFT JOIN tables t ON cfl.table_id = t.id
+             WHERE cf2.formula_hash = fg.formula_hash) as table_info
+        FROM formula_groups fg
+        ORDER BY fg.instance_count DESC, representative_name
     """
     rows = session.execute(text(sql)).fetchall()
     
     items = []
     for row in rows:
-        ds_ids = row.datasource_ids.split(',') if row.datasource_ids else []
-        ds_names = row.datasource_names.split(',') if row.datasource_names else []
-        datasources = [{'id': ds_ids[i] if i < len(ds_ids) else None, 'name': ds_names[i]} 
-                       for i in range(len(ds_names))]
+        datasources = []
+        has_embedded = False
+        has_published = False
+        if row.datasource_info:
+            for ds_pair in row.datasource_info.split(','):
+                parts = ds_pair.split('|')
+                if len(parts) >= 2:
+                    ds_id, ds_name = parts[0], parts[1]
+                    is_embedded = parts[2] == '1' if len(parts) > 2 else False
+                    if ds_id and ds_id != 'None':
+                        datasources.append({'id': ds_id, 'name': ds_name, 'is_embedded': is_embedded})
+                        if is_embedded:
+                            has_embedded = True
+                        else:
+                            has_published = True
         
-        wb_ids = row.workbook_ids.split(',') if row.workbook_ids else []
-        wb_names = row.workbook_names.split(',') if row.workbook_names else []
-        workbooks = [{'id': wb_ids[i] if i < len(wb_ids) else None, 'name': wb_names[i]} 
-                     for i in range(len(wb_names))]
+        workbooks = []
+        if row.workbook_info:
+            for wb_pair in row.workbook_info.split(','):
+                if '|' in wb_pair:
+                    wb_id, wb_name = wb_pair.split('|', 1)
+                    if wb_id and wb_id != 'None':
+                        workbooks.append({'id': wb_id, 'name': wb_name})
         
+        if has_embedded and has_published:
+            dedup_method = 'hash_mixed'
+        elif has_embedded:
+            dedup_method = 'hash_embedded'
+        else:
+            dedup_method = 'hash_published'
+        
+        tables = []
+        if row.table_info:
+            for tb_pair in row.table_info.split(','):
+                if '|' in tb_pair:
+                    tb_id, tb_name = tb_pair.split('|', 1)
+                    if tb_id and tb_id != 'None':
+                        tables.append({'id': tb_id, 'name': tb_name})
+
         items.append({
             'representative_id': row.representative_id,
-            'unique_ids': row.unique_ids.split(',') if row.unique_ids else [],
-            'name': row.name,
+            'name': row.representative_name or '-',
             'formula': row.formula,
             'formula_hash': row.formula_hash,
             'role': row.role,
             'data_type': row.data_type,
             'description': row.description or '',
             'instance_count': row.instance_count,
+            'name_count': row.name_count,
             'complexity': row.complexity or 0,
             'total_references': row.total_references or 0,
+            'total_usage': row.total_usage or 0,
             'datasources': datasources,
             'datasource_count': len(datasources),
             'workbooks': workbooks,
-            'workbook_count': len(workbooks)
+            'workbook_count': len(workbooks),
+            'tables': tables,
+            'table_count': len(tables),
+            'dedup_method': dedup_method
         })
-    
+
+    if items:
+        formula_hashes = [item['formula_hash'] for item in items]
+        name_variants_sql = text("""
+            WITH name_variants AS (
+                SELECT 
+                    TRIM(name) as name,
+                    formula_hash,
+                    MIN(id) as representative_id,
+                    COUNT(*) as instance_count,
+                    COALESCE(SUM(reference_count), 0) as total_references,
+                    COALESCE(SUM(usage_count), 0) as total_usage,
+                    MAX(complexity_score) as complexity
+                FROM calculated_fields
+                WHERE formula_hash IN :hashes
+                GROUP BY TRIM(name), formula_hash
+            )
+            SELECT 
+                nv.name,
+                nv.formula_hash,
+                nv.representative_id,
+                nv.instance_count,
+                nv.total_references,
+                nv.total_usage,
+                nv.complexity,
+                (SELECT GROUP_CONCAT(DISTINCT cfl.datasource_id || '|' || COALESCE(d.name, 'Unknown') || '|' || COALESCE(d.is_embedded, 0))
+                 FROM calc_field_full_lineage cfl 
+                 LEFT JOIN datasources d ON cfl.datasource_id = d.id 
+                 WHERE cfl.field_id = nv.representative_id) as datasource_info,
+                (SELECT GROUP_CONCAT(DISTINCT cfl.workbook_id || '|' || COALESCE(w.name, 'Unknown'))
+                 FROM calc_field_full_lineage cfl 
+                 LEFT JOIN workbooks w ON cfl.workbook_id = w.id 
+                 WHERE cfl.field_id = nv.representative_id) as workbook_info,
+                (SELECT GROUP_CONCAT(DISTINCT cfl.table_id || '|' || COALESCE(t.name, 'Unknown'))
+                 FROM calc_field_full_lineage cfl 
+                 LEFT JOIN tables t ON cfl.table_id = t.id 
+                 WHERE cfl.field_id = nv.representative_id) as table_info
+            FROM name_variants nv
+            ORDER BY nv.formula_hash, nv.total_references DESC, nv.instance_count DESC, nv.name
+        """).bindparams(bindparam('hashes', expanding=True))
+
+        variant_rows = session.execute(name_variants_sql, {'hashes': formula_hashes}).fetchall()
+        variant_map = {}
+        for row in variant_rows:
+            datasources = []
+            if row.datasource_info:
+                for ds_pair in row.datasource_info.split(','):
+                    parts = ds_pair.split('|')
+                    if len(parts) >= 2:
+                        ds_id, ds_name = parts[0], parts[1]
+                        is_embedded = parts[2] == '1' if len(parts) > 2 else False
+                        if ds_id and ds_id != 'None':
+                            datasources.append({'id': ds_id, 'name': ds_name, 'is_embedded': is_embedded})
+
+            workbooks = []
+            if row.workbook_info:
+                for wb_pair in row.workbook_info.split(','):
+                    if '|' in wb_pair:
+                        wb_id, wb_name = wb_pair.split('|', 1)
+                        if wb_id and wb_id != 'None':
+                            workbooks.append({'id': wb_id, 'name': wb_name})
+
+            tables = []
+            if row.table_info:
+                for tb_pair in row.table_info.split(','):
+                    if '|' in tb_pair:
+                        tb_id, tb_name = tb_pair.split('|', 1)
+                        if tb_id and tb_id != 'None':
+                            tables.append({'id': tb_id, 'name': tb_name})
+
+            variant = {
+                'name': row.name,
+                'representative_id': row.representative_id,
+                'instance_count': row.instance_count,
+                'total_references': row.total_references or 0,
+                'total_usage': row.total_usage or 0,
+                'complexity': row.complexity or 0,
+                'datasources': datasources,
+                'datasource_count': len(datasources),
+                'workbooks': workbooks,
+                'workbook_count': len(workbooks),
+                'tables': tables,
+                'table_count': len(tables)
+            }
+            variant_map.setdefault(row.formula_hash, []).append(variant)
+
+        for item in items:
+            item['name_variants'] = variant_map.get(item['formula_hash'], [])
+
     return jsonify({
         'total_count': len(items),
         'items': items
@@ -482,7 +765,7 @@ def get_metrics_catalog_complex():
         FROM calculated_fields cf
         LEFT JOIN datasources d ON cf.datasource_id = d.id
         LEFT JOIN workbooks w ON cf.workbook_id = w.id
-        WHERE cf.complexity_score > 3 OR LENGTH(cf.formula) > 100
+        WHERE cf.complexity_score > 10 OR LENGTH(cf.formula) > 300
         GROUP BY cf.name, cf.formula_hash
         ORDER BY cf.complexity_score DESC, formula_length DESC
     """
@@ -502,11 +785,11 @@ def get_metrics_catalog_complex():
         
         # 计算复杂度等级 (基于评分)
         score = row.complexity or 0
-        if score > 10:
+        if score > 20:
             complexity_level = '超高'
-        elif score > 6:
+        elif score > 10:
             complexity_level = '高'
-        elif score > 3:
+        elif score > 5:
             complexity_level = '中'
         else:
             complexity_level = '低'

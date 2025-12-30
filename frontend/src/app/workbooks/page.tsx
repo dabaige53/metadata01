@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useCallback } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 import { Loader2, BookOpen, Search } from 'lucide-react';
 import FacetFilterBar from '@/components/data-table/FacetFilterBar';
@@ -9,8 +9,6 @@ import Pagination from '@/components/data-table/Pagination';
 import WorkbookCard from '@/components/cards/WorkbookCard';
 import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 import EmptyWorkbooksAnalysis from '@/components/workbooks/EmptyWorkbooksAnalysis';
-import { useCallback } from 'react';
-
 interface WorkbookItem {
     id: string;
     name: string;
@@ -25,7 +23,7 @@ interface WorkbookItem {
 }
 
 function WorkbooksContent() {
-    const { openDrawer } = useDrawer();
+    const { openDrawer, prefetch } = useDrawer();
     const [activeTab, setActiveTab] = useState<'list' | 'analysis'>('list');
 
     // 数据状态
@@ -33,11 +31,6 @@ function WorkbooksContent() {
     const [total, setTotal] = useState(0);
     const [facetsData, setFacetsData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-
-    // 预取函数 (暂时为空)
-    const prefetch = useCallback(() => {
-        // TODO: 实现预取逻辑
-    }, []);
 
     // 各 Tab 统计数量
     const [tabCounts, setTabCounts] = useState<{ [key: string]: number }>({

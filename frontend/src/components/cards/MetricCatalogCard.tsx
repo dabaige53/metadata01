@@ -15,6 +15,7 @@ export interface MetricCatalogItem {
     description?: string;
     representative_id?: string;
     instance_count: number;
+    name_count?: number;
     complexity: number;
     complexity_level: string;
     total_references: number;
@@ -23,7 +24,24 @@ export interface MetricCatalogItem {
     datasource_count: number;
     workbooks: Array<{ id: string; name: string }>;
     workbook_count: number;
+    tables?: Array<{ id: string; name: string }>;
+    table_count?: number;
     formula_length?: number;
+    names?: string[];
+    name_variants?: Array<{
+        name: string;
+        representative_id: string;
+        instance_count: number;
+        total_references: number;
+        total_usage: number;
+        complexity: number;
+        datasources?: Array<{ id: string; name: string; is_embedded?: boolean }>;
+        datasource_count?: number;
+        workbooks?: Array<{ id: string; name: string }>;
+        workbook_count?: number;
+        tables?: Array<{ id: string; name: string }>;
+        table_count?: number;
+    }>;
 }
 
 export interface MetricCatalogCardProps {
@@ -99,6 +117,14 @@ export default function MetricCatalogCard({ metric, onClick }: MetricCatalogCard
             icon: <GitMerge className="w-3 h-3" />,
             label: `${metric.instance_count} 实例 → 1 标准`,
             color: 'purple',
+        });
+    }
+
+    if (metric.name_count && metric.name_count > 1) {
+        tags.push({
+            icon: <Hash className="w-3 h-3" />,
+            label: `${metric.name_count} 个名称`,
+            color: 'orange',
         });
     }
 

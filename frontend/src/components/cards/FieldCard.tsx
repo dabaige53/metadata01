@@ -137,7 +137,7 @@ export default function FieldCard({ field, onClick }: FieldCardProps) {
     <HorizontalCard
       icon={<CircleDot className="w-5 h-5" />}
       title={mainTitle}
-      subtitle={hasAlias ? `→ ${displayName} (${field.datasource_name || '数据源'})` : undefined}
+      subtitle={hasAlias ? `→ ${displayName} (${field.datasourceName || '数据源'})` : undefined}
       badges={badges}
       details={details}
       tags={tags}

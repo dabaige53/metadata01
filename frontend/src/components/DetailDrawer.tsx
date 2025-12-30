@@ -2442,6 +2442,15 @@ export default function DetailDrawer() {
                                             <Copy className="w-3 h-3" />
                                         </button>
                                     </div>
+                                    {currentItem?.type === 'views' && (
+                                        <a
+                                            href="/views/demo"
+                                            className="inline-flex items-center gap-1 text-[10px] font-medium text-indigo-600 hover:text-indigo-800 hover:underline transition-colors"
+                                            title="查看视图详情介绍示例"
+                                        >
+                                            详情介绍
+                                        </a>
+                                    )}
                                     {isCertified && (
                                         <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-green-50 text-green-700 px-2 py-0.5 rounded-full border border-green-100">
                                             <CheckCircle2 className="w-3 h-3" /> 已认证

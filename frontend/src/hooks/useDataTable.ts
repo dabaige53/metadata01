@@ -34,6 +34,7 @@ interface UseDataTableOptions<T> {
   totalOverride?: number;
   facetsOverride?: FacetConfig;
   onParamsChange?: (params: Record<string, any>) => void;
+  defaultSelected?: boolean;
 }
 
 export function useDataTable<T extends Record<string, any>>({
@@ -46,6 +47,7 @@ export function useDataTable<T extends Record<string, any>>({
   totalOverride,
   facetsOverride,
   onParamsChange,
+  defaultSelected = false,
 }: UseDataTableOptions<T>) {
   const searchParams = useSearchParams();
 
@@ -128,6 +130,31 @@ export function useDataTable<T extends Record<string, any>>({
 
     return result;
   }, [data, filterKeys, serverSide, facetsOverride]);
+
+  // 记录是否已初始化默认选中状态
+  const hasSetDefaultFilters = useRef(false);
+
+  // 处理默认全选逻辑
+  useEffect(() => {
+    if (defaultSelected && !hasSetDefaultFilters.current && Object.keys(facets).length > 0) {
+      // 检查当前 URL 是否已有筛选参数
+      const hasUrlFilters = filterKeys.some(key => searchParams.has(key));
+
+      if (!hasUrlFilters) {
+        const newFilters: ActiveFilters = {};
+        Object.entries(facets).forEach(([key, values]) => {
+          newFilters[key] = Object.keys(values);
+        });
+
+        // 只有当确有筛选值时才更新
+        if (Object.keys(newFilters).length > 0) {
+          setActiveFilters(newFilters);
+        }
+      }
+
+      hasSetDefaultFilters.current = true;
+    }
+  }, [facets, defaultSelected, filterKeys, searchParams]);
 
   // 应用筛选
   const filteredData = useMemo(() => {
@@ -225,7 +252,7 @@ export function useDataTable<T extends Record<string, any>>({
 
     const queryString = urlParams.toString();
     const newUrl = queryString ? `?${queryString}` : '';
-    
+
     // 使用 window.history 直接更新 URL，避免 Next.js router 的异步行为
     const currentPath = window.location.pathname;
     const fullUrl = newUrl ? `${currentPath}${newUrl}` : currentPath;

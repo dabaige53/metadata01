@@ -1786,7 +1786,7 @@ class MetadataSync:
             self.session.execute(text("""
                 UPDATE calculated_fields SET reference_count = (
                     SELECT COUNT(*) FROM field_dependencies 
-                    WHERE field_dependencies.dπependency_field_id = calculated_fields.id
+                    WHERE field_dependencies.dependency_field_id = calculated_fields.id
                 )
             """))
 

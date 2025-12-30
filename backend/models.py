@@ -903,6 +903,7 @@ class Glossary(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     term = Column(String(255), nullable=False, unique=True)
+    label = Column(String(255))  # 中文/显示名称
     definition = Column(Text, nullable=False)
     category = Column(String(100))  # 术语分类：技术术语、业务术语等
     element = Column(String(50))    # 所属元素：database, table, field, etc.
@@ -916,6 +917,7 @@ class Glossary(Base):
         return {
             'id': self.id,
             'term': self.term,
+            'label': self.label,
             'definition': self.definition,
             'category': self.category,
             'element': self.element,

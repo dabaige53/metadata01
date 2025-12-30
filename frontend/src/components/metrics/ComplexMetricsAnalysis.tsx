@@ -112,12 +112,12 @@ export default function ComplexMetricsAnalysis({ onCountUpdate, onSortUpdate }: 
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-orange-500">
                     <div className="text-xs text-gray-500 uppercase mb-1">高复杂度指标</div>
                     <div className="text-2xl font-bold text-orange-600">{allData.length}</div>
-                    <div className="text-xs text-gray-400 mt-1">评分 &gt; 3 或 长度 &gt; 100</div>
+                    <div className="text-xs text-gray-400 mt-1">评分 &gt; 10 或 长度 &gt; 300</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-red-500">
                     <div className="text-xs text-gray-500 uppercase mb-1">超高复杂度</div>
-                    <div className="text-2xl font-bold text-red-600">{allData.filter(m => m.complexity > 10).length}</div>
-                    <div className="text-xs text-gray-400 mt-1">评分 &gt; 10</div>
+                    <div className="text-2xl font-bold text-red-600">{allData.filter(m => m.complexity > 20).length}</div>
+                    <div className="text-xs text-gray-400 mt-1">评分 &gt; 20</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-purple-500">
                     <div className="text-xs text-gray-500 uppercase mb-1">跨数据源</div>

@@ -2,6 +2,7 @@
 
 import { Loader2, FunctionSquare, Search, HelpCircle } from 'lucide-react';
 import DuplicateMetricsAnalysis from '@/components/metrics/DuplicateMetricsAnalysis';
+import FormulaDuplicateMetricsAnalysis from '@/components/metrics/FormulaDuplicateMetricsAnalysis';
 import ComplexMetricsAnalysis from '@/components/metrics/ComplexMetricsAnalysis';
 import UnusedMetricsAnalysis from '@/components/metrics/UnusedMetricsAnalysis';
 import MetricCatalog from '@/components/metrics/MetricCatalog';
@@ -12,7 +13,7 @@ import { Suspense, useState, useCallback } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 
 function MetricsContent() {
-    const [activeTab, setActiveTab] = useState<'catalog' | 'duplicate' | 'complex' | 'unused'>('catalog');
+    const [activeTab, setActiveTab] = useState<'catalog' | 'duplicate_name' | 'duplicate_formula' | 'complex' | 'unused'>('catalog');
     const { openDrawer } = useDrawer();
     const [data, setData] = useState<any[]>([]);
     const [total, setTotal] = useState(0);
@@ -22,7 +23,8 @@ function MetricsContent() {
     // 各 Tab 统计数量
     const [tabCounts, setTabCounts] = useState({
         catalog: 0,
-        duplicate: 0,
+        duplicate_name: 0,
+        duplicate_formula: 0,
         complex: 0,
         unused: 0
     });
@@ -104,6 +106,7 @@ function MetricsContent() {
                 fetchData(params);
             }
         },
+        defaultSelected: true,
     });
 
     const sortOptions = [
@@ -113,7 +116,7 @@ function MetricsContent() {
     ];
 
     // 处理子组件回传的统计数量
-    const handleTabCountUpdate = useCallback((tab: 'duplicate' | 'complex' | 'unused', count: number) => {
+    const handleTabCountUpdate = useCallback((tab: 'duplicate_name' | 'duplicate_formula' | 'complex' | 'unused', count: number) => {
         setTabCounts(prev => ({ ...prev, [tab]: count }));
     }, []);
 
@@ -121,7 +124,8 @@ function MetricsContent() {
     const getCurrentTabStats = () => {
         const tabLabels = {
             catalog: '计算字段目录',
-            duplicate: '重复指标',
+            duplicate_name: '同名不同公式',
+            duplicate_formula: '同公式不同名称',
             complex: '高复杂度',
             unused: '未使用指标'
         };
@@ -155,13 +159,22 @@ function MetricsContent() {
                         计算字段目录
                     </button>
                     <button
-                        onClick={() => setActiveTab('duplicate')}
-                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'duplicate'
+                        onClick={() => setActiveTab('duplicate_name')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'duplicate_name'
                             ? 'bg-white text-indigo-600 shadow-sm'
                             : 'text-gray-500 hover:text-gray-700'
                             }`}
                     >
-                        重复指标
+                        同名不同公式
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('duplicate_formula')}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === 'duplicate_formula'
+                            ? 'bg-white text-indigo-600 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        同公式不同名称
                     </button>
                     <button
                         onClick={() => setActiveTab('complex')}
@@ -272,9 +285,14 @@ function MetricsContent() {
                     handlePageSizeChange={handlePageSizeChange}
                     onMetricClick={(metric) => openDrawer(metric.representative_id || '', 'metrics')}
                 />
-            ) : activeTab === 'duplicate' ? (
+            ) : activeTab === 'duplicate_name' ? (
                 <DuplicateMetricsAnalysis
-                    onCountUpdate={(count: number) => handleTabCountUpdate('duplicate', count)}
+                    onCountUpdate={(count: number) => handleTabCountUpdate('duplicate_name', count)}
+                    onSortUpdate={handleGovSortUpdate}
+                />
+            ) : activeTab === 'duplicate_formula' ? (
+                <FormulaDuplicateMetricsAnalysis
+                    onCountUpdate={(count: number) => handleTabCountUpdate('duplicate_formula', count)}
                     onSortUpdate={handleGovSortUpdate}
                 />
             ) : activeTab === 'complex' ? (

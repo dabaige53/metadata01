@@ -316,8 +316,8 @@ def get_views():
     for v in views:
         data = v.to_dict()
         v_stats = stats_map.get(v.id, {})
-        data['field_count'] = v_stats.get('field_count', 0)
-        data['metric_count'] = v_stats.get('metric_count', 0)
+        data['fieldCount'] = v_stats.get('field_count', 0)
+        data['metricCount'] = v_stats.get('metric_count', 0)
         results.append(data)
 
     return jsonify({

@@ -6,11 +6,8 @@ import {
     Loader2,
     AlertTriangle,
     FunctionSquare,
-    GitBranch,
     Search
 } from 'lucide-react';
-import { MetricCatalogItem } from '../cards/MetricCatalogCard';
-import FacetFilterBar from '../data-table/FacetFilterBar';
 import Pagination from '../data-table/Pagination';
 import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 
@@ -23,15 +20,39 @@ interface DuplicateMetricsAnalysisProps {
     }) => void;
 }
 
-// 定义排序选项
+interface NameFormulaConflictItem {
+    name: string;
+    formula_count: number;
+    instance_count: number;
+    total_references: number;
+    total_usage: number;
+    variants: Array<{
+        formula_hash: string;
+        formula: string;
+        instance_count: number;
+        total_references: number;
+        total_usage: number;
+        complexity: number;
+        description?: string;
+        representative_id: string;
+        datasources?: Array<{ id: string; name: string }>;
+        datasource_count?: number;
+        workbooks?: Array<{ id: string; name: string }>;
+        workbook_count?: number;
+        tables?: Array<{ id: string; name: string }>;
+        table_count?: number;
+    }>;
+}
+
 const SORT_OPTIONS: SortConfig[] = [
-    { key: 'total_references', label: '引用数' },
+    { key: 'formula_count', label: '公式数' },
     { key: 'instance_count', label: '实例数' },
+    { key: 'total_references', label: '引用数' },
     { key: 'name', label: '名称' }
 ];
 
 export default function DuplicateMetricsAnalysis({ onCountUpdate, onSortUpdate }: DuplicateMetricsAnalysisProps) {
-    const [allData, setAllData] = useState<MetricCatalogItem[]>([]);
+    const [allData, setAllData] = useState<NameFormulaConflictItem[]>([]);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
 
@@ -46,14 +67,10 @@ export default function DuplicateMetricsAnalysis({ onCountUpdate, onSortUpdate }
             .catch(console.error)
             .finally(() => setLoading(false));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // 只在挂载时获取数据
+    }, []);
 
     const {
         displayData,
-        facets,
-        activeFilters,
-        handleBatchFilterChange,
-        handleClearAllFilters,
         sortState,
         handleSortChange,
         paginationState,
@@ -62,14 +79,12 @@ export default function DuplicateMetricsAnalysis({ onCountUpdate, onSortUpdate }
         searchTerm,
         setSearchTerm
     } = useDataTable({
-        moduleName: 'metrics-duplicate',
+        moduleName: 'metrics-duplicate-name',
         data: allData,
-        facetFields: ['role'],
-        searchFields: ['name', 'formula'],
+        searchFields: ['name'],
         defaultPageSize: 20
     });
 
-    // 同步排序状态给父组件
     useEffect(() => {
         onSortUpdate?.({
             options: SORT_OPTIONS,
@@ -77,11 +92,10 @@ export default function DuplicateMetricsAnalysis({ onCountUpdate, onSortUpdate }
             onChange: handleSortChange
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sortState]); // 只在排序状态变化时同步
+    }, [sortState]);
 
-    // 统计多数据源/多工作簿数量
-    const multiDatasourceCount = allData.filter(m => m.datasource_count > 1).length;
-    const multiWorkbookCount = allData.filter(m => m.workbook_count > 1).length;
+    const totalFormulaVariants = allData.reduce((sum, item) => sum + (item.formula_count || 0), 0);
+    const multiFormulaCount = allData.filter(item => item.formula_count >= 3).length;
 
     if (loading) {
         return (
@@ -97,152 +111,157 @@ export default function DuplicateMetricsAnalysis({ onCountUpdate, onSortUpdate }
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <AlertTriangle className="w-6 h-6 text-green-600" />
                 </div>
-                <h3 className="text-green-800 font-bold mb-1">未发现重复指标</h3>
-                <p className="text-green-600 text-sm">您的指标管理非常规范，没有发现同一指标在多处重复定义的情况。</p>
+                <h3 className="text-green-800 font-bold mb-1">未发现同名多公式</h3>
+                <p className="text-green-600 text-sm">当前没有发现同名但公式不同的计算字段。</p>
             </div>
         );
     }
 
     return (
         <div className="space-y-6">
-            {/* 概览统计报告 */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-red-500">
-                    <div className="text-xs text-gray-500 uppercase mb-1">重复规范指标数</div>
+                    <div className="text-xs text-gray-500 uppercase mb-1">同名多公式</div>
                     <div className="text-2xl font-bold text-red-600">{allData.length}</div>
-                    <div className="text-xs text-gray-400 mt-1">基于公式哈希聚合的冗余资产</div>
+                    <div className="text-xs text-gray-400 mt-1">同名下出现多个不同公式</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-purple-500">
-                    <div className="text-xs text-gray-500 uppercase mb-1">跨数据源</div>
-                    <div className="text-2xl font-bold text-purple-600">{multiDatasourceCount}</div>
-                    <div className="text-xs text-gray-400 mt-1">同一指标跨多个数据源</div>
+                    <div className="text-xs text-gray-500 uppercase mb-1">多公式名称</div>
+                    <div className="text-2xl font-bold text-purple-600">{multiFormulaCount}</div>
+                    <div className="text-xs text-gray-400 mt-1">同名下公式数 ≥ 3</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-blue-500">
-                    <div className="text-xs text-gray-500 uppercase mb-1">跨工作簿</div>
-                    <div className="text-2xl font-bold text-blue-600">{multiWorkbookCount}</div>
-                    <div className="text-xs text-gray-400 mt-1">同一指标跨多个工作簿</div>
+                    <div className="text-xs text-gray-500 uppercase mb-1">公式版本总数</div>
+                    <div className="text-2xl font-bold text-blue-600">{totalFormulaVariants}</div>
+                    <div className="text-xs text-gray-400 mt-1">所有同名分组的公式合计</div>
                 </div>
             </div>
 
-            {/* 统一工具栏: 筛选 (左) + 排序 & 搜索 (右) */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <FacetFilterBar
-                    facets={facets}
-                    activeFilters={activeFilters}
-                    onFilterChange={handleBatchFilterChange}
-                    onClearAll={handleClearAllFilters}
-                />
-
-                <div className="flex items-center gap-2">
-                    <div className="relative w-64">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <Search className="h-4 w-4 text-gray-400" />
-                        </div>
-                        <input
-                            type="text"
-                            placeholder="搜索指标名称或公式..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-                        />
+                <div className="relative w-64">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Search className="h-4 w-4 text-gray-400" />
                     </div>
+                    <input
+                        type="text"
+                        placeholder="搜索指标名称..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                    />
                 </div>
             </div>
 
-            {/* 指标卡片列表 */}
             <div className="space-y-3">
                 {displayData.length === 0 ? (
                     <div className="py-20 text-center text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">
                         未找到匹配的指标
                     </div>
                 ) : (
-                    displayData.map((item, idx) => (
-                        <div
-                            key={`${item.name}-${item.formula_hash || idx}`}
-                            className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow cursor-pointer"
-                            onClick={() => openDrawer(item.representative_id || '', 'metrics')}
-                        >
-                            <div className="flex items-start justify-between gap-4">
-                                <div className="flex items-start gap-3 flex-1 min-w-0">
-                                    <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 bg-red-50 text-red-600">
-                                        <FunctionSquare className="w-5 h-5" />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <h4 className="font-bold text-gray-800 text-[15px]">
-                                                {item.name}
-                                            </h4>
-                                            {/* 实例数标签 */}
-                                            <span className="px-2 py-0.5 text-[10px] rounded-full font-bold bg-red-50 text-red-700 border border-red-100">
-                                                {item.instance_count} 个实例
-                                            </span>
-                                            {/* 多数据源血缘标记 */}
-                                            {item.datasource_count > 1 && (
-                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 border border-purple-200 rounded-full text-xs text-purple-600">
-                                                    <GitBranch className="w-3 h-3" />
-                                                    跨 {item.datasource_count} 数据源
-                                                </span>
-                                            )}
-                                            {/* 多工作簿标记 */}
-                                            {item.workbook_count > 1 && (
-                                                <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs rounded-full">
-                                                    {item.workbook_count} 个工作簿
-                                                </span>
-                                            )}
+                    displayData.map((item, idx) => {
+                        const variants = item.variants || [];
+                        return (
+                            <div
+                                key={`${item.name}-${idx}`}
+                                className="bg-white border border-gray-200 rounded-xl p-4"
+                            >
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                                        <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 bg-red-50 text-red-600">
+                                            <FunctionSquare className="w-5 h-5" />
                                         </div>
-                                        {/* 公式预览 */}
-                                        <div className="mt-2">
-                                            <code className="bg-gray-100/50 px-2 py-1 rounded text-[11px] text-gray-600 font-mono line-clamp-2">
-                                                {item.formula}
-                                            </code>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <h4 className="font-bold text-gray-800 text-[15px]">
+                                                    {item.name}
+                                                </h4>
+                                                <span className="px-2 py-0.5 text-[10px] rounded-full font-bold bg-red-50 text-red-700 border border-red-100">
+                                                    {item.formula_count} 个公式
+                                                </span>
+                                                <span className="px-2 py-0.5 text-[10px] rounded-full font-bold bg-gray-50 text-gray-700 border border-gray-200">
+                                                    {item.instance_count} 个实例
+                                                </span>
+                                            </div>
+                                            <div className="mt-2 text-xs text-gray-500">
+                                                总引用 {item.total_references || 0} · 总使用 {item.total_usage || 0}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* 右侧引用数 */}
-                                <div className="flex items-center gap-4 text-right">
-                                    <div>
-                                        <div className="text-lg font-bold text-gray-700">{item.total_references || 0}</div>
-                                        <div className="text-xs text-gray-400">总引用</div>
-                                    </div>
-                                    <div className="text-gray-300">→</div>
+                                <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                                    {variants.map((variant, vIdx) => (
+                                        <button
+                                            key={`${variant.formula_hash}-${vIdx}`}
+                                            onClick={() => openDrawer(variant.representative_id, 'metrics', item.name, 'instance')}
+                                            className="w-full text-left p-2.5 rounded-lg border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/50 transition-all"
+                                        >
+                                            <div className="flex items-center justify-between gap-3">
+                                                <code className="bg-gray-100/70 px-2 py-1 rounded text-[11px] text-gray-600 font-mono line-clamp-2 flex-1">
+                                                    {variant.formula || '-'}
+                                                </code>
+                                                <div className="text-[11px] text-gray-500 flex-shrink-0">
+                                                    引用 {variant.total_references || 0} · 使用 {variant.total_usage || 0}
+                                                </div>
+                                            </div>
+                                            {variant.description && (
+                                                <div className="mt-2 text-[11px] text-gray-500">
+                                                    描述：{variant.description}
+                                                </div>
+                                            )}
+                                            <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-gray-500">
+                                                {variant.datasources && variant.datasources.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {variant.datasources.slice(0, 3).map((ds, di) => (
+                                                            <span key={`${ds.id}-${di}`} className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded">
+                                                                {ds.name}
+                                                            </span>
+                                                        ))}
+                                                        {variant.datasource_count && variant.datasource_count > 3 && (
+                                                            <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded">
+                                                                +{variant.datasource_count - 3}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {variant.workbooks && variant.workbooks.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {variant.workbooks.slice(0, 3).map((wb, wi) => (
+                                                            <span key={`${wb.id}-${wi}`} className="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded">
+                                                                {wb.name}
+                                                            </span>
+                                                        ))}
+                                                        {variant.workbook_count && variant.workbook_count > 3 && (
+                                                            <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded">
+                                                                +{variant.workbook_count - 3}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {variant.tables && variant.tables.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {variant.tables.slice(0, 3).map((tb, ti) => (
+                                                            <span key={`${tb.id}-${ti}`} className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded">
+                                                                {tb.name}
+                                                            </span>
+                                                        ))}
+                                                        {variant.table_count && variant.table_count > 3 && (
+                                                            <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded">
+                                                                +{variant.table_count - 3}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
-
-                            {/* 数据源/工作簿列表 */}
-                            {(item.datasource_count > 1 || item.workbook_count > 1) && (
-                                <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-4">
-                                    {item.datasources && item.datasource_count > 1 && (
-                                        <div>
-                                            <div className="text-xs text-gray-400 mb-1">涉及数据源：</div>
-                                            <div className="flex flex-wrap gap-1">
-                                                {item.datasources.map((ds, i) => (
-                                                    <span key={i} className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-md">
-                                                        {ds.name}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                    {item.workbooks && item.workbook_count > 1 && (
-                                        <div>
-                                            <div className="text-xs text-gray-400 mb-1">涉及工作簿：</div>
-                                            <div className="flex flex-wrap gap-1">
-                                                {item.workbooks.map((wb, i) => (
-                                                    <span key={i} className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs rounded-md">
-                                                        {wb.name}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    )))}
+                        );
+                    })
+                )}
             </div>
 
-            {/* 分页控制 */}
             {allData.length > paginationState.pageSize && (
                 <div className="mt-6">
                     <Pagination
@@ -253,13 +272,12 @@ export default function DuplicateMetricsAnalysis({ onCountUpdate, onSortUpdate }
                 </div>
             )}
 
-            {/* 治理建议 */}
             <div className="p-4 bg-yellow-50/50 border border-yellow-100 rounded-lg flex items-start gap-3">
                 <div className="p-1 bg-yellow-100 rounded text-yellow-700 flex-shrink-0 mt-0.5">
                     <AlertTriangle className="w-4 h-4" />
                 </div>
                 <div className="text-[13px] text-yellow-800 leading-relaxed">
-                    <strong>治理建议：</strong> 重复指标可能导致维护成本增加和口径不一致风险。建议将重复的指标统一为一个标准定义，并在需要的地方引用同一数据源。
+                    <strong>治理建议：</strong> 同名多公式会造成口径混乱，建议明确命名规则并合并为标准指标。
                 </div>
             </div>
         </div>
