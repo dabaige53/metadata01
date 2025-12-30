@@ -420,6 +420,27 @@ def get_fields_catalog_no_description():
     from sqlalchemy import text
     
     sql = """
+        WITH field_stats AS (
+            SELECT 
+                rf.unique_id,
+                MAX(rf.role) as role,
+                MAX(rf.data_type) as data_type,
+                MAX(rf.remote_type) as remote_type,
+                COUNT(*) as instance_count,
+                COALESCE(SUM(rf.usage_count + rf.metric_usage_count), 0) as total_usage
+            FROM regular_fields rf
+            GROUP BY rf.unique_id
+        ),
+        field_lineage AS (
+            SELECT 
+                rf.unique_id,
+                GROUP_CONCAT(DISTINCT d.name) as datasource_names,
+                GROUP_CONCAT(DISTINCT rfl.datasource_id) as datasource_ids
+            FROM regular_fields rf 
+            JOIN regular_field_full_lineage rfl ON rf.id = rfl.field_id 
+            JOIN datasources d ON rfl.datasource_id = d.id 
+            GROUP BY rf.unique_id
+        )
         SELECT 
             urf.id as representative_id,
             urf.name as canonical_name,
@@ -428,25 +449,24 @@ def get_fields_catalog_no_description():
             t.schema as table_schema,
             db.name as database_name,
             
-            -- 聚合属性
-            (SELECT MAX(rf.role) FROM regular_fields rf WHERE rf.unique_id = urf.id) as role,
-            (SELECT MAX(rf.data_type) FROM regular_fields rf WHERE rf.unique_id = urf.id) as data_type,
-            (SELECT MAX(rf.remote_type) FROM regular_fields rf WHERE rf.unique_id = urf.id) as remote_type,
+            fs.role,
+            fs.data_type,
+            fs.remote_type,
             urf.description,
             
-            -- 统计
-            (SELECT COUNT(*) FROM regular_fields rf WHERE rf.unique_id = urf.id) as instance_count,
-            (SELECT COALESCE(SUM(rf.usage_count + rf.metric_usage_count), 0) FROM regular_fields rf WHERE rf.unique_id = urf.id) as total_usage,
+            COALESCE(fs.instance_count, 0) as instance_count,
+            COALESCE(fs.total_usage, 0) as total_usage,
             
-            -- 血缘
-            (SELECT GROUP_CONCAT(DISTINCT d.name) FROM regular_fields rf JOIN regular_field_full_lineage rfl ON rf.id = rfl.field_id JOIN datasources d ON rfl.datasource_id = d.id WHERE rf.unique_id = urf.id) as datasource_names,
-            (SELECT GROUP_CONCAT(DISTINCT rfl.datasource_id) FROM regular_fields rf JOIN regular_field_full_lineage rfl ON rf.id = rfl.field_id WHERE rf.unique_id = urf.id) as datasource_ids
+            fl.datasource_names,
+            fl.datasource_ids
             
         FROM unique_regular_fields urf
         LEFT JOIN tables t ON urf.table_id = t.id
         LEFT JOIN databases db ON t.database_id = db.id
+        LEFT JOIN field_stats fs ON urf.id = fs.unique_id
+        LEFT JOIN field_lineage fl ON urf.id = fl.unique_id
         WHERE (urf.description IS NULL OR urf.description = '')
-        ORDER BY total_usage DESC
+        ORDER BY fs.total_usage DESC
     """
     rows = session.execute(text(sql)).fetchall()
     
@@ -490,6 +510,27 @@ def get_fields_catalog_orphan():
     from sqlalchemy import text
     
     sql = """
+        WITH field_stats AS (
+            SELECT 
+                rf.unique_id,
+                MAX(rf.role) as role,
+                MAX(rf.data_type) as data_type,
+                MAX(rf.remote_type) as remote_type,
+                COUNT(*) as instance_count,
+                COALESCE(SUM(rf.usage_count + rf.metric_usage_count), 0) as total_usage
+            FROM regular_fields rf
+            GROUP BY rf.unique_id
+        ),
+        field_lineage AS (
+            SELECT 
+                rf.unique_id,
+                GROUP_CONCAT(DISTINCT d.name) as datasource_names,
+                GROUP_CONCAT(DISTINCT rfl.datasource_id) as datasource_ids
+            FROM regular_fields rf 
+            JOIN regular_field_full_lineage rfl ON rf.id = rfl.field_id 
+            JOIN datasources d ON rfl.datasource_id = d.id 
+            GROUP BY rf.unique_id
+        )
         SELECT 
             urf.id as representative_id,
             urf.name as canonical_name,
@@ -498,21 +539,24 @@ def get_fields_catalog_orphan():
             t.schema as table_schema,
             db.name as database_name,
             
-            (SELECT MAX(rf.role) FROM regular_fields rf WHERE rf.unique_id = urf.id) as role,
-            (SELECT MAX(rf.data_type) FROM regular_fields rf WHERE rf.unique_id = urf.id) as data_type,
+            fs.role,
+            fs.data_type,
+            fs.remote_type,
             urf.description,
             
-            (SELECT COUNT(*) FROM regular_fields rf WHERE rf.unique_id = urf.id) as instance_count,
-            (SELECT COALESCE(SUM(rf.usage_count + rf.metric_usage_count), 0) FROM regular_fields rf WHERE rf.unique_id = urf.id) as total_usage,
+            COALESCE(fs.instance_count, 0) as instance_count,
+            COALESCE(fs.total_usage, 0) as total_usage,
             
-            (SELECT GROUP_CONCAT(DISTINCT d.name) FROM regular_fields rf JOIN regular_field_full_lineage rfl ON rf.id = rfl.field_id JOIN datasources d ON rfl.datasource_id = d.id WHERE rf.unique_id = urf.id) as datasource_names,
-            (SELECT GROUP_CONCAT(DISTINCT rfl.datasource_id) FROM regular_fields rf JOIN regular_field_full_lineage rfl ON rf.id = rfl.field_id WHERE rf.unique_id = urf.id) as datasource_ids
+            fl.datasource_names,
+            fl.datasource_ids
             
         FROM unique_regular_fields urf
         LEFT JOIN tables t ON urf.table_id = t.id
         LEFT JOIN databases db ON t.database_id = db.id
-        WHERE (SELECT COALESCE(SUM(rf.usage_count + rf.metric_usage_count), 0) FROM regular_fields rf WHERE rf.unique_id = urf.id) = 0
-        ORDER BY instance_count DESC
+        LEFT JOIN field_stats fs ON urf.id = fs.unique_id
+        LEFT JOIN field_lineage fl ON urf.id = fl.unique_id
+        WHERE COALESCE(fs.total_usage, 0) = 0
+        ORDER BY fs.instance_count DESC
     """
     rows = session.execute(text(sql)).fetchall()
     
@@ -555,6 +599,27 @@ def get_fields_catalog_hot():
     from sqlalchemy import text
     
     sql = """
+        WITH field_stats AS (
+            SELECT 
+                rf.unique_id,
+                MAX(rf.role) as role,
+                MAX(rf.data_type) as data_type,
+                MAX(rf.remote_type) as remote_type,
+                COUNT(*) as instance_count,
+                COALESCE(SUM(rf.usage_count + rf.metric_usage_count), 0) as total_usage
+            FROM regular_fields rf
+            GROUP BY rf.unique_id
+        ),
+        field_lineage AS (
+            SELECT 
+                rf.unique_id,
+                GROUP_CONCAT(DISTINCT d.name) as datasource_names,
+                GROUP_CONCAT(DISTINCT rfl.datasource_id) as datasource_ids
+            FROM regular_fields rf 
+            JOIN regular_field_full_lineage rfl ON rf.id = rfl.field_id 
+            JOIN datasources d ON rfl.datasource_id = d.id 
+            GROUP BY rf.unique_id
+        )
         SELECT 
             urf.id as representative_id,
             urf.name as canonical_name,
@@ -563,21 +628,24 @@ def get_fields_catalog_hot():
             t.schema as table_schema,
             db.name as database_name,
             
-            (SELECT MAX(rf.role) FROM regular_fields rf WHERE rf.unique_id = urf.id) as role,
-            (SELECT MAX(rf.data_type) FROM regular_fields rf WHERE rf.unique_id = urf.id) as data_type,
+            fs.role,
+            fs.data_type,
+            fs.remote_type,
             urf.description,
             
-            (SELECT COUNT(*) FROM regular_fields rf WHERE rf.unique_id = urf.id) as instance_count,
-            (SELECT COALESCE(SUM(rf.usage_count + rf.metric_usage_count), 0) FROM regular_fields rf WHERE rf.unique_id = urf.id) as total_usage,
+            COALESCE(fs.instance_count, 0) as instance_count,
+            COALESCE(fs.total_usage, 0) as total_usage,
             
-            (SELECT GROUP_CONCAT(DISTINCT d.name) FROM regular_fields rf JOIN regular_field_full_lineage rfl ON rf.id = rfl.field_id JOIN datasources d ON rfl.datasource_id = d.id WHERE rf.unique_id = urf.id) as datasource_names,
-            (SELECT GROUP_CONCAT(DISTINCT rfl.datasource_id) FROM regular_fields rf JOIN regular_field_full_lineage rfl ON rf.id = rfl.field_id WHERE rf.unique_id = urf.id) as datasource_ids
+            fl.datasource_names,
+            fl.datasource_ids
             
         FROM unique_regular_fields urf
         LEFT JOIN tables t ON urf.table_id = t.id
         LEFT JOIN databases db ON t.database_id = db.id
-        WHERE (SELECT COALESCE(SUM(rf.usage_count + rf.metric_usage_count), 0) FROM regular_fields rf WHERE rf.unique_id = urf.id) > 20
-        ORDER BY total_usage DESC
+        LEFT JOIN field_stats fs ON urf.id = fs.unique_id
+        LEFT JOIN field_lineage fl ON urf.id = fl.unique_id
+        WHERE COALESCE(fs.total_usage, 0) > 20
+        ORDER BY fs.total_usage DESC
     """
     rows = session.execute(text(sql)).fetchall()
     
