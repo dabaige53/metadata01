@@ -118,6 +118,10 @@ def build_tableau_url(asset_type: str, path: Optional[str] = None, uri: Optional
             return f"{base_url}/#/catalog/tables/{table_id}/columns"
     
     if asset_type == 'project':
+        # 优先使用 vizportal_url_id
+        if vizportal_url_id:
+            return f"{base_url}/#/projects/{vizportal_url_id}"
+        
         project_id = luid or asset_id
         if project_id:
             return f"{base_url}/#/projects/{project_id}"

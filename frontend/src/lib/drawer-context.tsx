@@ -8,6 +8,7 @@ export interface DrawerItem {
     type: string;
     name?: string;
     mode?: string;  // 'aggregate' | 'instance' - 用于计算字段区分聚合/实例模式
+    activeTab?: string;  // 当前激活的 tab 页，用于回退时恢复状态
 }
 
 interface DrawerContextType {
@@ -21,6 +22,7 @@ interface DrawerContextType {
     history: DrawerItem[];
     prefetch: (id: string, type: string, mode?: string) => void;
     getCachedItem: (id: string, type: string, mode?: string) => any;
+    updateCurrentTab: (tab: string) => void;
 }
 
 const DrawerContext = createContext<DrawerContextType | undefined>(undefined);
@@ -56,12 +58,21 @@ export function DrawerProvider({ children }: { children: ReactNode }) {
     };
 
     const openDrawer = (id: string, type: string, name?: string, mode?: string) => {
-        setHistory([{ id, type, name, mode }]);
+        setHistory([{ id, type, name, mode, activeTab: 'overview' }]);
         setIsOpen(true);
     };
 
     const pushItem = (id: string, type: string, name?: string, mode?: string) => {
-        setHistory(prev => [...prev, { id, type, name, mode }]);
+        setHistory(prev => [...prev, { id, type, name, mode, activeTab: 'overview' }]);
+    };
+
+    const updateCurrentTab = (tab: string) => {
+        setHistory(prev => {
+            if (prev.length === 0) return prev;
+            const updated = [...prev];
+            updated[updated.length - 1] = { ...updated[updated.length - 1], activeTab: tab };
+            return updated;
+        });
     };
 
     const goBack = () => {
@@ -94,7 +105,8 @@ export function DrawerProvider({ children }: { children: ReactNode }) {
             currentItem,
             history,
             prefetch,
-            getCachedItem
+            getCachedItem,
+            updateCurrentTab
         }}>
             {children}
         </DrawerContext.Provider>

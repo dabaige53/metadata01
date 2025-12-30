@@ -851,6 +851,24 @@ def get_metric_detail(metric_id):
         data['used_in_views'] = views_data
         data['usedInViews'] = views_data
         
+        # 实例模式：查询依赖当前计算字段的其他计算字段（影响指标）
+        used_by_metrics = session.execute(text("""
+            SELECT DISTINCT cf.id, cf.name, cf.formula, cf.role, cf.data_type,
+                   cf.datasource_id, d.name as ds_name, cf.workbook_id, w.name as wb_name
+            FROM calc_field_dependencies cfd
+            JOIN calculated_fields cf ON cfd.source_field_id = cf.id
+            LEFT JOIN datasources d ON cf.datasource_id = d.id
+            LEFT JOIN workbooks w ON cf.workbook_id = w.id
+            WHERE cfd.dependency_calc_field_id = :field_id
+            LIMIT 100
+        """), {'field_id': metric_id}).fetchall()
+        
+        data['used_by_metrics'] = [{
+            'id': row[0], 'name': row[1], 'formula': row[2], 'role': row[3], 'dataType': row[4],
+            'datasourceId': row[5], 'datasourceName': row[6],
+            'workbookId': row[7], 'workbookName': row[8]
+        } for row in used_by_metrics]
+        
         # 实例模式：单个实例没有"同定义指标"概念，但可以显示归属的标准指标
         data['instances'] = []  # 不显示同定义指标Tab
         data['similar'] = []  # 不显示同名定义Tab
@@ -1116,6 +1134,33 @@ def get_metric_detail(metric_id):
             LEFT JOIN workbooks w ON v.workbook_id = w.id
             WHERE cf.unique_id = :unique_id
         """), {'unique_id': unique_id}).fetchall()
+        
+        # 3.5 聚合影响指标（依赖当前计算字段的其他计算字段）
+        used_by_metrics_result = session.execute(text("""
+            SELECT DISTINCT cf_dep.id, cf_dep.name, cf_dep.formula, cf_dep.role, cf_dep.data_type,
+                   cf_dep.datasource_id, d.name as ds_name, cf_dep.workbook_id, w.name as wb_name
+            FROM calc_field_dependencies cfd
+            JOIN calculated_fields cf ON cfd.dependency_calc_field_id = cf.id
+            JOIN calculated_fields cf_dep ON cfd.source_field_id = cf_dep.id
+            LEFT JOIN datasources d ON cf_dep.datasource_id = d.id
+            LEFT JOIN workbooks w ON cf_dep.workbook_id = w.id
+            WHERE cf.unique_id = :unique_id
+            LIMIT 100
+        """), {'unique_id': unique_id}).fetchall()
+        
+        # 预计算影响指标总数（聚合所有实例的 reference_count）
+        impact_count_result = session.execute(text("""
+            SELECT COALESCE(SUM(reference_count), 0) as total
+            FROM calculated_fields
+            WHERE unique_id = :unique_id
+        """), {'unique_id': unique_id}).first()
+        data['impact_metric_count'] = impact_count_result.total if impact_count_result else 0
+        
+        data['used_by_metrics'] = [{
+            'id': row[0], 'name': row[1], 'formula': row[2], 'role': row[3], 'dataType': row[4],
+            'datasourceId': row[5], 'datasourceName': row[6],
+            'workbookId': row[7], 'workbookName': row[8]
+        } for row in used_by_metrics_result]
 
     else:
         # Fallback
@@ -1125,6 +1170,8 @@ def get_metric_detail(metric_id):
         if 'all_datasources' not in data: data['all_datasources'] = []
         if 'all_workbooks' not in data: data['all_workbooks'] = []
         views_result = []
+        data['used_by_metrics'] = []
+        data['impact_metric_count'] = 0
 
     # Process Views
     views_data = []
@@ -1180,3 +1227,76 @@ def update_metric(metric_id):
     return jsonify({'error': '只读模式，禁止修改指标'}), 405
 
 
+@api_bp.route('/metrics/<metric_id>/impact-metrics')
+def get_metric_impact_metrics(metric_id):
+    """获取影响指标列表 - 支持分页加载
+    
+    返回依赖当前计算字段的其他计算字段列表
+    支持分页参数: page, page_size
+    """
+    session = g.db_session
+    from sqlalchemy import text
+    
+    # 分页参数
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 50, type=int)
+    page_size = min(page_size, 200)
+    offset = (page - 1) * page_size
+    
+    # 1. 先确定 unique_id
+    # 尝试查询是否为 unique_id
+    unique_check = session.execute(text("""
+        SELECT id FROM unique_calculated_fields WHERE id = :id
+    """), {'id': metric_id}).first()
+    
+    if unique_check:
+        unique_id = metric_id
+    else:
+        # 尝试从 calculated_fields 获取 unique_id
+        cf_check = session.execute(text("""
+            SELECT unique_id FROM calculated_fields WHERE id = :id
+        """), {'id': metric_id}).first()
+        if not cf_check:
+            return jsonify({'error': 'Not found'}), 404
+        unique_id = cf_check.unique_id
+    
+    # 2. 查询总数
+    count_result = session.execute(text("""
+        SELECT COUNT(DISTINCT cf_dep.id) as total
+        FROM calc_field_dependencies cfd
+        JOIN calculated_fields cf ON cfd.dependency_calc_field_id = cf.id
+        JOIN calculated_fields cf_dep ON cfd.source_field_id = cf_dep.id
+        WHERE cf.unique_id = :unique_id
+    """), {'unique_id': unique_id}).first()
+    total = count_result.total if count_result else 0
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 0
+    
+    # 3. 分页查询
+    rows = session.execute(text("""
+        SELECT DISTINCT cf_dep.id, cf_dep.name, cf_dep.formula, cf_dep.role, cf_dep.data_type,
+               cf_dep.datasource_id, d.name as ds_name, cf_dep.workbook_id, w.name as wb_name,
+               cf_dep.usage_count, cf_dep.reference_count
+        FROM calc_field_dependencies cfd
+        JOIN calculated_fields cf ON cfd.dependency_calc_field_id = cf.id
+        JOIN calculated_fields cf_dep ON cfd.source_field_id = cf_dep.id
+        LEFT JOIN datasources d ON cf_dep.datasource_id = d.id
+        LEFT JOIN workbooks w ON cf_dep.workbook_id = w.id
+        WHERE cf.unique_id = :unique_id
+        ORDER BY cf_dep.usage_count DESC, cf_dep.name
+        LIMIT :limit OFFSET :offset
+    """), {'unique_id': unique_id, 'limit': page_size, 'offset': offset}).fetchall()
+    
+    items = [{
+        'id': row[0], 'name': row[1], 'formula': row[2], 'role': row[3], 'dataType': row[4],
+        'datasourceId': row[5], 'datasourceName': row[6],
+        'workbookId': row[7], 'workbookName': row[8],
+        'usageCount': row[9] or 0, 'referenceCount': row[10] or 0
+    } for row in rows]
+    
+    return jsonify({
+        'items': items,
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': total_pages
+    })

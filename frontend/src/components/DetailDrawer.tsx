@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 import { api } from '@/lib/api';
 import { formatDateWithRelative, isRecent } from '@/lib/date';
@@ -99,8 +99,8 @@ const DetailSkeleton = () => (
 );
 
 export default function DetailDrawer() {
-    const { isOpen, closeDrawer, currentItem, history, pushItem, goBack, goToIndex, prefetch, getCachedItem } = useDrawer();
-    const [activeTab, setActiveTab] = useState('overview');
+    const { isOpen, closeDrawer, currentItem, history, pushItem, goBack, goToIndex, prefetch, getCachedItem, updateCurrentTab } = useDrawer();
+    const activeTab = currentItem?.activeTab || 'overview';
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<DetailItem | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -116,9 +116,65 @@ export default function DetailDrawer() {
     } | null>(null);
     const [usageLoading, setUsageLoading] = useState(false);
 
+    // 影响指标分页加载状态
+    const [impactMetrics, setImpactMetrics] = useState<{
+        items: any[];
+        total: number;
+        page: number;
+        hasMore: boolean;
+        loading: boolean;
+    }>({ items: [], total: 0, page: 0, hasMore: false, loading: false });
+
+    // Infinite Scroll State & Observer
+    const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
+    const observerRef = useRef<IntersectionObserver | null>(null);
+
+    useEffect(() => {
+        observerRef.current = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const groupKey = (entry.target as HTMLElement).dataset.groupKey;
+                    if (groupKey) {
+                        setVisibleCounts(prev => ({
+                            ...prev,
+                            [groupKey]: (prev[groupKey] || 10) + 20
+                        }));
+                    }
+                }
+            });
+        }, { root: null, rootMargin: '100px', threshold: 0.1 });
+
+        return () => {
+            if (observerRef.current) observerRef.current.disconnect();
+        };
+    }, []);
+
     const toggleGroupExpand = (groupKey: string) => {
         setExpandedGroups(prev => ({ ...prev, [groupKey]: !prev[groupKey] }));
     };
+
+    // 加载更多影响指标
+    const loadMoreImpactMetrics = useCallback(async () => {
+        if (!currentItem || impactMetrics.loading || !impactMetrics.hasMore) return;
+
+        setImpactMetrics(prev => ({ ...prev, loading: true }));
+        try {
+            const nextPage = impactMetrics.page + 1;
+            const res = await fetch(`/api/metrics/${currentItem.id}/impact-metrics?page=${nextPage}&page_size=50`);
+            const result = await res.json();
+
+            setImpactMetrics(prev => ({
+                items: [...prev.items, ...result.items],
+                total: result.total,
+                page: nextPage,
+                hasMore: nextPage < result.total_pages,
+                loading: false
+            }));
+        } catch (err) {
+            console.error('加载影响指标失败:', err);
+            setImpactMetrics(prev => ({ ...prev, loading: false }));
+        }
+    }, [currentItem, impactMetrics.loading, impactMetrics.hasMore, impactMetrics.page]);
 
     const loadData = useCallback(async (id: string, type: string, mode?: string) => {
         // 1. 优先使用缓存 (Instant Load)
@@ -170,11 +226,27 @@ export default function DetailDrawer() {
             loadData(currentItem.id, currentItem.type, currentItem.mode);
             setLineageData(null);
             setUsageStats(null); // 重置访问统计
+            setImpactMetrics({ items: [], total: 0, page: 0, hasMore: false, loading: false }); // 重置影响指标
         } else {
             setData(null);
             setReadyToShow(false);
         }
-    }, [currentItem, data, getCachedItem, isOpen, loadData, readyToShow]);
+    }, [currentItem, data, getCachedItem, isOpen, loadData, readyToShow, setImpactMetrics]);
+
+    // 当数据加载完成后，初始化影响指标状态
+    useEffect(() => {
+        if (data && (currentItem?.type === 'metrics' || currentItem?.type === 'fields')) {
+            const initialItems = data.used_by_metrics || [];
+            const totalCount = data.impact_metric_count ?? initialItems.length;
+            setImpactMetrics({
+                items: initialItems,
+                total: totalCount,
+                page: 1,
+                hasMore: initialItems.length < totalCount,
+                loading: false
+            });
+        }
+    }, [data, currentItem?.type]);
 
     const loadLineageGraph = async () => {
         if (!currentItem) return;
@@ -280,7 +352,9 @@ export default function DetailDrawer() {
 
             // 影响指标 - 始终显示（仅对普通字段有意义，计算字段一般不被其他指标引用）
             const m_down = data.used_by_metrics || [];
-            tabs.push({ id: 'impact_metrics', label: `影响指标 (${m_down.length})`, icon: FunctionSquare });
+            // 优先使用预计算的总数，否则使用当前加载的数量
+            const impactCount = data.impact_metric_count ?? m_down.length;
+            tabs.push({ id: 'impact_metrics', label: `影响指标 (${impactCount})`, icon: FunctionSquare });
 
             // 关联视图 - 始终显示
             const v_down = data.used_in_views || data.usedInViews || [];
@@ -452,6 +526,9 @@ export default function DetailDrawer() {
             );
         }
         const groupKey = `section-${title}`;
+        const limit = visibleCounts[groupKey] || 10;
+        const visibleItems = items.slice(0, limit);
+        const hasMore = items.length > limit;
 
         return (
             <div className={`bg-${colorClass}-50/50 rounded-lg border border-${colorClass}-100 p-3 animate-in slide-in-up`}>
@@ -459,7 +536,7 @@ export default function DetailDrawer() {
                     {icon && React.createElement(icon, { className: `w-3.5 h-3.5 text-${colorClass}-600` })} {title}
                 </h3>
                 <div className="space-y-1">
-                    {(expandedGroups[groupKey] ? items : items.slice(0, 10)).map((asset: any, ai: number) => (
+                    {visibleItems.map((asset: any, ai: number) => (
                         <div key={ai}
                             onClick={() => handleAssetClick(asset.id, type, asset.name, mode)}
                             onMouseEnter={() => asset.id && prefetch(asset.id, type, mode)}
@@ -631,13 +708,14 @@ export default function DetailDrawer() {
                         </div>
 
                     ))}
-                    {items.length > 10 && (
-                        <button
-                            onClick={() => toggleGroupExpand(groupKey)}
-                            className={`text-[10px] text-${colorClass}-600 pl-2 hover:underline cursor-pointer font-medium mt-1`}
+                    {hasMore && (
+                        <div
+                            data-group-key={groupKey}
+                            ref={el => { if (el && observerRef.current) observerRef.current.observe(el) }}
+                            className="h-8 w-full flex items-center justify-center py-2"
                         >
-                            {expandedGroups[groupKey] ? '收起' : `显示更多 (+${items.length - 10})`}
-                        </button>
+                            <Loader2 className={`w-4 h-4 text-${colorClass}-400 animate-spin opacity-50`} />
+                        </div>
                     )}
                 </div>
             </div>
@@ -677,6 +755,12 @@ export default function DetailDrawer() {
         });
 
         const shouldDefaultCollapse = columnNames.length > 50;
+
+        // Infinite Scroll Logic
+        const groupKey = 'group-fields-by-column';
+        const limit = visibleCounts[groupKey] || 10;
+        const visibleColumnNames = columnNames.slice(0, limit);
+        const hasMore = columnNames.length > limit;
 
         // 对分组内字段按名称聚合的辅助函数
         const aggregateFieldsByName = (groupFields: any[]) => {
@@ -728,7 +812,7 @@ export default function DetailDrawer() {
                 </div>
 
                 {/* 分组列表 */}
-                {columnNames.map((columnName, gi) => {
+                {visibleColumnNames.map((columnName, gi) => {
                     const columnFields = groupedByColumn[columnName];
                     const aggregatedFields = aggregateFieldsByName(columnFields);
                     const groupKey = `field-group-${columnName}`;
@@ -885,6 +969,15 @@ export default function DetailDrawer() {
                         </div>
                     );
                 })}
+                {hasMore && (
+                    <div
+                        data-group-key={groupKey}
+                        ref={el => { if (el && observerRef.current) observerRef.current.observe(el) }}
+                        className="h-8 w-full flex items-center justify-center py-2 bg-gray-50 rounded-lg border border-gray-100 border-dashed"
+                    >
+                        <Loader2 className="w-4 h-4 text-gray-400 animate-spin opacity-50" />
+                    </div>
+                )}
             </div>
         );
     };
@@ -923,6 +1016,12 @@ export default function DetailDrawer() {
         });
 
         const shouldDefaultCollapse = tableNames.length > 10;
+
+        // Infinite Scroll Logic
+        const groupKey = 'group-fields-by-table';
+        const limit = visibleCounts[groupKey] || 10;
+        const visibleTableNames = tableNames.slice(0, limit);
+        const hasMore = tableNames.length > limit;
 
         // 表内按原始列分组的辅助函数
         const groupByColumn = (tableFields: any[]) => {
@@ -986,7 +1085,7 @@ export default function DetailDrawer() {
                 </div>
 
                 {/* 第一层：表分组列表 */}
-                {tableNames.map((tableName, gi) => {
+                {visibleTableNames.map((tableName, gi) => {
                     const tableFields = groupedByTable[tableName];
                     const tableGroupKey = `field-table-${tableName}`;
                     const isTableExpanded = expandedGroups[tableGroupKey] ?? !shouldDefaultCollapse;
@@ -1178,6 +1277,15 @@ export default function DetailDrawer() {
                         </div>
                     );
                 })}
+                {hasMore && (
+                    <div
+                        data-group-key={groupKey}
+                        ref={el => { if (el && observerRef.current) observerRef.current.observe(el) }}
+                        className="h-8 w-full flex items-center justify-center py-2 bg-gray-50 rounded-lg border border-blue-100 border-dashed"
+                    >
+                        <Loader2 className="w-4 h-4 text-blue-400 animate-spin opacity-50" />
+                    </div>
+                )}
             </div>
         );
     };
@@ -1209,6 +1317,10 @@ export default function DetailDrawer() {
         const tableNames = Object.keys(groupedByTable).sort();
         const shouldDefaultCollapse = tableNames.length > 20;
 
+        // Infinite Scroll Logic
+        const groupKey = 'group-columns-by-table';
+        const limit = visibleCounts[groupKey] || 10;
+        const visibleTableNames = tableNames.slice(0, limit);
         return (
             <div className="space-y-2">
                 {/* 标题栏 */}
@@ -1220,7 +1332,7 @@ export default function DetailDrawer() {
                 </div>
 
                 {/* 分组列表 */}
-                {tableNames.map((tableName, gi) => {
+                {visibleTableNames.map((tableName, gi) => {
                     const tableColumns = groupedByTable[tableName];
                     const groupKey = `column-table-group-${tableName}`;
                     const isExpanded = expandedGroups[groupKey] ?? !shouldDefaultCollapse;
@@ -2121,8 +2233,9 @@ export default function DetailDrawer() {
                 return renderAssetSection(tableLabel, Table2, tablesToShow, 'tables', 'blue');
             case 'deps':
                 return renderAssetSection('依赖的基础字段', Columns, data.dependencyFields || [], 'fields', 'indigo');
-            case 'impact_metrics':
-                const impactItems = (data.used_by_metrics || []).map((m: any) => {
+            case 'impact_metrics': {
+                // 使用分页状态中的数据
+                const impactItems = impactMetrics.items.map((m: any) => {
                     let sourceInfo = '未知来源';
                     if (m.datasourceName && m.datasourceName !== 'Unknown') {
                         sourceInfo = `数据源: ${m.datasourceName}`;
@@ -2138,8 +2251,40 @@ export default function DetailDrawer() {
                         content: m.description // 只显示描述，不显示公式，因为公式太长影响体验
                     };
                 });
-                // 影响指标是具体的计算字段实例，使用实例模式
-                return renderAssetSection('下游受影响的指标', FunctionSquare, impactItems, 'metrics', 'amber', 'instance');
+
+                return (
+                    <div className="space-y-3">
+                        {renderAssetSection('下游受影响的指标', FunctionSquare, impactItems, 'metrics', 'amber', 'instance')}
+
+                        {/* 加载更多按钮 */}
+                        {impactMetrics.hasMore && (
+                            <div className="flex justify-center pt-2">
+                                <button
+                                    onClick={loadMoreImpactMetrics}
+                                    disabled={impactMetrics.loading}
+                                    className="px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition-colors disabled:opacity-50"
+                                >
+                                    {impactMetrics.loading ? (
+                                        <span className="flex items-center gap-2">
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            加载中...
+                                        </span>
+                                    ) : (
+                                        `加载更多 (${impactMetrics.items.length}/${impactMetrics.total})`
+                                    )}
+                                </button>
+                            </div>
+                        )}
+
+                        {/* 已全部加载提示 */}
+                        {!impactMetrics.hasMore && impactMetrics.total > 0 && impactMetrics.items.length >= impactMetrics.total && (
+                            <div className="text-center text-xs text-gray-400 pt-2">
+                                已加载全部 {impactMetrics.total} 个影响指标
+                            </div>
+                        )}
+                    </div>
+                );
+            }
             // 业务消费端
             case 'views':
                 const viewItems = (data.used_in_views || data.usedInViews || data.views || []).map((v: any) => ({
@@ -2339,7 +2484,7 @@ export default function DetailDrawer() {
                     {tabs.map((tab) => (
                         <button
                             key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
+                            onClick={() => updateCurrentTab(tab.id)}
                             className={`flex items-center gap-2 py-3 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === tab.id
                                 ? 'border-indigo-600 text-indigo-600'
                                 : 'border-transparent text-gray-400 hover:text-gray-600 hover:border-gray-200'

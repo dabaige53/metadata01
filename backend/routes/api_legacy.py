@@ -673,7 +673,7 @@ def get_project_detail(project_id):
             'certification_rate': round(certified_ds / len(datasources) * 100, 1) if datasources else 0
         },
         'owner_distribution': owner_dist,
-        'tableau_url': build_tableau_url('project', luid=project.luid, asset_id=project.id)
+        'tableau_url': build_tableau_url('project', luid=project.luid, asset_id=project.id, vizportal_url_id=project.vizportal_url_id)
     })
 
 
