@@ -32,3 +32,4 @@ node_modules/
 *.bak
 *_backup_*
 metadata.db
+.DS_Store
