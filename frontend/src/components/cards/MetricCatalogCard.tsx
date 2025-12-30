@@ -18,6 +18,7 @@ export interface MetricCatalogItem {
     complexity: number;
     complexity_level: string;
     total_references: number;
+    total_usage?: number;
     datasources: Array<{ id: string; name: string; is_embedded?: boolean }>;
     datasource_count: number;
     workbooks: Array<{ id: string; name: string }>;
@@ -55,11 +56,12 @@ export default function MetricCatalogCard({ metric, onClick }: MetricCatalogCard
     });
 
     // 构建详情信息
+    const usageCount = metric.total_usage || 0;
     const details = [
         {
             label: '引用数',
-            value: `${metric.total_references} 次`,
-            highlight: metric.total_references > 0,
+            value: `${usageCount} 次`,
+            highlight: usageCount > 0,
         },
         {
             label: '公式长度',

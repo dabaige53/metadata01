@@ -1363,7 +1363,6 @@ export default function DetailDrawer() {
 
         // 计算总计
         const totalUsage = instances.reduce((sum: number, inst: any) => sum + (inst.usageCount || 0), 0);
-        const totalRef = instances.reduce((sum: number, inst: any) => sum + (inst.referenceCount || 0), 0);
 
         return (
             <div className="space-y-3">
@@ -1378,11 +1377,6 @@ export default function DetailDrawer() {
                             <Flame className="w-3.5 h-3.5 text-orange-500" />
                             <span className="text-gray-600">总引用次数:</span>
                             <span className="font-bold text-orange-600">{totalUsage}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                            <GitBranch className="w-3.5 h-3.5 text-blue-500" />
-                            <span className="text-gray-600">总依赖次数:</span>
-                            <span className="font-bold text-blue-600">{totalRef}</span>
                         </div>
                     </div>
                 </div>
@@ -1637,19 +1631,16 @@ export default function DetailDrawer() {
     const getReferenceCount = () => {
         if (!data) return 0;
         const type = currentItem?.type;
-        const isProjectType = type === 'projects';
-        const isUserType = type === 'users';
 
-        // 指标优先使用 stats.view_count (聚合后的视图数)，字段使用 usageCount
-        if (type === 'metrics') return data.stats?.view_count ?? data.usageCount ?? data.usage_count ?? 0;
-        if (type === 'fields') return data.usageCount ?? data.usage_count ?? data.stats?.view_count ?? 0;
-        if (isProjectType) return (data.stats?.datasource_count || 0) + (data.stats?.workbook_count || 0);
-        if (isUserType) return (data.datasources?.length || 0) + (data.workbooks?.length || 0);
-        if (type === 'tables') return data.stats?.workbook_count || data.workbooks?.length || 0;
-        if (type === 'datasources') return data.stats?.workbook_count || data.workbooks?.length || 0;
-        if (type === 'views') return data.totalViewCount ?? data.total_view_count ?? data.hitsTotal ?? data.hits_total ?? 0;
-        if (data.referenceCount !== undefined) return data.referenceCount;
-        return data.views?.length || data.workbooks?.length || 0;
+        // 各类型使用明确的字段，不做回退
+        if (type === 'metrics') return data.usageCount || 0;
+        if (type === 'fields') return data.usageCount || 0;
+        if (type === 'projects') return (data.stats?.datasource_count || 0) + (data.stats?.workbook_count || 0);
+        if (type === 'users') return (data.datasources?.length || 0) + (data.workbooks?.length || 0);
+        if (type === 'tables') return data.stats?.workbook_count || 0;
+        if (type === 'datasources') return data.stats?.workbook_count || 0;
+        if (type === 'views') return data.totalViewCount || 0;
+        return 0;
     };
 
     // ========== 概览 Tab 重构 PRO (Description List 风格) ==========

@@ -75,20 +75,20 @@ function formatRefreshTime(dateString?: string): string {
 }
 
 export default function DatasourceCard({ datasource, onClick }: DatasourceCardProps) {
-  const projectName = datasource.project_name ?? datasource.projectName; // Allow undefined to filter
-  const embeddedTableCount = datasource.embedded_table_count ?? datasource.embeddedTableCount ?? 0;
-  const regularTableCount = datasource.regular_table_count ?? datasource.regularTableCount ?? 0;
-  const fieldCount = datasource.field_count ?? datasource.fieldCount ?? 0;
-  const metricCount = datasource.metric_count ?? datasource.metricCount ?? 0;
-  const workbookCount = datasource.workbook_count ?? datasource.workbookCount ?? 0;
-  const viewCount = datasource.view_count ?? datasource.viewCount ?? 0;
-  const hasExtract = datasource.has_extract ?? datasource.hasExtract ?? false;
-  const isCertified = datasource.is_certified ?? datasource.isCertified ?? false;
-  const lastRefresh = datasource.last_refresh ?? datasource.lastRefresh;
-  const hasUnsupportedSql = datasource.contains_unsupported_custom_sql ?? datasource.containsUnsupportedCustomSql ?? false;
-  const hasWarning = datasource.has_active_warning ?? datasource.hasActiveWarning ?? false;
-  const createdAt = datasource.created_at ?? datasource.createdAt;
-  const updatedAt = datasource.updated_at ?? datasource.updatedAt;
+  const projectName = datasource.projectName;
+  const embeddedTableCount = datasource.embeddedTableCount || 0;
+  const regularTableCount = datasource.regularTableCount || 0;
+  const fieldCount = datasource.fieldCount || 0;
+  const metricCount = datasource.metricCount || 0;
+  const workbookCount = datasource.workbookCount || 0;
+  const viewCount = datasource.viewCount || 0;
+  const hasExtract = datasource.hasExtract || false;
+  const isCertified = datasource.isCertified || false;
+  const lastRefresh = datasource.lastRefresh;
+  const hasUnsupportedSql = datasource.containsUnsupportedCustomSql || false;
+  const hasWarning = datasource.hasActiveWarning || false;
+  const createdAt = datasource.createdAt;
+  const updatedAt = datasource.updatedAt;
   const isEmbedded = datasource.isEmbedded ?? false;
 
   const refreshStatus = getRefreshStatus(lastRefresh);

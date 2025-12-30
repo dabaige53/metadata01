@@ -15,7 +15,7 @@ import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 
 // 定义排序选项
 const SORT_OPTIONS: SortConfig[] = [
-    { key: 'view_count', label: '视图数' },
+    { key: 'viewCount', label: '视图数' },
     { key: 'name', label: '名称' }
 ];
 
@@ -31,14 +31,12 @@ interface EmptyWorkbooksAnalysisProps {
 interface WorkbookItem {
     id: string;
     name: string;
-    project?: string;
-    project_name?: string;
     projectName?: string;
     owner?: string;
-    view_count?: number;
-    upstream_datasources?: string[];
-    issue_type?: 'empty' | 'single-source';
-    is_single_source?: boolean;
+    viewCount?: number;
+    upstreamDatasources?: string[];
+    issueType?: 'empty' | 'single-source';
+    isSingleSource?: boolean;
     [key: string]: any;
 }
 
@@ -54,15 +52,15 @@ export default function EmptyWorkbooksAnalysis({ onSortUpdate }: EmptyWorkbooksA
             fetch('/api/workbooks/governance/single-source').then(res => res.json())
         ])
             .then(([emptyResult, singleResult]) => {
-                const empty = (emptyResult.items || []).map((w: any) => ({ ...w, issue_type: 'empty' }));
-                const single: WorkbookItem[] = (singleResult.items || []).map((w: any) => ({ ...w, issue_type: 'single-source' }));
+                const empty = (emptyResult.items || []).map((w: any) => ({ ...w, issueType: 'empty' }));
+                const single: WorkbookItem[] = (singleResult.items || []).map((w: any) => ({ ...w, issueType: 'single-source' }));
 
                 // 合并逻辑
                 const merged = [...empty];
                 single.forEach(s => {
                     const existing = merged.find(m => m.id === s.id);
                     if (existing) {
-                        existing.is_single_source = true;
+                        existing.isSingleSource = true;
                     } else {
                         merged.push(s);
                     }
@@ -89,8 +87,8 @@ export default function EmptyWorkbooksAnalysis({ onSortUpdate }: EmptyWorkbooksA
     } = useDataTable({
         moduleName: 'workbooks-governance',
         data: allData,
-        facetFields: ['project', 'issue_type'],
-        searchFields: ['name', 'project', 'owner'],
+        facetFields: ['projectName', 'issueType'],
+        searchFields: ['name', 'projectName', 'owner'],
         defaultPageSize: 20
     });
 
@@ -126,8 +124,8 @@ export default function EmptyWorkbooksAnalysis({ onSortUpdate }: EmptyWorkbooksA
         );
     }
 
-    const emptyCount = allData.filter(w => w.issue_type === 'empty').length;
-    const singleSourceCount = allData.filter(w => w.issue_type === 'single-source' || w.is_single_source).length;
+    const emptyCount = allData.filter(w => w.issueType === 'empty').length;
+    const singleSourceCount = allData.filter(w => w.issueType === 'single-source' || w.isSingleSource).length;
 
     return (
         <div className="space-y-6">
@@ -183,36 +181,36 @@ export default function EmptyWorkbooksAnalysis({ onSortUpdate }: EmptyWorkbooksA
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                             {displayData.map((wb) => (
-                                <tr key={`${wb.id}-${wb.issue_type}`} className="hover:bg-gray-50 transition-colors">
+                                <tr key={`${wb.id}-${wb.issueType}`} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-6 py-4">
                                         <div className="flex flex-wrap gap-1">
-                                            {wb.issue_type === 'empty' && (
+                                            {wb.issueType === 'empty' && (
                                                 <span className="px-1.5 py-0.5 bg-red-50 text-red-600 rounded text-[10px] font-bold uppercase tracking-wider border border-red-100">无视图</span>
                                             )}
-                                            {(wb.issue_type === 'single-source' || wb.is_single_source) && (
+                                            {(wb.issueType === 'single-source' || wb.isSingleSource) && (
                                                 <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-bold uppercase tracking-wider border border-blue-100">单源</span>
                                             )}
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-2">
-                                            <BookOpen className={`w-4 h-4 ${wb.issue_type === 'empty' ? 'text-red-400' : 'text-blue-400'}`} />
+                                            <BookOpen className={`w-4 h-4 ${wb.issueType === 'empty' ? 'text-red-400' : 'text-blue-400'}`} />
                                             <span className="font-medium text-gray-800">{wb.name}</span>
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
-                                        {(wb.upstream_datasources?.length || 0) > 0 ? (
+                                        {(wb.upstreamDatasources?.length || 0) > 0 ? (
                                             <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[12px] font-medium max-w-[150px] truncate block">
-                                                {wb.upstream_datasources?.[0]}
-                                                {(wb.upstream_datasources?.length || 0) > 1 && ` (+${wb.upstream_datasources!.length - 1}...)`}
+                                                {wb.upstreamDatasources?.[0]}
+                                                {(wb.upstreamDatasources?.length || 0) > 1 && ` (+${wb.upstreamDatasources!.length - 1}...)`}
                                             </span>
                                         ) : '-'}
                                     </td>
                                     <td className="px-6 py-4 text-gray-500 text-[13px]">
-                                        {wb.project || wb.project_name || wb.projectName || '-'}
+                                        {wb.projectName || '-'}
                                     </td>
                                     <td className="px-6 py-4 text-center text-gray-500 font-medium">
-                                        {wb.viewCount ?? wb.view_count ?? 0}
+                                        {wb.viewCount || 0}
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                         <button

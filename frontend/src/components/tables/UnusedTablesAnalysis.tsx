@@ -16,7 +16,7 @@ import Pagination from '../data-table/Pagination';
 
 // 定义排序选项
 const SORT_OPTIONS: SortConfig[] = [
-    { key: 'column_count', label: '列数' },
+    { key: 'columnCount', label: '列数' },
     { key: 'name', label: '名称' }
 ];
 
@@ -24,14 +24,12 @@ interface TableItem {
     id: string;
     name: string;
     schema?: string;
-    database?: string;
-    database_name?: string;
     databaseName?: string;
-    column_count?: number;
-    field_count?: number;
-    datasource_count?: number;
-    workbook_count?: number;
-    issue_type?: 'unused' | 'wide';
+    columnCount?: number;
+    fieldCount?: number;
+    datasourceCount?: number;
+    workbookCount?: number;
+    issueType?: 'unused' | 'wide';
     [key: string]: any;
 }
 
@@ -56,8 +54,8 @@ export default function UnusedTablesAnalysis({ onCountUpdate, onSortUpdate }: Un
             fetch('/api/tables/governance/wide').then(res => res.json())
         ])
             .then(([unusedResult, wideResult]) => {
-                const unused = (unusedResult.items || []).map((t: any) => ({ ...t, issue_type: 'unused' }));
-                const wide = (wideResult.items || []).map((t: any) => ({ ...t, issue_type: 'wide' }));
+                const unused = (unusedResult.items || []).map((t: any) => ({ ...t, issueType: 'unused' }));
+                const wide = (wideResult.items || []).map((t: any) => ({ ...t, issueType: 'wide' }));
                 setAllData([...unused, ...wide]);
             })
             .catch(console.error)
@@ -80,8 +78,8 @@ export default function UnusedTablesAnalysis({ onCountUpdate, onSortUpdate }: Un
     } = useDataTable({
         moduleName: 'tables-governance',
         data: allData,
-        facetFields: ['issue_type', 'schema'],
-        searchFields: ['name', 'schema', 'database'],
+        facetFields: ['issueType', 'schema'],
+        searchFields: ['name', 'schema', 'databaseName'],
         defaultPageSize: 20
     });
 
@@ -121,8 +119,8 @@ export default function UnusedTablesAnalysis({ onCountUpdate, onSortUpdate }: Un
         );
     }
 
-    const unusedCount = allData.filter(t => t.issue_type === 'unused').length;
-    const wideCount = allData.filter(t => t.issue_type === 'wide').length;
+    const unusedCount = allData.filter(t => t.issueType === 'unused').length;
+    const wideCount = allData.filter(t => t.issueType === 'wide').length;
 
     return (
         <div className="space-y-6">
@@ -178,9 +176,9 @@ export default function UnusedTablesAnalysis({ onCountUpdate, onSortUpdate }: Un
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                             {displayData.map((table) => (
-                                <tr key={`${table.id}-${table.issue_type}`} className="hover:bg-gray-50 transition-colors">
+                                <tr key={`${table.id}-${table.issueType}`} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-6 py-4">
-                                        {table.issue_type === 'unused' ? (
+                                        {table.issueType === 'unused' ? (
                                             <span className="px-2 py-1 bg-amber-50 text-amber-600 rounded text-[10px] font-bold uppercase tracking-wider">未使用</span>
                                         ) : (
                                             <span className="px-2 py-1 bg-purple-50 text-purple-600 rounded text-[10px] font-bold uppercase tracking-wider">宽表</span>
@@ -188,7 +186,7 @@ export default function UnusedTablesAnalysis({ onCountUpdate, onSortUpdate }: Un
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-2">
-                                            <Table2 className={`w-4 h-4 ${table.issue_type === 'unused' ? 'text-amber-400' : 'text-purple-400'}`} />
+                                            <Table2 className={`w-4 h-4 ${table.issueType === 'unused' ? 'text-amber-400' : 'text-purple-400'}`} />
                                             <span className="font-medium text-gray-800">{table.name}</span>
                                         </div>
                                     </td>
@@ -198,13 +196,13 @@ export default function UnusedTablesAnalysis({ onCountUpdate, onSortUpdate }: Un
                                     <td className="px-6 py-4 text-gray-500 text-[13px]">
                                         <div className="flex items-center gap-1.5">
                                             <Database className="w-3.5 h-3.5 text-gray-400" />
-                                            {table.database || table.database_name || table.databaseName || '-'}
+                                            {table.databaseName || '-'}
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-center">
-                                        <span className={`px-2 py-0.5 rounded-full font-bold text-[12px] ${(table.column_count || 0) > 50 ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
+                                        <span className={`px-2 py-0.5 rounded-full font-bold text-[12px] ${(table.columnCount || 0) > 50 ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
                                             }`}>
-                                            {table.column_count || '-'}
+                                            {table.columnCount || '-'}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 text-right">

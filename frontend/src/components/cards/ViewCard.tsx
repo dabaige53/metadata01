@@ -6,24 +6,14 @@ import { formatDateWithRelative, isRecent } from '@/lib/date';
 export interface ViewCardData {
     id: string;
     name: string;
-    workbook?: string;
-    workbook_name?: string;
     workbookName?: string;
-    project?: string;
-    project_name?: string;
     projectName?: string;
     owner?: string;
-    type?: string;     // 'dashboard', 'sheet', 'story'
     viewType?: string;
-    hits_total?: number;
-    hitsTotal?: number;
-    usage?: number;
-    field_count?: number;
+    totalViewCount?: number;
     fieldCount?: number;
     description?: string;
-    created_at?: string;
     createdAt?: string;
-    updated_at?: string;
     updatedAt?: string;
     containedSheetCount?: number;
     isStandalone?: boolean;
@@ -35,13 +25,13 @@ export interface ViewCardProps {
 }
 
 export default function ViewCard({ view, onClick }: ViewCardProps) {
-    const workbookName = view.workbook_name ?? view.workbookName ?? view.workbook; // Allow undefined
-    const projectName = view.project_name ?? view.projectName ?? view.project; // Allow undefined
-    const hits = view.hits_total ?? view.hitsTotal ?? view.usage ?? 0;
-    const fieldCount = view.field_count ?? view.fieldCount ?? 0;
-    const viewType = (view.viewType || view.type || '').toLowerCase();
-    const createdAt = view.created_at ?? view.createdAt;
-    const updatedAt = view.updated_at ?? view.updatedAt;
+    const workbookName = view.workbookName;
+    const projectName = view.projectName;
+    const hits = view.totalViewCount || 0;
+    const fieldCount = view.fieldCount || 0;
+    const viewType = (view.viewType || '').toLowerCase();
+    const createdAt = view.createdAt;
+    const updatedAt = view.updatedAt;
 
     // 视图类型图标与颜色
     let typeIcon = <LayoutGrid className="w-5 h-5 text-indigo-600" />;

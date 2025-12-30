@@ -9,30 +9,18 @@ export interface MetricCardData {
   formula?: string;
   role?: string;
   dataType?: string;
-  data_type?: string;
   complexity?: number;
   referenceCount?: number;
-  reference_count?: number;
   datasourceName?: string;
-  datasource_name?: string;
   owner?: string;
   metricType?: string;
-  metric_type?: string;
   hasDuplicate?: boolean;
-  has_duplicate?: boolean;
   dependencyFields?: any[];
-  dependency_fields?: any[];
   dependencyCount?: number;
-  dependency_count?: number;
   usedInViews?: any[];
-  used_in_views?: any[];
   usageCount?: number;
-  usage_count?: number;
   instanceCount?: number;
-  instance_count?: number;
-  created_at?: string;
   createdAt?: string;
-  updated_at?: string;
   updatedAt?: string;
 }
 
@@ -43,22 +31,22 @@ export interface MetricCardProps {
 
 export default function MetricCard({ metric, onClick }: MetricCardProps) {
   const isMeasure = metric.role === 'measure';
-  const complexity = metric.complexity ?? 0;
-  const referenceCount = metric.referenceCount ?? metric.reference_count ?? 0;
-  const dataType = metric.dataType ?? metric.data_type ?? 'unknown';
-  const datasourceName = metric.datasourceName ?? metric.datasource_name; // Allow undefined/null for filtering
-  const metricType = metric.metricType ?? metric.metric_type ?? 'Calculated';
+  const complexity = metric.complexity || 0;
+  const referenceCount = metric.referenceCount || 0;
+  const dataType = metric.dataType || 'unknown';
+  const datasourceName = metric.datasourceName;
+  const metricType = metric.metricType || 'Calculated';
 
   // 使用 instanceCount 表示相同定义的实例数量
-  const instanceCount = metric.instanceCount ?? metric.instance_count ?? 1;
-  const dependencyFields = metric.dependencyFields ?? metric.dependency_fields ?? [];
-  const usedInViews = metric.usedInViews ?? metric.used_in_views ?? [];
-  const createdAt = metric.created_at ?? metric.createdAt;
-  const updatedAt = metric.updated_at ?? metric.updatedAt;
+  const instanceCount = metric.instanceCount || 1;
+  const dependencyFields = metric.dependencyFields || [];
+  const usedInViews = metric.usedInViews || [];
+  const createdAt = metric.createdAt;
+  const updatedAt = metric.updatedAt;
 
   // 优先使用预计算的统计值 (List API 返回的是 Count 数字，Array 为空)
-  const dependencyCount = metric.dependencyCount ?? metric.dependency_count ?? dependencyFields.length;
-  const viewCount = metric.usageCount ?? metric.usage_count ?? usedInViews.length;
+  const dependencyCount = metric.dependencyCount || dependencyFields.length;
+  const viewCount = metric.usageCount || usedInViews.length;
 
   // 复杂度级别
   const complexityLevel = complexity > 10 ? '高' : complexity > 4 ? '中' : '低';

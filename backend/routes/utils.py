@@ -5,6 +5,7 @@
 import re
 from collections import defaultdict
 from typing import Optional
+from typing import Any, Dict, List, Union
 from flask import g
 from sqlalchemy import func, case
 from ..models import (
@@ -13,6 +14,28 @@ from ..models import (
     TableauUser, Project, FieldDependency, Glossary, TermEnum
 )
 from ..config import Config
+
+
+def snake_to_camel(s: str) -> str:
+    """将 snake_case 转换为 camelCase"""
+    components = s.split('_')
+    return components[0] + ''.join(x.title() for x in components[1:])
+
+
+def to_camel_case(data: Union[Dict, List, Any]) -> Union[Dict, List, Any]:
+    """
+    递归将字典或列表中的所有 snake_case 键转换为 camelCase
+    
+    使用示例:
+        result = to_camel_case({'user_name': 'test', 'created_at': '2024-01-01'})
+        # 返回: {'userName': 'test', 'createdAt': '2024-01-01'}
+    """
+    if isinstance(data, dict):
+        return {snake_to_camel(k): to_camel_case(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [to_camel_case(item) for item in data]
+    else:
+        return data
 
 
 def build_tableau_url(asset_type: str, path: Optional[str] = None, uri: Optional[str] = None, 

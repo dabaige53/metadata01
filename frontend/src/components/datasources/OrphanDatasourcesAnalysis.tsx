@@ -19,22 +19,19 @@ import Pagination from '../data-table/Pagination';
 
 // 定义排序选项
 const SORT_OPTIONS: SortConfig[] = [
-    { key: 'field_count', label: '字段数' },
-    { key: 'last_refresh', label: '更新时间' },
+    { key: 'fieldCount', label: '字段数' },
+    { key: 'lastRefresh', label: '更新时间' },
     { key: 'name', label: '名称' }
 ];
 
 interface DatasourceItem {
     id: string;
     name: string;
-    project?: string;
-    project_name?: string;
     projectName?: string;
     owner?: string;
     isCertified?: boolean;
-    is_certified?: boolean;
-    workbook_count?: number;
-    field_count?: number;
+    workbookCount?: number;
+    fieldCount?: number;
     [key: string]: any;
 }
 
@@ -57,7 +54,7 @@ export default function OrphanDatasourcesAnalysis({ onCountUpdate, onSortUpdate 
             .then(res => {
                 const items = (Array.isArray(res) ? res : (res.items || [])) as unknown as DatasourceItem[];
                 // 孤立数据源：未被任何工作簿引用
-                const orphaned = items.filter(d => !d.workbook_count || d.workbook_count === 0);
+                const orphaned = items.filter(d => !d.workbookCount || d.workbookCount === 0);
                 setAllData(orphaned);
             })
             .catch(console.error)
@@ -80,8 +77,8 @@ export default function OrphanDatasourcesAnalysis({ onCountUpdate, onSortUpdate 
     } = useDataTable({
         moduleName: 'datasources-orphan',
         data: allData,
-        facetFields: ['project', 'is_certified'],
-        searchFields: ['name', 'project', 'owner'],
+        facetFields: ['projectName', 'isCertified'],
+        searchFields: ['name', 'projectName', 'owner'],
         defaultPageSize: 20,
     });
 
@@ -133,7 +130,7 @@ export default function OrphanDatasourcesAnalysis({ onCountUpdate, onSortUpdate 
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
                     <div className="text-xs text-gray-500 uppercase mb-1">字段浪费</div>
                     <div className="text-2xl font-bold text-gray-700">
-                        {allData.reduce((sum, d) => sum + (d.field_count || 0), 0)}
+                        {allData.reduce((sum, d) => sum + (d.fieldCount || 0), 0)}
                     </div>
                     <div className="text-xs text-gray-400 mt-1">孤立数据源中的字段数合计</div>
                 </div>
@@ -192,16 +189,16 @@ export default function OrphanDatasourcesAnalysis({ onCountUpdate, onSortUpdate 
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-gray-500 text-[13px]">
-                                        {ds.project || ds.project_name || ds.projectName || '-'}
+                                        {ds.projectName || '-'}
                                     </td>
                                     <td className="px-6 py-4 text-gray-500 text-[13px]">
                                         {ds.owner || '-'}
                                     </td>
                                     <td className="px-6 py-4 text-center text-gray-500 font-medium">
-                                        {ds.field_count || 0}
+                                        {ds.fieldCount || 0}
                                     </td>
                                     <td className="px-6 py-4 text-center">
-                                        {(ds.isCertified ?? ds.is_certified) ? (
+                                        {ds.isCertified ? (
                                             <span className="inline-flex items-center gap-1 text-green-600 text-xs px-2 py-0.5 bg-green-50 rounded-full">
                                                 <Shield className="w-3.5 h-3.5" /> 已认证
                                             </span>

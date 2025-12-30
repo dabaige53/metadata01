@@ -6,27 +6,17 @@ import { formatDateWithRelative, isRecent } from '@/lib/date';
 export interface WorkbookCardData {
   id: string;
   name: string;
-  project_name?: string;
   projectName?: string;
   owner?: string;
-  view_count?: number;
   viewCount?: number;
-  datasource_count?: number;
   datasourceCount?: number;
-  upstream_datasources?: any[];
   upstreamDatasources?: any[];
-  contains_unsupported_custom_sql?: boolean;
   containsUnsupportedCustomSql?: boolean;
-  has_active_warning?: boolean;
   hasActiveWarning?: boolean;
   description?: string;
-  created_at?: string;
   createdAt?: string;
-  updated_at?: string;
   updatedAt?: string;
-  field_count?: number;
   fieldCount?: number;
-  metric_count?: number;
   metricCount?: number;
 }
 
@@ -37,15 +27,15 @@ export interface WorkbookCardProps {
 }
 
 export default function WorkbookCard({ workbook, onClick, onMouseEnter }: WorkbookCardProps) {
-  const projectName = workbook.project_name ?? workbook.projectName; // Allow undefined
+  const projectName = workbook.projectName;
 
-  const viewCount = workbook.view_count ?? workbook.viewCount ?? 0;
-  const datasourceCount = workbook.datasource_count ?? workbook.datasourceCount ?? 0;
-  const upstreamDatasources = workbook.upstream_datasources ?? workbook.upstreamDatasources ?? [];
-  const hasUnsupportedSql = workbook.contains_unsupported_custom_sql ?? workbook.containsUnsupportedCustomSql ?? false;
-  const hasWarning = workbook.has_active_warning ?? workbook.hasActiveWarning ?? false;
-  const createdAt = workbook.created_at ?? workbook.createdAt;
-  const updatedAt = workbook.updated_at ?? workbook.updatedAt;
+  const viewCount = workbook.viewCount || 0;
+  const datasourceCount = workbook.datasourceCount || 0;
+  const upstreamDatasources = workbook.upstreamDatasources || [];
+  const hasUnsupportedSql = workbook.containsUnsupportedCustomSql || false;
+  const hasWarning = workbook.hasActiveWarning || false;
+  const createdAt = workbook.createdAt;
+  const updatedAt = workbook.updatedAt;
 
   // 工作簿状态
   const status = viewCount === 0 ? '空工作簿' : viewCount > 10 ? '大型工作簿' : '有视图';
@@ -84,11 +74,11 @@ export default function WorkbookCard({ workbook, onClick, onMouseEnter }: Workbo
     },
     {
       label: '使用字段',
-      value: `${workbook.field_count ?? workbook.fieldCount ?? 0}`,
+      value: `${workbook.fieldCount || 0}`,
     },
     {
       label: '使用指标',
-      value: `${workbook.metric_count ?? workbook.metricCount ?? 0}`,
+      value: `${workbook.metricCount || 0}`,
     },
     createdAt && {
       label: '创建',

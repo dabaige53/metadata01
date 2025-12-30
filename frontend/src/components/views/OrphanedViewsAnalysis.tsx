@@ -18,19 +18,12 @@ import Pagination from '../data-table/Pagination';
 interface ViewItem {
     id: string;
     name: string;
-    project?: string;
-    project_name?: string;
     projectName?: string;
-    workbook?: string;
-    workbook_name?: string;
     workbookName?: string;
     owner?: string;
-    usage?: number;
-    hits_total?: number;
-    hitsTotal?: number;
-    field_count?: number;
+    totalViewCount?: number;
     fieldCount?: number;
-    issue_type?: 'unused' | 'complex';
+    issueType?: 'unused' | 'complex';
     [key: string]: any;
 }
 
@@ -47,15 +40,15 @@ export default function OrphanedViewsAnalysis() {
 
                 // 分析逻辑
                 const analyzed = items.map((v: ViewItem) => {
-                    const hits = v.hits_total ?? v.hitsTotal ?? v.usage ?? 0;
-                    const fields = v.field_count ?? v.fieldCount ?? 0;
+                    const hits = v.totalViewCount || 0;
+                    const fields = v.fieldCount || 0;
 
-                    let issue_type: 'unused' | 'complex' | undefined;
-                    if (hits === 0) issue_type = 'unused';
-                    else if (fields >= 20) issue_type = 'complex';
+                    let issueType: 'unused' | 'complex' | undefined;
+                    if (hits === 0) issueType = 'unused';
+                    else if (fields >= 20) issueType = 'complex';
 
-                    return { ...v, issue_type };
-                }).filter((v: any) => v.issue_type); // 只保留有问题的数据
+                    return { ...v, issueType };
+                }).filter((v: any) => v.issueType); // 只保留有问题的数据
 
                 setAllData(analyzed);
             })
@@ -81,8 +74,8 @@ export default function OrphanedViewsAnalysis() {
     } = useDataTable({
         moduleName: 'views-governance',
         data: allData,
-        facetFields: ['issue_type', 'project'],
-        searchFields: ['name', 'workbook_name', 'project'],
+        facetFields: ['issueType', 'projectName'],
+        searchFields: ['name', 'workbookName', 'projectName'],
         defaultPageSize: 20
     });
 
@@ -106,8 +99,8 @@ export default function OrphanedViewsAnalysis() {
         );
     }
 
-    const unusedCount = allData.filter(v => v.issue_type === 'unused').length;
-    const complexCount = allData.filter(v => v.issue_type === 'complex').length;
+    const unusedCount = allData.filter(v => v.issueType === 'unused').length;
+    const complexCount = allData.filter(v => v.issueType === 'complex').length;
 
     return (
         <div className="space-y-6">
@@ -136,8 +129,8 @@ export default function OrphanedViewsAnalysis() {
                 <div className="flex items-center gap-3">
                     <SortButtons
                         sortOptions={[
-                            { key: 'field_count', label: '字段数' },
-                            { key: 'hits_total', label: '访问量' },
+                            { key: 'fieldCount', label: '字段数' },
+                            { key: 'totalViewCount', label: '访问量' },
                             { key: 'name', label: '名称' }
                         ]}
                         currentSort={sortState}
@@ -192,7 +185,7 @@ export default function OrphanedViewsAnalysis() {
                             {displayData.map((view) => (
                                 <tr key={view.id} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-6 py-4">
-                                        {view.issue_type === 'unused' ? (
+                                        {view.issueType === 'unused' ? (
                                             <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-[10px] font-bold uppercase tracking-wider border border-gray-200">无访问</span>
                                         ) : (
                                             <span className="px-2 py-1 bg-purple-50 text-purple-600 rounded text-[10px] font-bold uppercase tracking-wider border border-purple-100">高复杂度</span>
@@ -200,7 +193,7 @@ export default function OrphanedViewsAnalysis() {
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-2">
-                                            {view.issue_type === 'unused' ? (
+                                            {view.issueType === 'unused' ? (
                                                 <EyeOff className="w-4 h-4 text-gray-400" />
                                             ) : (
                                                 <BarChart3 className="w-4 h-4 text-purple-400" />
@@ -209,15 +202,15 @@ export default function OrphanedViewsAnalysis() {
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-gray-500 text-[13px] max-w-[150px] truncate">
-                                        {view.workbook_name || view.workbookName || '-'}
+                                        {view.workbookName || '-'}
                                     </td>
                                     <td className="px-6 py-4 text-gray-500 text-[13px]">
-                                        {view.project || view.project_name || view.projectName || '-'}
+                                        {view.projectName || '-'}
                                     </td>
                                     <td className="px-6 py-4 text-center">
                                         <div className="flex flex-col items-center">
-                                            <span className="text-[12px] font-bold text-gray-700">{view.field_count ?? view.fieldCount ?? 0} 字段</span>
-                                            <span className="text-[10px] text-gray-400">{view.hits_total ?? view.hitsTotal ?? view.usage ?? 0} 访问</span>
+                                            <span className="text-[12px] font-bold text-gray-700">{view.fieldCount || 0} 字段</span>
+                                            <span className="text-[10px] text-gray-400">{view.totalViewCount || 0} 访问</span>
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-right">

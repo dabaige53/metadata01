@@ -7,29 +7,20 @@ export interface FieldCardData {
   name: string;
   caption?: string;
   fullyQualifiedName?: string;
-  data_type?: string;
   dataType?: string;
   role?: string;
   aggregation?: string;
-  table_name?: string;
-  datasource_name?: string;
-  usage_count?: number;
+  tableName?: string;
+  datasourceName?: string;
   usageCount?: number;
-  is_calculated?: boolean;
   isCalculated?: boolean;
   formula?: string;
-  upstream_column_name?: string;
   upstreamColumnName?: string;
   description?: string;
-  used_by_metrics?: any[];
-  used_by_metrics_count?: number;
+  usedByMetrics?: any[];
   metricUsageCount?: number;
-  metric_usage_count?: number;
-  used_in_views?: any[];
   usedInViews?: any[];
-  created_at?: string;
   createdAt?: string;
-  updated_at?: string;
   updatedAt?: string;
 }
 
@@ -40,15 +31,15 @@ export interface FieldCardProps {
 
 export default function FieldCard({ field, onClick }: FieldCardProps) {
   const isMeasure = field.role === 'measure';
-  const usageCount = field.usage_count ?? field.usageCount ?? 0;
-  const metricUsageCount = field.metricUsageCount ?? field.used_by_metrics_count ?? field.metric_usage_count ?? 0;
-  const isCalculated = field.is_calculated ?? field.isCalculated ?? false;
-  const dataType = field.data_type ?? field.dataType ?? 'unknown';
-  const usedByMetrics = field.used_by_metrics ?? [];
-  const usedInViews = field.used_in_views ?? field.usedInViews ?? [];
+  const usageCount = field.usageCount || 0;
+  const metricUsageCount = field.metricUsageCount || 0;
+  const isCalculated = field.isCalculated || false;
+  const dataType = field.dataType || 'unknown';
+  const usedByMetrics = field.usedByMetrics || [];
+  const usedInViews = field.usedInViews || [];
 
   // 物理列名和别名
-  const upstreamColumn = field.upstream_column_name ?? field.upstreamColumnName;
+  const upstreamColumn = field.upstreamColumnName;
   const displayName = field.name;
 
   // 主标题：优先显示物理列名，如果没有则显示当前名称
@@ -90,7 +81,7 @@ export default function FieldCard({ field, onClick }: FieldCardProps) {
     },
     {
       label: '数据源',
-      value: field.datasource_name,
+      value: field.datasourceName,
     },
     {
       label: '热度',

@@ -18,18 +18,15 @@ import Pagination from '../data-table/Pagination';
 
 // 定义排序选项
 const SORT_OPTIONS: SortConfig[] = [
-    { key: 'total_view_count', label: '访问量' },
+    { key: 'totalViewCount', label: '访问量' },
     { key: 'name', label: '名称' }
 ];
 
 interface ViewItem {
     id: string;
     name: string;
-    view_type?: string;
     viewType?: string;
-    total_view_count?: number;
     totalViewCount?: number;
-    workbook_name?: string;
     workbookName?: string;
     [key: string]: any;
 }
@@ -76,8 +73,8 @@ export default function HotViewsAnalysis({ onCountUpdate, onSortUpdate }: HotVie
     } = useDataTable({
         moduleName: 'views-hot',
         data: allData,
-        facetFields: ['view_type', 'workbook_name'],
-        searchFields: ['name', 'workbook_name'],
+        facetFields: ['viewType', 'workbookName'],
+        searchFields: ['name', 'workbookName'],
         defaultPageSize: 20
     });
 
@@ -129,8 +126,8 @@ export default function HotViewsAnalysis({ onCountUpdate, onSortUpdate }: HotVie
         );
     }
 
-    const maxViews = allData.length > 0 ? Math.max(...allData.map(v => v.total_view_count ?? v.totalViewCount ?? 0)) : 0;
-    const totalViewsCount = allData.reduce((sum, v) => sum + (v.total_view_count ?? v.totalViewCount ?? 0), 0);
+    const maxViews = allData.length > 0 ? Math.max(...allData.map(v => v.totalViewCount || 0)) : 0;
+    const totalViewsCount = allData.reduce((sum, v) => sum + (v.totalViewCount || 0), 0);
 
     return (
         <div className="space-y-6">
@@ -220,7 +217,7 @@ export default function HotViewsAnalysis({ onCountUpdate, onSortUpdate }: HotVie
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                             {displayData.map((view, idx) => {
-                                const viewCount = view.total_view_count ?? view.totalViewCount ?? 0;
+                                const viewCount = view.totalViewCount || 0;
                                 const heatLevel = getHeatLevel(viewCount);
                                 const rank = ((paginationState.page - 1) * paginationState.pageSize) + idx + 1;
                                 return (
@@ -233,7 +230,7 @@ export default function HotViewsAnalysis({ onCountUpdate, onSortUpdate }: HotVie
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-2">
-                                                {getViewTypeIcon(view.view_type || view.viewType)}
+                                                {getViewTypeIcon(view.viewType)}
                                                 <span className="font-medium text-gray-800">{view.name}</span>
                                             </div>
                                         </td>
@@ -249,10 +246,10 @@ export default function HotViewsAnalysis({ onCountUpdate, onSortUpdate }: HotVie
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-gray-500 text-[13px]">
-                                            {(view.view_type || view.viewType) === 'dashboard' ? '仪表板' : '工作表'}
+                                            {view.viewType === 'dashboard' ? '仪表板' : '工作表'}
                                         </td>
                                         <td className="px-6 py-4 text-gray-500 text-[13px] max-w-[150px] truncate">
-                                            {view.workbook_name || view.workbookName || '-'}
+                                            {view.workbookName || '-'}
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <button

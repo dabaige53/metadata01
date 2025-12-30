@@ -785,8 +785,6 @@ class View(Base):
             'containedSheetCount': len(self.contained_sheets) if self.view_type == 'dashboard' else 0,
             'isStandalone': (len(self.parent_dashboards) == 0) if self.view_type == 'sheet' else False,
             'totalViewCount': self.total_view_count or 0,
-            'hitsTotal': self.total_view_count or 0,
-            'hits_total': self.total_view_count or 0,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }

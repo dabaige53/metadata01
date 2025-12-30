@@ -38,17 +38,17 @@ export interface TableCardProps {
 }
 
 export default function TableCard({ table, onClick }: TableCardProps) {
-  const columnCount = table.column_count ?? table.columnCount ?? 0;
-  const fieldCount = table.field_count ?? table.fieldCount ?? 0;
-  const datasourceCount = table.datasource_count ?? table.datasourceCount ?? 0;
-  const embeddedDatasourceCount = table.embedded_datasource_count ?? table.embeddedDatasourceCount ?? 0;
-  const workbookCount = table.workbook_count ?? table.workbookCount ?? 0;
-  const previewFields = table.preview_fields ?? table.previewFields ?? [];
-  const databaseName = table.database_name ?? table.databaseName; // Allow undefined/null for filtering
-  const isCertified = table.is_certified ?? table.isCertified ?? false;
-  const isEmbedded = table.isEmbedded ?? table.is_embedded ?? false;
-  const createdAt = table.created_at ?? table.createdAt;
-  const updatedAt = table.updated_at ?? table.updatedAt;
+  const columnCount = table.columnCount || 0;
+  const fieldCount = table.fieldCount || 0;
+  const datasourceCount = table.datasourceCount || 0;
+  const embeddedDatasourceCount = table.embeddedDatasourceCount || 0;
+  const workbookCount = table.workbookCount || 0;
+  const previewFields = table.previewFields || [];
+  const databaseName = table.databaseName;
+  const isCertified = table.isCertified || false;
+  const isEmbedded = table.isEmbedded || false;
+  const createdAt = table.createdAt;
+  const updatedAt = table.updatedAt;
 
   // 总数据源数（用于状态判断）
   const totalDatasourceCount = datasourceCount + embeddedDatasourceCount;

@@ -163,16 +163,16 @@ def get_views_hot():
         items.append({
             'id': row.id,
             'name': row.name,
-            'view_type': row.view_type or 'sheet',
-            'total_view_count': count,
-            'workbook_name': row.workbook_name or '-',
-            'heat_level': heat_level
+            'viewType': row.view_type or 'sheet',
+            'totalViewCount': count,
+            'workbookName': row.workbook_name or '-',
+            'heatLevel': heat_level
         })
     
     return jsonify({
-        'total_count': len(items),
-        'max_views': max_views,
-        'avg_views': avg_views,
+        'totalCount': len(items),
+        'maxViews': max_views,
+        'avgViews': avg_views,
         'items': items
     })
 

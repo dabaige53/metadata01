@@ -1031,7 +1031,7 @@ def get_metric_detail(metric_id):
         instances_result = session.execute(text("""
             SELECT 
                 cf.id, cf.name, cf.datasource_id, cf.workbook_id, 
-                cf.usage_count, cf.reference_count,
+                cf.usage_count, cf.reference_count, cf.dependency_count,
                 d.name as datasource_name, d.project_name as ds_project,
                 w.name as workbook_name, w.project_name as wb_project
             FROM calculated_fields cf
@@ -1044,9 +1044,9 @@ def get_metric_detail(metric_id):
         data['instances'] = [{
             'id': row[0], 'name': row[1], 
             'datasourceId': row[2], 'workbookId': row[3],
-            'usageCount': row[4] or 0, 'referenceCount': row[5] or 0,
-            'datasourceName': row[6] or '-', 'datasourceProject': row[7],
-            'workbookName': row[8], 'workbookProject': row[9]
+            'usageCount': row[4] or 0, 'referenceCount': row[5] or 0, 'dependencyCount': row[6] or 0,
+            'datasourceName': row[7] or '-', 'datasourceProject': row[8],
+            'workbookName': row[9], 'workbookProject': row[10]
         } for row in instances_result]
         
         # 2. 获取依赖字段 (聚合所有实例)

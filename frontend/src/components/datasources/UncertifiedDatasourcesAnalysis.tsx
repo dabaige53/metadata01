@@ -16,24 +16,21 @@ import Pagination from '../data-table/Pagination';
 
 // 定义排序选项
 const SORT_OPTIONS: SortConfig[] = [
-    { key: 'workbook_count', label: '引用数' },
-    { key: 'field_count', label: '字段数' },
+    { key: 'workbookCount', label: '引用数' },
+    { key: 'fieldCount', label: '字段数' },
     { key: 'name', label: '名称' }
 ];
 
 interface DatasourceItem {
     id: string;
     name: string;
-    project?: string;
-    project_name?: string;
     projectName?: string;
     owner?: string;
     isCertified?: boolean;
-    is_certified?: boolean;
-    workbook_count?: number;
-    field_count?: number;
-    issue_type?: 'uncertified' | 'orphaned';
-    is_orphaned?: boolean;
+    workbookCount?: number;
+    fieldCount?: number;
+    issueType?: 'uncertified' | 'orphaned';
+    isOrphaned?: boolean;
     [key: string]: any;
 }
 
@@ -58,9 +55,9 @@ export default function UncertifiedDatasourcesAnalysis({ onCountUpdate, onSortUp
 
                 // 给所有数据打标签，并合并
                 // 未认证
-                const uncert = items.filter(d => !(d.isCertified ?? d.is_certified)).map(d => ({ ...d, issue_type: 'uncertified' as const }));
+                const uncert = items.filter(d => !d.isCertified).map(d => ({ ...d, issueType: 'uncertified' as const }));
                 // 孤立 (且已认证，避免重复，或者保留重复由筛选器处理)
-                const orph = items.filter(d => (!d.workbook_count || d.workbook_count === 0)).map(d => ({ ...d, issue_type: 'orphaned' as const }));
+                const orph = items.filter(d => (!d.workbookCount || d.workbookCount === 0)).map(d => ({ ...d, issueType: 'orphaned' as const }));
 
                 // 去重合并：一个数据源可能既未认证也是孤立的。这里我们选择展示所有问题记录，搜索和筛选会处理它。
                 // 如果想去重，则需要唯一标识符。
@@ -72,7 +69,7 @@ export default function UncertifiedDatasourcesAnalysis({ onCountUpdate, onSortUp
                         // 如果已存在，标记为 dual issue 或增加属性
                         const existing = merged.find(m => m.id === o.id);
                         if (existing) {
-                            existing.is_orphaned = true; // 额外补充标记
+                            existing.isOrphaned = true; // 额外补充标记
                         }
                     }
                 });
@@ -99,8 +96,8 @@ export default function UncertifiedDatasourcesAnalysis({ onCountUpdate, onSortUp
     } = useDataTable({
         moduleName: 'datasources-governance',
         data: allData,
-        facetFields: ['project', 'issue_type'],
-        searchFields: ['name', 'project', 'owner'],
+        facetFields: ['projectName', 'issueType'],
+        searchFields: ['name', 'projectName', 'owner'],
         defaultPageSize: 20
     });
 
@@ -140,8 +137,8 @@ export default function UncertifiedDatasourcesAnalysis({ onCountUpdate, onSortUp
         );
     }
 
-    const uncertCount = allData.filter(d => d.issue_type === 'uncertified').length;
-    const orphanCount = allData.filter(d => d.issue_type === 'orphaned' || d.is_orphaned).length;
+    const uncertCount = allData.filter(d => d.issueType === 'uncertified').length;
+    const orphanCount = allData.filter(d => d.issueType === 'orphaned' || d.isOrphaned).length;
 
     return (
         <div className="space-y-6">
@@ -197,31 +194,31 @@ export default function UncertifiedDatasourcesAnalysis({ onCountUpdate, onSortUp
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                             {displayData.map((ds) => (
-                                <tr key={`${ds.id}-${ds.issue_type}`} className="hover:bg-gray-50 transition-colors">
+                                <tr key={`${ds.id}-${ds.issueType}`} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-6 py-4">
                                         <div className="flex flex-wrap gap-1">
-                                            {!(ds.isCertified ?? ds.is_certified) && (
+                                            {!ds.isCertified && (
                                                 <span className="px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded text-[10px] font-bold uppercase tracking-wider border border-amber-100">未认证</span>
                                             )}
-                                            {(ds.workbook_count === 0 || ds.is_orphaned) && (
+                                            {(ds.workbookCount === 0 || ds.isOrphaned) && (
                                                 <span className="px-1.5 py-0.5 bg-red-50 text-red-600 rounded text-[10px] font-bold uppercase tracking-wider border border-red-100">孤立</span>
                                             )}
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-2">
-                                            <Layers className={`w-4 h-4 ${ds.issue_type === 'orphaned' ? 'text-red-400' : 'text-amber-400'}`} />
+                                            <Layers className={`w-4 h-4 ${ds.issueType === 'orphaned' ? 'text-red-400' : 'text-amber-400'}`} />
                                             <span className="font-medium text-gray-800">{ds.name}</span>
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-gray-500 text-[13px]">
-                                        {ds.project || ds.project_name || ds.projectName || '-'}
+                                        {ds.projectName || '-'}
                                     </td>
                                     <td className="px-6 py-4 text-gray-500 text-[13px]">
                                         {ds.owner || '-'}
                                     </td>
                                     <td className="px-6 py-4 text-center text-gray-500 font-medium">
-                                        {ds.workbook_count || 0}
+                                        {ds.workbookCount || 0}
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                         <button
