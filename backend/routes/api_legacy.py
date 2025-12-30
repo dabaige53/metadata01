@@ -352,27 +352,135 @@ def get_dashboard_analysis():
             'records': last_sync.records_synced
         }
     
+    # ===== 11. 血缘覆盖率统计 =====
+    lineage_stats = session.execute(text("""
+        SELECT
+            (SELECT COUNT(DISTINCT t.id)
+             FROM tables t
+             INNER JOIN table_to_datasource td ON t.id = td.table_id
+             WHERE t.is_embedded = 0 OR t.is_embedded IS NULL) as tables_with_downstream,
+            (SELECT COUNT(DISTINCT d.id)
+             FROM datasources d
+             INNER JOIN table_to_datasource td ON d.id = td.datasource_id
+             WHERE d.is_embedded = 0 OR d.is_embedded IS NULL) as datasources_with_upstream,
+            (SELECT COUNT(DISTINCT fv.field_id) FROM field_to_view fv) as fields_with_views,
+            (SELECT COUNT(*) FROM databases) as total_databases
+    """)).fetchone()
+    
+    lineage_coverage = {
+        'tables_with_downstream': lineage_stats[0] or 0,
+        'tables_total': total_tables,
+        'tables_rate': round((lineage_stats[0] or 0) / total_tables * 100, 1) if total_tables else 0,
+        'datasources_with_upstream': lineage_stats[1] or 0,
+        'datasources_total': total_datasources,
+        'datasources_rate': round((lineage_stats[1] or 0) / total_datasources * 100, 1) if total_datasources else 0,
+        'fields_with_views': lineage_stats[2] or 0,
+        'fields_total': total_fields,
+        'fields_rate': round((lineage_stats[2] or 0) / total_fields * 100, 1) if total_fields else 0,
+        'databases_total': lineage_stats[3] or 0
+    }
+    
+    # ===== 12. 热门工作簿 Top 10 =====
+    top_workbooks_data = session.execute(text("""
+        SELECT w.id, w.name, w.project_name, w.owner, 
+               COALESCE(w.view_count, 0) as view_count,
+               COALESCE(w.datasource_count, 0) as datasource_count
+        FROM workbooks w
+        ORDER BY w.view_count DESC, w.datasource_count DESC
+        LIMIT 10
+    """)).fetchall()
+    
+    top_workbooks = [{
+        'id': row[0],
+        'name': row[1],
+        'project_name': row[2],
+        'owner': row[3],
+        'view_count': row[4],
+        'datasource_count': row[5]
+    } for row in top_workbooks_data]
+    
+    # ===== 13. 项目资产分布 Top 10 =====
+    project_dist_data = session.execute(text("""
+        SELECT project_name,
+               SUM(CASE WHEN type = 'datasource' THEN cnt ELSE 0 END) as ds_count,
+               SUM(CASE WHEN type = 'workbook' THEN cnt ELSE 0 END) as wb_count
+        FROM (
+            SELECT project_name, 'datasource' as type, COUNT(*) as cnt 
+            FROM datasources WHERE is_embedded = 0 OR is_embedded IS NULL
+            GROUP BY project_name
+            UNION ALL
+            SELECT project_name, 'workbook' as type, COUNT(*) as cnt
+            FROM workbooks
+            GROUP BY project_name
+        )
+        GROUP BY project_name
+        ORDER BY (ds_count + wb_count) DESC
+        LIMIT 10
+    """)).fetchall()
+    
+    project_distribution = [{
+        'name': row[0] or '未分配',
+        'datasources': row[1],
+        'workbooks': row[2],
+        'total': row[1] + row[2]
+    } for row in project_dist_data]
+    
+    # ===== 14. 所有者资产分布 Top 10 =====
+    owner_dist_data = session.execute(text("""
+        SELECT owner,
+               SUM(CASE WHEN type = 'datasource' THEN cnt ELSE 0 END) as ds_count,
+               SUM(CASE WHEN type = 'workbook' THEN cnt ELSE 0 END) as wb_count
+        FROM (
+            SELECT owner, 'datasource' as type, COUNT(*) as cnt 
+            FROM datasources WHERE is_embedded = 0 OR is_embedded IS NULL
+            GROUP BY owner
+            UNION ALL
+            SELECT owner, 'workbook' as type, COUNT(*) as cnt
+            FROM workbooks
+            GROUP BY owner
+        )
+        GROUP BY owner
+        ORDER BY (ds_count + wb_count) DESC
+        LIMIT 10
+    """)).fetchall()
+    
+    owner_distribution = [{
+        'name': row[0] or '未知',
+        'datasources': row[1],
+        'workbooks': row[2],
+        'total': row[1] + row[2]
+    } for row in owner_dist_data]
+    
+    # ===== 15. 未认证数据源数量 =====
+    uncertified_ds_count = total_datasources - ds_cov['certified']
+    
     return jsonify({
         'health_score': score,
         'governance_scores': governance_scores,
         'issues': issues,
-        'quality_metrics': quality_metrics,  # 新增：质量指标详情
+        'quality_metrics': quality_metrics,
         'top_fields': top_fields_data,
+        'top_workbooks': top_workbooks,
         'total_assets': {
             'fields': total_fields,
             'metrics': total_metrics,
-            'calculated_fields': total_metrics, # 兼容
+            'calculated_fields': total_metrics,
             'tables': total_tables,
             'datasources': total_datasources,
             'workbooks': total_workbooks,
-            'views': total_views
+            'views': total_views,
+            'databases': lineage_coverage['databases_total']
         },
         'field_source_distribution': field_source_distribution,
         'data_type_distribution': data_type_distribution,
         'role_distribution': role_distribution,
         'complexity_distribution': complexity_distribution,
         'duplicate_formulas_top': duplicate_formulas_top,
-        'last_sync': sync_info
+        'last_sync': sync_info,
+        'lineage_coverage': lineage_coverage,
+        'project_distribution': project_distribution,
+        'owner_distribution': owner_distribution,
+        'uncertified_datasources': uncertified_ds_count
     })
 
 def apply_sorting(query, model, sort_key, order):

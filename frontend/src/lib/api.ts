@@ -124,7 +124,26 @@ export interface DashboardAnalysis {
     role_distribution: Record<string, number>;
     data_type_distribution: Record<string, number>;
     field_source_distribution: Record<string, number>;
-    top_fields: Array<{ id: string; name: string; usage: number }>;
+    complexity_distribution: Record<string, number>;
+    duplicate_formulas_top: Array<{ formula: string; count: number }>;
+    last_sync: null | { status?: string; time?: string; records?: number };
+    top_fields: Array<{ id: string; name: string; usage: number; source?: string; complexity?: number }>;
+    top_workbooks: Array<{ id: string; name: string; project_name?: string; owner?: string; view_count: number; datasource_count: number }>;
+    lineage_coverage: {
+        tables_with_downstream: number;
+        tables_total: number;
+        tables_rate: number;
+        datasources_with_upstream: number;
+        datasources_total: number;
+        datasources_rate: number;
+        fields_with_views: number;
+        fields_total: number;
+        fields_rate: number;
+        databases_total: number;
+    };
+    project_distribution: Array<{ name: string; datasources: number; workbooks: number; total: number }>;
+    owner_distribution: Array<{ name: string; datasources: number; workbooks: number; total: number }>;
+    uncertified_datasources: number;
     total_assets: {
         fields: number;
         calculated_fields: number;
@@ -132,6 +151,7 @@ export interface DashboardAnalysis {
         datasources: number;
         workbooks: number;
         views: number;
+        databases: number;
     };
 }
 
