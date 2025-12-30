@@ -43,7 +43,8 @@ export default function FieldCatalogCard({ field, onClick }: FieldCatalogCardPro
     const displaySubtitle = aliasIsDifferent ? `Tableau 别名: ${tableauAlias}` : undefined;
 
     const isMeasure = field.role?.toLowerCase() === 'measure';
-    const roleName = isMeasure ? '度量' : (field.role?.toLowerCase() === 'dimension' ? '维度' : field.role || '未知');
+    const isGroupSet = field.role?.toLowerCase() === 'group_set' || !field.role || field.role === '';
+    const roleName = isMeasure ? '度量' : (field.role?.toLowerCase() === 'dimension' ? '维度' : (isGroupSet ? '组/集' : field.role || '未知'));
 
     // 使用后端返回的去重方式（支持三种：physical_table/embedded_table/datasource）
     const dedupMethodLabels: Record<string, { label: string; icon: 'table' | 'embedded' | 'datasource' }> = {

@@ -49,7 +49,7 @@ SELECT '直接血缘(原始字段)数:', COUNT(*) FROM field_full_lineage WHERE 
 
 ```bash
 # 测试计算字段的血缘穿透
-curl -s "http://localhost:8101/api/fields/147648e6-f0b2-461f-03c7-04a3cfc4b242" | jq '{
+curl -s "http://localhost:8201/api/fields/147648e6-f0b2-461f-03c7-04a3cfc4b242" | jq '{
   name: .name,
   is_calculated: .isCalculated,
   table_info: .table_info,
@@ -67,7 +67,7 @@ curl -s "http://localhost:8101/api/fields/147648e6-f0b2-461f-03c7-04a3cfc4b242" 
 
 ```bash
 # 测试指标的血缘穿透
-curl -s "http://localhost:8101/api/metrics/147648e6-f0b2-461f-03c7-04a3cfc4b242" | jq '{
+curl -s "http://localhost:8201/api/metrics/147648e6-f0b2-461f-03c7-04a3cfc4b242" | jq '{
   name: .name,
   upstream_tables: .upstream_tables,
   usedInViews: (.usedInViews | length),
@@ -86,7 +86,7 @@ curl -s "http://localhost:8101/api/metrics/147648e6-f0b2-461f-03c7-04a3cfc4b242"
 VIEW_ID=$(sqlite3 metadata.db "SELECT id FROM views LIMIT 1")
 
 # 测试视图的上游血缘
-curl -s "http://localhost:8101/api/views/$VIEW_ID" | jq '{
+curl -s "http://localhost:8201/api/views/$VIEW_ID" | jq '{
   name: .name,
   upstream_datasources: .upstream_datasources,
   upstream_tables: .upstream_tables

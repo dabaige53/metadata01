@@ -52,7 +52,8 @@ export interface MetricCatalogCardProps {
 export default function MetricCatalogCard({ metric, onClick }: MetricCatalogCardProps) {
 
     const isMeasure = metric.role?.toLowerCase() === 'measure';
-    const roleName = isMeasure ? '度量' : (metric.role?.toLowerCase() === 'dimension' ? '维度' : metric.role || '未知');
+    const isGroupSet = metric.role?.toLowerCase() === 'group_set' || !metric.role || metric.role === '';
+    const roleName = isMeasure ? '度量' : (metric.role?.toLowerCase() === 'dimension' ? '维度' : (isGroupSet ? '组/集' : metric.role || '未知'));
 
     // 构建徽章
     const badges: Array<{ text: string; color: 'green' | 'blue' | 'gray' | 'red' | 'purple' | 'orange' }> = [

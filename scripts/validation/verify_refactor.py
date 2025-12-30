@@ -41,7 +41,7 @@ class RefactorVerifier:
         self.db_path = db_path
         self.conn = sqlite3.connect(db_path)
         self.conn.row_factory = sqlite3.Row
-        self.api_base = os.environ.get("API_BASE", "http://localhost:8101/api")
+        self.api_base = os.environ.get("API_BASE", "http://localhost:8201/api")
 
     # ========= 辅助函数 =========
     def run_scalar(self, sql: str, params: tuple = ()) -> int:
@@ -50,7 +50,7 @@ class RefactorVerifier:
         return int(row[0]) if row and row[0] is not None else 0
 
     def fetch_api_json(self, path: str) -> Dict[str, Any]:
-        """调用本地 API（默认 http://localhost:8101/api），返回 JSON。失败时返回 {'error': msg}。"""
+        """调用本地 API（默认 http://localhost:8201/api），返回 JSON。失败时返回 {'error': msg}。"""
         url = f"{self.api_base.rstrip('/')}/{path.lstrip('/')}"
         try:
             with urllib.request.urlopen(url, timeout=5) as resp:

@@ -11,7 +11,7 @@ import re
 
 # Configuration
 DB_PATH = os.path.join(os.getcwd(), 'data', 'metadata.db')
-API_BASE_URL = 'http://localhost:8101'
+API_BASE_URL = 'http://localhost:8201'
 JSON_DIR = os.path.join(os.getcwd(), 'docs', 'validation_json')
 REPORT_DIR = os.path.join(os.getcwd(), 'docs', 'validation_reports')
 

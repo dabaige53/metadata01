@@ -123,13 +123,13 @@ sqlite3 metadata.db < docs/测试验证/系统设计验证.sql
 ### 4.2 API 验证
 ```bash
 # 字段详情 - 验证 table_info 来自血缘表
-curl -s "http://localhost:8101/api/fields/147648e6-f0b2-461f-03c7-04a3cfc4b242" | jq '{table_info, derived_tables}'
+curl -s "http://localhost:8201/api/fields/147648e6-f0b2-461f-03c7-04a3cfc4b242" | jq '{table_info, derived_tables}'
 
 # 指标详情 - 验证 upstream_tables 来自血缘表
-curl -s "http://localhost:8101/api/metrics/147648e6-f0b2-461f-03c7-04a3cfc4b242" | jq '{upstream_tables}'
+curl -s "http://localhost:8201/api/metrics/147648e6-f0b2-461f-03c7-04a3cfc4b242" | jq '{upstream_tables}'
 
 # 视图详情 - 验证 upstream_datasources 和 upstream_tables
-curl -s "http://localhost:8101/api/views/[VIEW_ID]" | jq '{upstream_datasources, upstream_tables}'
+curl -s "http://localhost:8201/api/views/[VIEW_ID]" | jq '{upstream_datasources, upstream_tables}'
 ```
 
 ### 4.3 代码审计

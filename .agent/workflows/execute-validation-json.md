@@ -71,7 +71,7 @@ SELECT COUNT(DISTINCT b.id) || ':' || COUNT(DISTINCT a.id) FROM ...;
 // turbo
 ```bash
 # 启动后端服务（如未启动）
-curl -s http://localhost:8101/api/stats | jq
+curl -s http://localhost:8201/api/stats | jq
 ```
 
 对比每个 API 返回值与 SQL 查询结果。
@@ -204,7 +204,7 @@ docs/validation_reports/{模块名}_validation_report_{日期}.md
 sqlite3 metadata.db ".tables"
 
 # 检查 API 服务状态
-curl -s http://localhost:8101/api/stats | head -20
+curl -s http://localhost:8201/api/stats | head -20
 
 # 执行批量验证 SQL
 sqlite3 metadata.db < docs/测试验证/系统设计验证.sql

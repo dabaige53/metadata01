@@ -226,12 +226,23 @@ def get_fields_catalog():
     # 注意：这需要在 JOIN regular_fields 后应用，或者在 WHERE 中
     if role_filter:
         role_values = parse_list(role_filter)
-        if len(role_values) == 1:
-            conditions.append("rf.role = :role")
-            params['role'] = role_values[0]
-        elif role_values:
-            role_clause = build_in_clause('role', role_values, params)
-            conditions.append(f"rf.role IN {role_clause}")
+        # 处理 'group_set' 特殊值：匹配空字符串或 NULL（组/集类型字段）
+        has_group_set = 'group_set' in role_values
+        normal_values = [v for v in role_values if v != 'group_set']
+        
+        role_conditions = []
+        if has_group_set:
+            role_conditions.append("(rf.role IS NULL OR rf.role = '')")
+        if normal_values:
+            if len(normal_values) == 1:
+                role_conditions.append("rf.role = :role")
+                params['role'] = normal_values[0]
+            else:
+                role_clause = build_in_clause('role', normal_values, params)
+                role_conditions.append(f"rf.role IN {role_clause}")
+        
+        if role_conditions:
+            conditions.append(f"({' OR '.join(role_conditions)})")
     
     # 3. 去重方式筛选
     if dedup_method_filter:
@@ -398,7 +409,7 @@ def get_fields_catalog():
     """
     
     role_counts = session.execute(text(role_sql), params).fetchall()
-    facets['role'] = {str(r or 'unknown'): c for r, c in role_counts}
+    facets['role'] = {str(r if r else 'group_set'): c for r, c in role_counts}
     
     # 去重方式统计 (区分物理表/嵌入式表/数据源)
     dedup_sql = """
@@ -747,21 +758,43 @@ def get_fields():
 
     if role:
         role_values = parse_list(role)
-        if len(role_values) == 1:
-            conditions.append("rf.role = :role")
-            params['role'] = role_values[0]
-        elif role_values:
-            role_clause = build_in_clause('role', role_values, params)
-            conditions.append(f"rf.role IN {role_clause}")
+        # 处理 'group_set' 特殊值：匹配空字符串或 NULL（组/集类型字段）
+        has_group_set = 'group_set' in role_values
+        normal_values = [v for v in role_values if v != 'group_set']
+        
+        role_conditions = []
+        if has_group_set:
+            role_conditions.append("(rf.role IS NULL OR rf.role = '')")
+        if normal_values:
+            if len(normal_values) == 1:
+                role_conditions.append("rf.role = :role")
+                params['role'] = normal_values[0]
+            else:
+                role_clause = build_in_clause('role', normal_values, params)
+                role_conditions.append(f"rf.role IN {role_clause}")
+        
+        if role_conditions:
+            conditions.append(f"({' OR '.join(role_conditions)})")
 
     if data_type:
         type_values = parse_list(data_type)
-        if len(type_values) == 1:
-            conditions.append("rf.data_type = :data_type")
-            params['data_type'] = type_values[0]
-        elif type_values:
-            type_clause = build_in_clause('data_type', type_values, params)
-            conditions.append(f"rf.data_type IN {type_clause}")
+        # 处理 'unknown' 特殊值：匹配空字符串或 NULL
+        has_unknown = 'unknown' in type_values
+        normal_values = [v for v in type_values if v != 'unknown']
+        
+        type_conditions = []
+        if has_unknown:
+            type_conditions.append("(rf.data_type IS NULL OR rf.data_type = '')")
+        if normal_values:
+            if len(normal_values) == 1:
+                type_conditions.append("rf.data_type = :data_type")
+                params['data_type'] = normal_values[0]
+            else:
+                type_clause = build_in_clause('data_type', normal_values, params)
+                type_conditions.append(f"rf.data_type IN {type_clause}")
+        
+        if type_conditions:
+            conditions.append(f"({' OR '.join(type_conditions)})")
 
     if has_description.lower() == 'true':
         conditions.append("rf.description IS NOT NULL AND rf.description != ''")
@@ -791,7 +824,7 @@ def get_fields():
     
     role_sql = f"SELECT rf.role, COUNT(*) FROM regular_fields rf {where_clause} GROUP BY rf.role"
     role_counts = session.execute(text(role_sql), params).fetchall()
-    facets['role'] = {str(r or 'unknown'): c for r, c in role_counts}
+    facets['role'] = {str(r if r else 'group_set'): c for r, c in role_counts}
     
     type_sql = f"SELECT rf.data_type, COUNT(*) FROM regular_fields rf {where_clause} GROUP BY rf.data_type"
     type_counts = session.execute(text(type_sql), params).fetchall()

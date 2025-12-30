@@ -9,7 +9,7 @@ import requests
 import json
 
 DB_PATH = "metadata.db"
-API_BASE = "http://localhost:8101/api"
+API_BASE = "http://localhost:8201/api"
 
 def compare_field_detail():
     """对比字段详情 API 返回与数据库直接查询"""

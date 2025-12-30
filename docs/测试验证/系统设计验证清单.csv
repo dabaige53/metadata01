@@ -4,21 +4,21 @@
 1. 物理基础设施,无效的数据库引用,数据表关联的 database_id 指向了不存在的数据库，导致外键死链。,database_id NOT IN (SELECT id FROM databases),无 (仅DB内部约束),发现引用了不存在数据库的无效表
 1. 物理基础设施,孤立物理列记录,物理列缺少 table_id，无法关联到任何数据表，属于无效的游离元数据。,table_id IS NULL,无 (仅DB内部约束),发现未指定所属表的孤立列
 1. 物理基础设施,无效的数据表引用,物理列关联的 table_id 指向了不存在的数据表，导致外键死链。,table_id NOT IN (SELECT id FROM tables),无 (仅DB内部约束),发现引用了不存在表的无效列
-2. 数据源语义层,数据源名称为空,发布的数据源 name 字段为空，导致用户无法在界面上识别该提取对象。,name IS NULL OR name = '',curl -s http://localhost:8101/api/datasources | jq '.items[] | select(.name==null)',发现名称缺失的数据源
-2. 数据源语义层,数据源未归属项目,发布数据源 (is_embedded=0) 未关联 Project，导致权限管控失效或资产悬空。,is_embedded=0 AND (project_name IS NULL OR ''),curl -s http://localhost:8101/api/datasources | jq '.items[] | select(.project_name==null)',发现未分配项目的数据源
+2. 数据源语义层,数据源名称为空,发布的数据源 name 字段为空，导致用户无法在界面上识别该提取对象。,name IS NULL OR name = '',curl -s http://localhost:8201/api/datasources | jq '.items[] | select(.name==null)',发现名称缺失的数据源
+2. 数据源语义层,数据源未归属项目,发布数据源 (is_embedded=0) 未关联 Project，导致权限管控失效或资产悬空。,is_embedded=0 AND (project_name IS NULL OR ''),curl -s http://localhost:8201/api/datasources | jq '.items[] | select(.project_name==null)',发现未分配项目的数据源
 2. 数据源语义层,空壳数据源(无表),已发布数据源未关联任何物理表(Custom SQL除外)，属于不规范定义(嵌入式源允许无表)。,is_embedded=0 AND NOT EXISTS (SELECT 1 FROM table_to_datasource ...),无 (需复杂API逻辑),发现未关联物理表的已发布数据源
 2. 数据源语义层,空壳数据源(无字段),数据源内部未定义任何字段 (Field)，没有任何分析价值，属于无效定义。,NOT EXISTS (SELECT 1 FROM fields ...),无 (需复杂API逻辑),发现不含字段的空壳数据源
 2. 数据源语义层,嵌入式源关联丢失,嵌入式数据源必须关联到上游已发布数据源（混合模式下）。,is_embedded=1 AND source_published_datasource_id IS NULL,无,发现未关联已发布源的嵌入式源
 2. 数据源语义层,嵌入式字段关联丢失,嵌入式字段（非计算）必须引用已发布源中的远程字段。,remote_field_id IS NULL,无,发现未关联远程字段的嵌入式字段
-3. 消费层,工作簿未归属项目,工作簿未关联 Project，导致在服务器文件系统中位置不明，无法被正常检索。,project_name IS NULL OR project_name = '',curl -s http://localhost:8101/api/workbooks | jq '.items[] | select(.project_name==null)',发现未分配项目的工作簿
-3. 消费层,工作簿缺少负责人,工作簿 owner 字段为空，导致资产出现问题时无法定位责任人。,owner IS NULL OR owner = '',curl -s http://localhost:8101/api/workbooks | jq '.items[] | select(.owner==null)',发现无负责人的工作簿
-3. 消费层,工作簿名称为空,工作簿缺少 name 标识，导致无法在列表中正常展示。,name IS NULL OR name = '',curl -s http://localhost:8101/api/workbooks | jq '.items[] | select(.name==null)',发现名称缺失的工作簿
-3. 消费层,孤立视图记录,视图缺少 workbook_id，未归属于任何工作簿，属于系统中的游离垃圾数据。,workbook_id IS NULL,curl -s http://localhost:8101/api/views | jq '.items[] | select(.workbook_id==null)',发现未关联工作簿的孤立视图
+3. 消费层,工作簿未归属项目,工作簿未关联 Project，导致在服务器文件系统中位置不明，无法被正常检索。,project_name IS NULL OR project_name = '',curl -s http://localhost:8201/api/workbooks | jq '.items[] | select(.project_name==null)',发现未分配项目的工作簿
+3. 消费层,工作簿缺少负责人,工作簿 owner 字段为空，导致资产出现问题时无法定位责任人。,owner IS NULL OR owner = '',curl -s http://localhost:8201/api/workbooks | jq '.items[] | select(.owner==null)',发现无负责人的工作簿
+3. 消费层,工作簿名称为空,工作簿缺少 name 标识，导致无法在列表中正常展示。,name IS NULL OR name = '',curl -s http://localhost:8201/api/workbooks | jq '.items[] | select(.name==null)',发现名称缺失的工作簿
+3. 消费层,孤立视图记录,视图缺少 workbook_id，未归属于任何工作簿，属于系统中的游离垃圾数据。,workbook_id IS NULL,curl -s http://localhost:8201/api/views | jq '.items[] | select(.workbook_id==null)',发现未关联工作簿的孤立视图
 3. 消费层,无效的工作簿引用,视图关联的 workbook_id 指向了不存在的工作簿，导致父子关系破裂。,workbook_id NOT IN workbooks,无 (仅DB内部约束),发现引用了不存在工作簿的无效视图
 3. 消费层,仪表板内容缺失,类型为 Dashboard 的视图未包含任何 Worksheet，说明元数据解析不完整或文件损坏。,view_type='dashboard' AND NOT EXISTS sheets,无 (需复杂API逻辑),发现不含工作表的异常仪表板
-4. 字段与指标逻辑,未使用字段(无视图引用),字段未被任何视图引用，不在 field_to_view 表中，属于冗余数据。【API返回: orphanedFields】,NOT EXISTS (SELECT 1 FROM field_to_view ...),curl -s http://localhost:8101/api/stats | jq '.orphanedFields',发现未被任何视图引用的冗余字段
+4. 字段与指标逻辑,未使用字段(无视图引用),字段未被任何视图引用，不在 field_to_view 表中，属于冗余数据。【API返回: orphanedFields】,NOT EXISTS (SELECT 1 FROM field_to_view ...),curl -s http://localhost:8201/api/stats | jq '.orphanedFields',发现未被任何视图引用的冗余字段
 4. 字段与指标逻辑,计算公式丢失,标记为计算字段 (is_calculated=1) 但 formula 内容为空，导致计算逻辑缺失。,formula IS NULL OR formula = '',无 (需复杂API逻辑),发现丢失公式的计算字段
-4. 字段与指标逻辑,度量数据类型缺失,标记为度量 (Role='MEASURE') 的字段缺少 data_type，导致前端无法判断聚合方式 (Sum/Avg等)。,role='MEASURE' AND (data_type IS NULL OR ''),curl -s http://localhost:8101/api/fields?role=measure | jq '.items[] | select(.data_type==null)',发现缺少数据类型的度量字段
+4. 字段与指标逻辑,度量数据类型缺失,标记为度量 (Role='MEASURE') 的字段缺少 data_type，导致前端无法判断聚合方式 (Sum/Avg等)。,role='MEASURE' AND (data_type IS NULL OR ''),curl -s http://localhost:8201/api/fields?role=measure | jq '.items[] | select(.data_type==null)',发现缺少数据类型的度量字段
 4. 字段与指标逻辑,计算字段角色未定义,计算字段未指定 Role (Dimension/Measure)，导致分析时无法正确分类。,is_calculated=1 AND role IS NULL,无 (需复杂API逻辑),发现未定义角色的计算字段
 4. 字段与指标逻辑,字段名称为空,Field.name 不能为空。,name IS NULL OR name = '',无,发现名称为空的字段
 4. 字段与指标逻辑,字段ID为空,Field.id 不能为空。,id IS NULL OR id = '',无,发现ID为空的字段
@@ -28,9 +28,9 @@
 5. 血缘关系,物理-语义血缘中断,物理表存在但未关联任何数据源，导致该物理资产无法进入语义层被业务使用。,NOT EXISTS table_to_datasource,无 (API未暴露),发现未接入语义层的物理表(血缘断点)
 5. 血缘关系,语义-消费血缘中断,数据源已发布但未关联任何工作簿，导致下游链路中断，资产价值无法传递。,NOT EXISTS datasource_to_workbook,无 (API未暴露),发现未被消费的数据源(血缘断点)
 5. 血缘关系,字段-视图血缘中断,字段已定义但未在任何视图中被引用，导致最细粒度的血缘分析在终点断裂。,NOT EXISTS field_to_view,无 (API未暴露),发现未被使用的字段
-6. 统计准确性,全局计数不一致,API 返回的资产总数与数据库实时 Count 不一致，表明前端展示存在误差或缓存延迟。,SELECT COUNT(*) FROM table vs API,curl -s http://localhost:8101/api/stats,发现前后端资产计数不一致
-7. 血缘完整性,计算字段孤儿数据源引用,计算字段的 datasource_id 引用了不存在的数据源（嵌入式数据源未同步导致），API显示Unknown。,datasource_id NOT IN (SELECT id FROM datasources),curl -s http://localhost:8101/api/metrics | jq '.items[] | select(.datasource_name=="Unknown" or .datasource_name==null)' | head,发现引用不存在数据源的孤儿字段
-7. 血缘完整性,计算字段物理表血缘缺失,计算字段缺少 table_id 关联，导致无法追溯到物理数据表，前端"所属数据表"Tab无数据。,is_calculated=1 AND (table_id IS NULL OR table_id=''),curl -s http://localhost:8101/api/metrics | jq '[.items[] | select(.table_id==null)] | length',发现缺少物理表关联的计算字段
+6. 统计准确性,全局计数不一致,API 返回的资产总数与数据库实时 Count 不一致，表明前端展示存在误差或缓存延迟。,SELECT COUNT(*) FROM table vs API,curl -s http://localhost:8201/api/stats,发现前后端资产计数不一致
+7. 血缘完整性,计算字段孤儿数据源引用,计算字段的 datasource_id 引用了不存在的数据源（嵌入式数据源未同步导致），API显示Unknown。,datasource_id NOT IN (SELECT id FROM datasources),curl -s http://localhost:8201/api/metrics | jq '.items[] | select(.datasource_name=="Unknown" or .datasource_name==null)' | head,发现引用不存在数据源的孤儿字段
+7. 血缘完整性,计算字段物理表血缘缺失,计算字段缺少 table_id 关联，导致无法追溯到物理数据表，前端"所属数据表"Tab无数据。,is_calculated=1 AND (table_id IS NULL OR table_id=''),curl -s http://localhost:8201/api/metrics | jq '[.items[] | select(.table_id==null)] | length',发现缺少物理表关联的计算字段
 7. 血缘完整性,物理表列信息缺失(B1),物理表 (is_embedded=0) 必须包含至少一个列信息，否则字段无法追溯到列级。,is_embedded=0 AND NOT EXISTS (SELECT 1 FROM db_columns ...),无,发现列信息缺失的物理表
 7. 血缘完整性,表引用字段无关联(D),表引用类型字段 (如"日期表") 必须关联到对应的数据表。,name IN ('日期表'...) AND table_id IS NULL,无,发现未关联表的引用字段
 8. 字段归属完整性,原始字段归属缺失,原始字段 (is_calculated=0) 必须属于一个数据源。,[SQL] is_calculated=0 AND datasource_id IS NULL,无,发现未归属DS的原始字段

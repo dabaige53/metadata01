@@ -39,6 +39,7 @@ const FILTER_LABELS: Record<string, string> = {
   // Facet values
   measure: '度量',
   dimension: '维度',
+  group_set: '组/集',
   'true': '是',
   'false': '否',
   business: '业务指标',

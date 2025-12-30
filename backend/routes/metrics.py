@@ -161,12 +161,23 @@ def get_metrics_catalog():
     
     if role_filter:
         role_values = parse_list(role_filter)
-        if len(role_values) == 1:
-            conditions.append("cf.role = :role")
-            params['role'] = role_values[0]
-        elif role_values:
-            role_clause = build_in_clause('role', role_values, params)
-            conditions.append(f"cf.role IN {role_clause}")
+        # 处理 'unknown' 特殊值：匹配空字符串或 NULL
+        has_unknown = 'unknown' in role_values
+        normal_values = [v for v in role_values if v != 'unknown']
+        
+        role_conditions = []
+        if has_unknown:
+            role_conditions.append("(cf.role IS NULL OR cf.role = '')")
+        if normal_values:
+            if len(normal_values) == 1:
+                role_conditions.append("cf.role = :role")
+                params['role'] = normal_values[0]
+            else:
+                role_clause = build_in_clause('role', normal_values, params)
+                role_conditions.append(f"cf.role IN {role_clause}")
+        
+        if role_conditions:
+            conditions.append(f"({' OR '.join(role_conditions)})")
     
     where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
     

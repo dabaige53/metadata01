@@ -2,7 +2,7 @@
 import requests
 import json
 
-url = "http://127.0.0.1:8101/api/stats"
+url = "http://127.0.0.1:8201/api/stats"
 
 try:
     response = requests.get(url)

@@ -13,7 +13,7 @@ from typing import Dict, List, Any, Tuple
 
 # 数据库路径
 DB_PATH = Path(__file__).parent.parent.parent / "data" / "metadata.db"
-API_BASE = "http://localhost:8101/api"
+API_BASE = "http://localhost:8201/api"
 
 class ConsistencyVerifier:
     """卡片详情一致性验证器"""
