@@ -47,7 +47,7 @@ interface NameFormulaConflictItem {
 const SORT_OPTIONS: SortConfig[] = [
     { key: 'formula_count', label: '公式数' },
     { key: 'instance_count', label: '实例数' },
-    { key: 'total_references', label: '引用数' },
+    { key: 'total_references', label: '被依赖次数' },
     { key: 'name', label: '名称' }
 ];
 

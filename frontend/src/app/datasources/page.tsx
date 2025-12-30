@@ -157,7 +157,7 @@ function DatasourcesContent() {
     // 排序选项
     const sortOptions = [
         { key: 'table_count', label: '表数量' },
-        { key: 'workbook_count', label: '引用数' },
+        { key: 'workbook_count', label: '关联工作簿' },
         { key: 'last_refresh', label: '更新时间' },
         { key: 'name', label: '名称' },
     ];

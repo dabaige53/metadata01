@@ -1,367 +1,261 @@
 'use client';
 
-import { useMemo, useState } from 'react';
 import {
-    Layout,
-    GitBranch,
-    Columns,
-    Layers,
     BookOpen,
-    Database,
-    Eye,
-    ShieldAlert,
+    Columns,
+    GitBranch,
     Info,
-    X
+    Layout,
+    Layers,
+    ShieldAlert,
+    TrendingUp,
+    XCircle
 } from 'lucide-react';
 
-type IntroTag = {
-    id: string;
-    label: string;
-    icon: React.ElementType;
-    tone: string;
-    title: string;
-    summary: string;
-    userStory: string;
-    bullets: string[];
-    notes: string[];
-};
-
-const VIEW_INTRO_TAGS: IntroTag[] = [
-    {
-        id: 'overview',
-        label: '我是谁',
-        icon: Info,
-        tone: 'indigo',
-        title: '视图是什么样的资产',
-        summary: '这是一个可以被访问、被复用的可视化视图，它连接了数据、字段与业务说明。',
-        userStory: '我是使用报表的人，我只想知道这个视图能回答什么问题、数据是否可靠、是否有人在维护。',
-        bullets: [
-            '视图名称、所属工作簿与负责人',
-            '是否认证、是否有描述、最近是否更新',
-            '被多少人用、热度与访问趋势',
-            '从哪里来、会影响哪些地方'
-        ],
-        notes: [
-            '备注: 认证来自 Tableau 认证标记',
-            '备注: 访问统计来自 view usage 统计接口'
-        ]
-    },
-    {
-        id: 'data-source',
-        label: '数据来源',
-        icon: Layers,
-        tone: 'emerald',
-        title: '这个视图用到了哪些数据源',
-        summary: '你可以看见数据从哪里接入，是否是嵌入式数据源，是否容易出错。',
-        userStory: '我是数据使用者，我想知道这张图到底连的是哪个数据源，能否被信任。',
-        bullets: [
-            '已发布数据源与嵌入式数据源区分',
-            '数据源负责人、项目归属',
-            '是否认证、是否有说明'
-        ],
-        notes: [
-            '备注: embedded 表示嵌入式数据源',
-            '备注: 数据源数量来自预计算统计'
-        ]
-    },
-    {
-        id: 'fields',
-        label: '字段定义',
-        icon: Columns,
-        tone: 'blue',
-        title: '这个视图具体用了哪些字段',
-        summary: '字段告诉你图表的含义，是维度还是度量，是否有描述。',
-        userStory: '我是分析师，我关心字段含义与口径是否一致，避免误读。',
-        bullets: [
-            '字段角色(维度/度量)与数据类型',
-            '是否有描述、是否有认证',
-            '字段来自哪些表或数据源'
-        ],
-        notes: [
-            '备注: 字段与原始列通过 upstream_column 关联',
-            '备注: 字段数量为预计算统计'
-        ]
-    },
-    {
-        id: 'lineage',
-        label: '血缘路径',
-        icon: GitBranch,
-        tone: 'violet',
-        title: '这张图和上游数据的关系',
-        summary: '血缘图展示“数据从哪里来、会影响哪些下游”。',
-        userStory: '我是变更负责人，我要知道改了上游数据会不会影响这张视图。',
-        bullets: [
-            '从数据库到数据表、数据源、工作簿、视图',
-            '标出穿透是否成功、血缘来源方式',
-            '让风险一眼可见'
-        ],
-        notes: [
-            '备注: 血缘来源包含 API 直返/推导/预计算',
-            '备注: 穿透失败会标记为风险'
-        ]
-    },
-    {
-        id: 'usage',
-        label: '访问情况',
-        icon: Eye,
-        tone: 'amber',
-        title: '这个视图有没有人在用',
-        summary: '访问情况帮助你判断视图是否值得维护，是否需要优化。',
-        userStory: '我是管理员，我想知道哪些视图是热门，哪些视图可以下线。',
-        bullets: [
-            '总访问次数、近期增量',
-            '是否是热门或冷门视图',
-            '访问趋势(简化列表展示)'
-        ],
-        notes: [
-            '备注: 统计来自 view usage 数据',
-            '备注: 热度阈值可配置'
-        ]
-    },
-    {
-        id: 'risk',
-        label: '风险提示',
-        icon: ShieldAlert,
-        tone: 'rose',
-        title: '这张视图可能的问题',
-        summary: '用最直白的方式告诉你“哪里可能不可靠”。',
-        userStory: '我是业务负责人，希望在使用前先知道潜在问题。',
-        bullets: [
-            '无描述字段过多',
-            '血缘穿透失败',
-            '数据源未认证'
-        ],
-        notes: [
-            '备注: 风险规则可由治理策略配置'
-        ]
-    }
-];
-
-const toneMap: Record<string, { chip: string; panel: string; ring: string; text: string }> = {
-    indigo: { chip: 'bg-indigo-50 text-indigo-700 border-indigo-200', panel: 'bg-indigo-50/40', ring: 'ring-indigo-200', text: 'text-indigo-700' },
-    emerald: { chip: 'bg-emerald-50 text-emerald-700 border-emerald-200', panel: 'bg-emerald-50/40', ring: 'ring-emerald-200', text: 'text-emerald-700' },
-    blue: { chip: 'bg-blue-50 text-blue-700 border-blue-200', panel: 'bg-blue-50/40', ring: 'ring-blue-200', text: 'text-blue-700' },
-    violet: { chip: 'bg-violet-50 text-violet-700 border-violet-200', panel: 'bg-violet-50/40', ring: 'ring-violet-200', text: 'text-violet-700' },
-    amber: { chip: 'bg-amber-50 text-amber-700 border-amber-200', panel: 'bg-amber-50/40', ring: 'ring-amber-200', text: 'text-amber-700' },
-    rose: { chip: 'bg-rose-50 text-rose-700 border-rose-200', panel: 'bg-rose-50/40', ring: 'ring-rose-200', text: 'text-rose-700' }
-};
-
 export default function ViewIntroDemoPage() {
-    const [activeTag, setActiveTag] = useState<IntroTag | null>(null);
-    const tagGroups = useMemo(() => VIEW_INTRO_TAGS, []);
-
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                        <Layout className="w-6 h-6 text-indigo-600" />
-                        Views 详情页介绍 Demo
-                    </h1>
-                    <p className="mt-1 text-sm text-gray-500">
-                        这是一个静态展示示例，用“视图详情页”为例说明用户能看到什么、为什么有用。
-                    </p>
+        <div className="space-y-8">
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+                <div className="flex items-start gap-4">
+                    <div className="p-3 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600">
+                        <Layout className="w-7 h-7" />
+                    </div>
+                    <div className="min-w-0">
+                        <h1 className="text-2xl font-bold text-gray-900">视图详情页产品说明</h1>
+                        <p className="mt-2 text-sm text-gray-600">把一张视图的口径、来源与影响范围，集中在一个页面里看清楚。</p>
+                    </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6">
-                <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-                    <div className="flex items-center gap-3">
-                        <div className="p-3 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100">
-                            <Layout className="w-6 h-6" />
-                        </div>
-                        <div>
-                            <div className="text-sm text-gray-500">示例视图</div>
-                            <div className="text-lg font-bold text-gray-900">航线收益看板 · 月度视图</div>
-                            <div className="text-xs text-gray-400">所属工作簿: 经营分析 · 负责人: 陈**</div>
-                        </div>
-                    </div>
-                    <div className="mt-5 grid grid-cols-3 gap-3">
-                        <div className="rounded-lg border border-gray-100 bg-gray-50 p-3 text-center">
-                            <div className="text-2xl font-bold text-indigo-600">1,248</div>
-                            <div className="text-xs text-gray-500">总访问</div>
-                        </div>
-                        <div className="rounded-lg border border-gray-100 bg-gray-50 p-3 text-center">
-                            <div className="text-2xl font-bold text-emerald-600">+62</div>
-                            <div className="text-xs text-gray-500">近7天</div>
-                        </div>
-                        <div className="rounded-lg border border-gray-100 bg-gray-50 p-3 text-center">
-                            <div className="text-2xl font-bold text-amber-600">已认证</div>
-                            <div className="text-xs text-gray-500">可信状态</div>
-                        </div>
-                    </div>
-                    <div className="mt-6">
-                        <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">标签入口</div>
-                        <div className="flex flex-wrap gap-2">
-                            {tagGroups.map(tag => {
-                                const tone = toneMap[tag.tone];
-                                const Icon = tag.icon;
-                                return (
-                                    <button
-                                        key={tag.id}
-                                        onClick={() => setActiveTag(tag)}
-                                        className={`inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs font-semibold rounded-full transition-all hover:shadow-sm ${tone.chip}`}
-                                    >
-                                        <Icon className="w-3.5 h-3.5" />
-                                        {tag.label}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+                <div className="text-sm font-semibold text-gray-900">一图看全：这张视图的来源与口径</div>
+                <p className="mt-1 text-xs text-gray-500">上游到下游：数据库 → 表 → 列 → 字段 → 指标 → 视图 → 工作簿。</p>
+
+                <div className="mt-4 rounded-2xl border border-gray-100 bg-gray-50 p-5 overflow-auto">
+                    <svg viewBox="0 0 1280 560" className="w-full h-auto min-w-[980px]">
+                        <defs>
+                            <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+                                <path d="M0,0 L9,3 L0,6" fill="#4f46e5" />
+                            </marker>
+                        </defs>
+
+                        <text x="30" y="44" fontSize="14" fill="#6b7280">上游</text>
+                        <text x="1180" y="44" fontSize="14" fill="#6b7280">下游</text>
+
+                        {/* 顶部主链路：数据库 → 表 → 列 → 数据源 → 视图 → 工作簿 */}
+                        <rect x="60" y="98" width="150" height="58" rx="16" fill="#eef2ff" stroke="#c7d2fe" />
+                        <text x="135" y="132" textAnchor="middle" fontSize="13" fill="#3730a3" fontWeight="700">数据库</text>
+
+                        <rect x="250" y="98" width="160" height="58" rx="16" fill="#ecfeff" stroke="#bae6fd" />
+                        <text x="330" y="132" textAnchor="middle" fontSize="13" fill="#0369a1" fontWeight="700">数据表</text>
+
+                        <rect x="440" y="98" width="160" height="58" rx="16" fill="#fff7ed" stroke="#fed7aa" />
+                        <text x="520" y="132" textAnchor="middle" fontSize="13" fill="#9a3412" fontWeight="700">原始列</text>
+                        <text x="520" y="150" textAnchor="middle" fontSize="11" fill="#9a3412">Column</text>
+
+                        <rect x="630" y="98" width="160" height="58" rx="16" fill="#ecfdf3" stroke="#bbf7d0" />
+                        <text x="710" y="132" textAnchor="middle" fontSize="13" fill="#15803d" fontWeight="700">数据源</text>
+
+                        <rect x="820" y="98" width="180" height="58" rx="16" fill="#ffe4e6" stroke="#fecdd3" />
+                        <text x="910" y="132" textAnchor="middle" fontSize="13" fill="#be123c" fontWeight="700">视图</text>
+                        <text x="910" y="150" textAnchor="middle" fontSize="11" fill="#9f1239">View</text>
+
+                        <rect x="1040" y="98" width="180" height="58" rx="16" fill="#fef3c7" stroke="#fde68a" />
+                        <text x="1130" y="132" textAnchor="middle" fontSize="13" fill="#b45309" fontWeight="700">工作簿</text>
+                        <text x="1130" y="150" textAnchor="middle" fontSize="11" fill="#b45309">Workbook</text>
+
+                        <line x1="210" y1="127" x2="250" y2="127" stroke="#4f46e5" strokeWidth="2" markerEnd="url(#arrow)" />
+                        <line x1="410" y1="127" x2="440" y2="127" stroke="#4f46e5" strokeWidth="2" markerEnd="url(#arrow)" />
+                        <line x1="600" y1="127" x2="630" y2="127" stroke="#4f46e5" strokeWidth="2" markerEnd="url(#arrow)" />
+                        <line x1="790" y1="127" x2="820" y2="127" stroke="#4f46e5" strokeWidth="2" markerEnd="url(#arrow)" />
+                        <line x1="1000" y1="127" x2="1040" y2="127" stroke="#4f46e5" strokeWidth="2" markerEnd="url(#arrow)" />
+
+                        {/* 中间：字段/指标两层（对齐列/视图） */}
+                        <rect x="360" y="210" width="240" height="70" rx="18" fill="#ffffff" stroke="#e5e7eb" />
+                        <text x="480" y="244" textAnchor="middle" fontSize="13" fill="#111827" fontWeight="700">字段</text>
+                        <text x="480" y="266" textAnchor="middle" fontSize="11" fill="#6b7280">Field（用于视图展示）</text>
+
+                        <rect x="640" y="210" width="240" height="70" rx="18" fill="#ffffff" stroke="#e5e7eb" />
+                        <text x="760" y="244" textAnchor="middle" fontSize="13" fill="#111827" fontWeight="700">指标</text>
+                        <text x="760" y="266" textAnchor="middle" fontSize="11" fill="#6b7280">Metric（由字段计算）</text>
+
+                        {/* 列 → 字段 */}
+                        <line x1="520" y1="156" x2="480" y2="210" stroke="#4f46e5" strokeWidth="2" markerEnd="url(#arrow)" />
+                        {/* 字段 → 指标 */}
+                        <line x1="600" y1="245" x2="640" y2="245" stroke="#4f46e5" strokeWidth="2" markerEnd="url(#arrow)" />
+                        {/* 字段/指标 → 视图 */}
+                        <line x1="600" y1="280" x2="880" y2="156" stroke="#4f46e5" strokeWidth="2" markerEnd="url(#arrow)" />
+                        <line x1="760" y1="280" x2="900" y2="156" stroke="#4f46e5" strokeWidth="2" markerEnd="url(#arrow)" />
+
+                        {/* 底部：页面里对应的三个卡片 */}
+                        <rect x="60" y="330" width="1160" height="170" rx="22" fill="#ffffff" stroke="#e5e7eb" />
+                        <text x="90" y="368" fontSize="13" fill="#111827" fontWeight="700">在视图详情页里，你会重点看到这三块</text>
+
+                        <rect x="90" y="388" width="330" height="86" rx="18" fill="#f8fafc" stroke="#e2e8f0" />
+                        <text x="255" y="424" textAnchor="middle" fontSize="12" fill="#0f172a" fontWeight="700">口径</text>
+                        <text x="255" y="446" textAnchor="middle" fontSize="11" fill="#64748b">使用字段 / 使用指标</text>
+
+                        <rect x="450" y="388" width="360" height="86" rx="18" fill="#f8fafc" stroke="#e2e8f0" />
+                        <text x="630" y="424" textAnchor="middle" fontSize="12" fill="#0f172a" fontWeight="700">来源</text>
+                        <text x="630" y="446" textAnchor="middle" fontSize="11" fill="#64748b">追溯到表/列（穿透状态）</text>
+
+                        <rect x="840" y="388" width="350" height="86" rx="18" fill="#f8fafc" stroke="#e2e8f0" />
+                        <text x="1015" y="424" textAnchor="middle" fontSize="12" fill="#0f172a" fontWeight="700">价值与风险</text>
+                        <text x="1015" y="446" textAnchor="middle" fontSize="11" fill="#64748b">访问量 / 影响范围</text>
+                    </svg>
                 </div>
 
-                <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-                    <div className="text-sm font-semibold text-gray-700 mb-4">视图血缘一眼看懂</div>
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-                        <svg viewBox="0 0 640 260" className="w-full h-auto">
-                            <defs>
-                                <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
-                                    <path d="M0,0 L9,3 L0,6" fill="#6366f1" />
-                                </marker>
-                            </defs>
-                            <rect x="20" y="30" width="110" height="44" rx="10" fill="#eef2ff" stroke="#c7d2fe" />
-                            <text x="75" y="58" textAnchor="middle" fontSize="12" fill="#4338ca">数据库</text>
+                        <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                            <Columns className="w-4 h-4 text-indigo-600" />
+                            字段/指标
+                        </div>
+                        <div className="mt-2 text-xs text-gray-600">解释视图在“算什么”。</div>
+                    </div>
+                    <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                            <Layers className="w-4 h-4 text-emerald-600" />
+                            表/列/数据源
+                        </div>
+                        <div className="mt-2 text-xs text-gray-600">解释视图“从哪里来”。</div>
+                    </div>
+                    <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                            <TrendingUp className="w-4 h-4 text-amber-600" />
+                            访问统计
+                        </div>
+                        <div className="mt-2 text-xs text-gray-600">解释视图“值不值得维护”。</div>
+                    </div>
+                </div>
+            </div>
 
-                            <rect x="170" y="30" width="120" height="44" rx="10" fill="#ecfeff" stroke="#bae6fd" />
-                            <text x="230" y="58" textAnchor="middle" fontSize="12" fill="#0369a1">数据表</text>
-
-                            <rect x="330" y="30" width="120" height="44" rx="10" fill="#ecfdf3" stroke="#bbf7d0" />
-                            <text x="390" y="58" textAnchor="middle" fontSize="12" fill="#15803d">数据源</text>
-
-                            <rect x="490" y="30" width="120" height="44" rx="10" fill="#fef3c7" stroke="#fde68a" />
-                            <text x="550" y="58" textAnchor="middle" fontSize="12" fill="#b45309">工作簿</text>
-
-                            <rect x="250" y="150" width="140" height="54" rx="12" fill="#ffe4e6" stroke="#fecdd3" />
-                            <text x="320" y="180" textAnchor="middle" fontSize="13" fill="#be123c">视图</text>
-
-                            <line x1="130" y1="52" x2="170" y2="52" stroke="#6366f1" strokeWidth="2" markerEnd="url(#arrow)" />
-                            <line x1="290" y1="52" x2="330" y2="52" stroke="#6366f1" strokeWidth="2" markerEnd="url(#arrow)" />
-                            <line x1="450" y1="52" x2="490" y2="52" stroke="#6366f1" strokeWidth="2" markerEnd="url(#arrow)" />
-
-                            <line x1="550" y1="74" x2="360" y2="150" stroke="#6366f1" strokeWidth="2" markerEnd="url(#arrow)" />
-                            <line x1="390" y1="74" x2="320" y2="150" stroke="#6366f1" strokeWidth="2" markerEnd="url(#arrow)" />
-                        </svg>
-                        <div className="mt-3 text-xs text-gray-500">
-                            这张图只做示意，真实页面会按资产关系展开详细血缘路径。
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+                <div className="text-sm font-semibold text-gray-900">这页里有哪些信息</div>
+                <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                            <Layout className="w-4 h-4 text-indigo-600" />
+                            Header（标题区）
+                        </div>
+                        <ul className="mt-3 space-y-2 text-sm text-gray-700">
+                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-indigo-600" />名称与归属：你现在在看哪张视图、属于哪本工作簿。</li>
+                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-indigo-600" />可信提示：是否认证、是否缺少描述（帮助判断可靠性）。</li>
+                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-indigo-600" />关键指标：视图展示“访问量”，字段/指标展示“引用量”。</li>
+                        </ul>
+                        <div className="mt-4 text-[11px] text-gray-500">
+                            备注(技术): 视图的 Header 数值来自 `totalViewCount`；字段/指标来自各自 `usageCount` 统计字段。
                         </div>
                     </div>
-                    <div className="mt-5 grid grid-cols-2 gap-3">
-                        <div className="rounded-lg border border-gray-100 p-3">
-                            <div className="text-xs text-gray-400">血缘来源</div>
-                            <div className="text-sm font-semibold text-gray-800">API 直返</div>
+
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                            <BookOpen className="w-4 h-4 text-emerald-600" />
+                            Tabs（信息分区）
                         </div>
-                        <div className="rounded-lg border border-gray-100 p-3">
-                            <div className="text-xs text-gray-400">穿透状态</div>
-                            <div className="text-sm font-semibold text-emerald-600">穿透成功</div>
+                        <ul className="mt-3 space-y-2 text-sm text-gray-700">
+                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-emerald-600" />概览：先告诉你“这张视图大概是什么”。</li>
+                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-emerald-600" />使用字段/使用指标：告诉你“它在用什么口径”。</li>
+                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-emerald-600" />访问统计：告诉你“它值不值得维护”。</li>
+                            <li className="flex items-start gap-2"><span className="mt-2 w-1.5 h-1.5 rounded-full bg-emerald-600" />血缘图：告诉你“它从哪里来、影响哪里”。</li>
+                        </ul>
+                        <div className="mt-4 text-[11px] text-gray-500">
+                            备注(技术): Tabs 会按数据是否存在动态出现（例如仪表板才有“包含视图”）。
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-                <div className="text-sm font-semibold text-gray-700 mb-3">你会看到什么</div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {[
-                        { icon: Database, title: '数据来源', desc: '清楚知道视图来自哪些数据源与数据表。' },
-                        { icon: Columns, title: '字段口径', desc: '字段定义、维度/度量与数据类型一目了然。' },
-                        { icon: BookOpen, title: '业务归属', desc: '工作簿、负责人、项目归属清晰可见。' },
-                        { icon: Eye, title: '使用热度', desc: '热度与访问趋势帮助判断价值。' },
-                        { icon: GitBranch, title: '血缘路径', desc: '上游与下游关系，风险影响一眼看懂。' },
-                        { icon: ShieldAlert, title: '治理风险', desc: '无描述、未认证等问题提前提示。' }
-                    ].map((item, index) => {
-                        const Icon = item.icon;
-                        return (
-                            <div key={index} className="rounded-lg border border-gray-100 bg-gray-50 p-4">
-                                <div className="flex items-center gap-2 text-gray-800 font-semibold text-sm">
-                                    <Icon className="w-4 h-4 text-indigo-500" />
-                                    {item.title}
-                                </div>
-                                <div className="mt-2 text-xs text-gray-500">{item.desc}</div>
-                            </div>
-                        );
-                    })}
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+                <div className="text-sm font-semibold text-gray-900">访问量 vs 引用量</div>
+                <div className="mt-4 overflow-x-auto rounded-2xl border border-gray-100">
+                    <table className="min-w-[860px] w-full text-sm">
+                        <thead className="bg-gray-50">
+                            <tr className="text-left text-xs text-gray-500">
+                                <th className="px-4 py-3 font-semibold">名词</th>
+                                <th className="px-4 py-3 font-semibold">用来回答什么</th>
+                                <th className="px-4 py-3 font-semibold">你应该怎么用</th>
+                                <th className="px-4 py-3 font-semibold">常见误区</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            <tr className="bg-white">
+                                <td className="px-4 py-3 font-semibold text-gray-900">访问量（视图）</td>
+                                <td className="px-4 py-3 text-gray-700">这张视图“是否常用/是否值得维护”。</td>
+                                <td className="px-4 py-3 text-gray-700">决定优先级：热门先保障、冷门可治理或下线。</td>
+                                <td className="px-4 py-3 text-gray-700">把访问量当成“影响范围”。影响范围要看血缘与引用。</td>
+                            </tr>
+                            <tr className="bg-white">
+                                <td className="px-4 py-3 font-semibold text-gray-900">引用量（字段/指标）</td>
+                                <td className="px-4 py-3 text-gray-700">这个字段/指标“影响了多少视图”。</td>
+                                <td className="px-4 py-3 text-gray-700">判断风险：引用越多，改动越要谨慎。</td>
+                                <td className="px-4 py-3 text-gray-700">把引用量当成“热度”。热度要看访问统计。</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div className="mt-3 text-[11px] text-gray-500">
+                    备注(技术): 视图访问量来自 views usage stats；字段/指标引用量来自各自详情统计字段与预计算。
                 </div>
             </div>
 
-            {activeTag && (
-                <div className="fixed inset-0 z-50">
-                    <div
-                        className="absolute inset-0 bg-gray-900/30 backdrop-blur-[2px]"
-                        onClick={() => setActiveTag(null)}
-                    />
-                    <div className="absolute inset-x-0 top-10 mx-auto max-w-3xl px-4">
-                        <div className={`rounded-2xl border border-gray-200 bg-white shadow-2xl ring-1 ${toneMap[activeTag.tone].ring}`}>
-                            <div className={`flex items-center justify-between px-6 py-4 border-b border-gray-100 ${toneMap[activeTag.tone].panel}`}>
-                                <div className="flex items-center gap-3">
-                                    <div className={`p-2 rounded-xl ${toneMap[activeTag.tone].chip}`}>
-                                        <activeTag.icon className="w-4 h-4" />
-                                    </div>
-                                    <div>
-                                        <div className="text-xs text-gray-500">标签说明</div>
-                                        <div className="text-lg font-bold text-gray-900">{activeTag.title}</div>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={() => setActiveTag(null)}
-                                    className="p-2 rounded-full hover:bg-white/80 text-gray-400 hover:text-gray-600 transition-colors"
-                                >
-                                    <X className="w-4 h-4" />
-                                </button>
-                            </div>
-                            <div className="p-6 space-y-5">
-                                <div className="text-sm text-gray-700">{activeTag.summary}</div>
-                                <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-                                    <div className="text-xs font-semibold text-gray-500 mb-2">网友视角</div>
-                                    <div className="text-sm text-gray-700">{activeTag.userStory}</div>
-                                </div>
-                                <div>
-                                    <div className="text-xs font-semibold text-gray-500 mb-2">你会看到</div>
-                                    <ul className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-700">
-                                        {activeTag.bullets.map(item => (
-                                            <li key={item} className="flex items-center gap-2">
-                                                <span className={`w-1.5 h-1.5 rounded-full ${toneMap[activeTag.tone].text}`} />
-                                                {item}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                                <div>
-                                    <div className="text-xs font-semibold text-gray-500 mb-2">简单血缘示意</div>
-                                    <div className="rounded-xl border border-gray-100 bg-white p-3">
-                                        <svg viewBox="0 0 520 160" className="w-full h-auto">
-                                            <defs>
-                                                <marker id="arrow2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
-                                                    <path d="M0,0 L7,3 L0,6" fill="#6366f1" />
-                                                </marker>
-                                            </defs>
-                                            <rect x="20" y="20" width="110" height="36" rx="8" fill="#eef2ff" stroke="#c7d2fe" />
-                                            <text x="75" y="44" textAnchor="middle" fontSize="11" fill="#4338ca">数据库</text>
-                                            <rect x="160" y="20" width="110" height="36" rx="8" fill="#ecfeff" stroke="#bae6fd" />
-                                            <text x="215" y="44" textAnchor="middle" fontSize="11" fill="#0369a1">数据表</text>
-                                            <rect x="300" y="20" width="110" height="36" rx="8" fill="#ecfdf3" stroke="#bbf7d0" />
-                                            <text x="355" y="44" textAnchor="middle" fontSize="11" fill="#15803d">数据源</text>
-                                            <rect x="200" y="92" width="130" height="44" rx="10" fill="#ffe4e6" stroke="#fecdd3" />
-                                            <text x="265" y="120" textAnchor="middle" fontSize="12" fill="#be123c">视图</text>
-                                            <line x1="130" y1="38" x2="160" y2="38" stroke="#6366f1" strokeWidth="2" markerEnd="url(#arrow2)" />
-                                            <line x1="270" y1="38" x2="300" y2="38" stroke="#6366f1" strokeWidth="2" markerEnd="url(#arrow2)" />
-                                            <line x1="355" y1="56" x2="260" y2="92" stroke="#6366f1" strokeWidth="2" markerEnd="url(#arrow2)" />
-                                        </svg>
-                                    </div>
-                                </div>
-                                <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4">
-                                    <div className="text-xs font-semibold text-gray-500 mb-2">备注(技术)</div>
-                                    <ul className="space-y-1 text-xs text-gray-600">
-                                        {activeTag.notes.map(note => (
-                                            <li key={note}>{note}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            </div>
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+                <div className="text-sm font-semibold text-gray-900">血缘能回答什么</div>
+                <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                            <GitBranch className="w-4 h-4 text-violet-600" />
+                            你要改上游表/列
                         </div>
+                        <div className="mt-2 text-sm text-gray-700">看血缘，判断这张视图会不会被影响，以及影响通过哪些字段/指标传导。</div>
+                        <div className="mt-3 text-xs text-gray-500">结论输出：影响范围 + 风险点（穿透失败/缺失链路）。</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                            <ShieldAlert className="w-4 h-4 text-rose-600" />
+                            你发现口径不一致
+                        </div>
+                        <div className="mt-2 text-sm text-gray-700">从视图的“使用指标/使用字段”追到具体来源列，确认是不是同一字段、同一来源。</div>
+                        <div className="mt-3 text-xs text-gray-500">结论输出：口径来源是否一致 + 是否存在重复定义。</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                            <TrendingUp className="w-4 h-4 text-amber-600" />
+                            你想治理冷门视图
+                        </div>
+                        <div className="mt-2 text-sm text-gray-700">先看访问量判断是否可下线；再看血缘判断下线是否会牵连关键指标/下游。</div>
+                        <div className="mt-3 text-xs text-gray-500">结论输出：下线建议 + 潜在影响。</div>
                     </div>
                 </div>
-            )}
+
+                <div className="mt-5 rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                        <Info className="w-4 h-4 text-indigo-600" />
+                        可信度提示
+                    </div>
+                    <div className="mt-2 text-sm text-gray-700">
+                        主要看两个标签：<span className="font-semibold">血缘来源</span> 与 <span className="font-semibold">穿透状态</span>。
+                    </div>
+                    <div className="mt-3 text-[11px] text-gray-500">备注(技术): 标签由后端返回，前端在血缘 Tab 顶部展示。</div>
+                </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+                <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                    <XCircle className="w-4 h-4 text-gray-500" />
+                    常见坑：为什么我看到的数据“不完整”
+                </div>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                        <div className="text-sm font-semibold text-gray-800">血缘穿透失败</div>
+                        <div className="mt-2 text-sm text-gray-700">你可能只能看到“到字段/指标”为止，追不到原始列。解决方法：先以字段/指标为准，再逐步补齐上游。</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                        <div className="text-sm font-semibold text-gray-800">缺少描述/认证</div>
+                        <div className="mt-2 text-sm text-gray-700">这不是“系统报错”，而是治理信号：说明维护不到位，风险更高。</div>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }

@@ -16,7 +16,7 @@ import Pagination from '../data-table/Pagination';
 
 // 定义排序选项
 const SORT_OPTIONS: SortConfig[] = [
-    { key: 'workbookCount', label: '引用数' },
+    { key: 'workbookCount', label: '关联工作簿' },
     { key: 'fieldCount', label: '字段数' },
     { key: 'name', label: '名称' }
 ];
