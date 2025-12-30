@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { useDrawer } from '@/lib/drawer-context';
 import { api } from '@/lib/api';
 import { formatDateWithRelative, isRecent } from '@/lib/date';
+import { IntroDemoForTab, type IntroDemoScene, type IntroDemoTab, type IntroDemoType } from '@/components/intros/IntroDemo';
 import {
     X,
     Info,
@@ -115,6 +116,21 @@ export default function DetailDrawer() {
         history: Array<{ count: number; recordedAt: string }>;
     } | null>(null);
     const [usageLoading, setUsageLoading] = useState(false);
+
+    const [introOpen, setIntroOpen] = useState(false);
+
+    const supportedIntroTypes = new Set([
+        'databases',
+        'tables',
+        'columns',
+        'datasources',
+        'workbooks',
+        'views',
+        'fields',
+        'metrics',
+        'projects',
+        'users'
+    ]);
 
     // 影响指标分页加载状态
     const [impactMetrics, setImpactMetrics] = useState<{
@@ -262,12 +278,160 @@ export default function DetailDrawer() {
         }
     };
 
+    const getMermaidCurrentClassDef = (type?: string) => {
+        if (!type) return '';
+        const mapping: Record<string, string> = {
+            databases: 'database',
+            tables: 'table',
+            columns: 'column',
+            datasources: 'datasource',
+            workbooks: 'workbook',
+            views: 'view',
+            fields: 'field',
+            metrics: 'metric',
+            projects: 'project',
+            users: 'user'
+        };
+        const cls = mapping[type];
+        if (!cls) return '';
+        return `\nclassDef current fill:#fee2e2,stroke:#be123c,stroke-width:2px,color:#9f1239;\nclass ${cls} current;\n`;
+    };
+
     const handleAssetClick = (id: string | undefined, type: string, name?: string, mode?: string) => {
         if (!id) return;
         pushItem(id, type, name, mode);
     };
 
     if (!isOpen) return null;
+
+    const renderIntroModal = () => {
+        if (!currentItem?.type) return null;
+        if (!supportedIntroTypes.has(currentItem.type)) return null;
+
+        const sceneByTypeAndTab: Record<string, Record<string, IntroDemoScene>> = {
+            databases: {
+                overview: 'default',
+                tables: 'default',
+                lineage: 'default'
+            },
+            tables: {
+                overview: 'default',
+                db: 'default',
+                columns: 'default',
+                fields: 'fields_grouped_by_column',
+                datasources: 'default',
+                embedded_datasources: 'default',
+                workbooks: 'default',
+                lineage: 'default'
+            },
+            columns: {
+                overview: 'default',
+                table: 'default',
+                db: 'default',
+                lineage: 'default'
+            },
+            datasources: {
+                overview: 'default',
+                tables: 'default',
+                embedded_tables: 'default',
+                columns: 'default',
+                fields: 'fields_grouped_by_table',
+                metrics: 'default',
+                workbooks: 'default',
+                embedded: 'default',
+                lineage: 'default'
+            },
+            workbooks: {
+                overview: 'default',
+                views: 'default',
+                datasources: 'default',
+                embedded_datasources: 'default',
+                tables: 'default',
+                embedded_tables: 'default',
+                fields: 'default',
+                metrics: 'default',
+                usage: 'default',
+                lineage: 'default'
+            },
+            views: {
+                overview: 'default',
+                workbook: 'default',
+                fields: 'default',
+                metrics: 'default',
+                usage: 'default',
+                contained_views: 'default',
+                lineage: 'default'
+            },
+            fields: {
+                overview: 'default',
+                table: 'default',
+                deps: 'default',
+                datasources: 'default',
+                embedded_datasources: 'default',
+                impact_metrics: 'default',
+                views: 'default',
+                workbooks: 'default',
+                lineage: 'default'
+            },
+            metrics: {
+                overview: 'default',
+                table: 'default',
+                deps: 'default',
+                datasources: 'default',
+                embedded_datasources: 'default',
+                impact_metrics: 'default',
+                views: 'default',
+                workbooks: 'default',
+                duplicates: 'metrics_duplicates',
+                instances: 'metrics_instances',
+                lineage: 'default'
+            },
+            projects: {
+                overview: 'default',
+                datasources: 'default',
+                workbooks: 'default'
+            },
+            users: {
+                overview: 'default',
+                datasources: 'default',
+                workbooks: 'default'
+            }
+        };
+
+        const scene: IntroDemoScene = sceneByTypeAndTab[currentItem.type]?.[activeTab] || 'default';
+        const tab = activeTab as IntroDemoTab;
+
+        return (
+            <div className={`fixed inset-0 z-[100] ${introOpen ? '' : 'pointer-events-none'}`} aria-hidden={!introOpen}>
+                <div
+                    className={`absolute inset-0 bg-black/40 transition-opacity ${introOpen ? 'opacity-100' : 'opacity-0'}`}
+                    onClick={() => setIntroOpen(false)}
+                />
+                <div className="absolute inset-0 flex items-center justify-center p-4">
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        className={`w-full max-w-5xl h-[85vh] bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden transition-all ${introOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-[0.98]'}`}
+                    >
+                        <div className="h-12 px-4 flex items-center justify-between border-b border-gray-100 bg-white">
+                            <div className="text-sm font-bold text-gray-900">{getModuleName(currentItem.type)} · 介绍</div>
+                            <button
+                                type="button"
+                                onClick={() => setIntroOpen(false)}
+                                className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                                aria-label="关闭"
+                            >
+                                <X className="w-4 h-4 text-gray-600" />
+                            </button>
+                        </div>
+                        <div className="w-full h-[calc(85vh-3rem)] overflow-y-auto bg-white custom-scrollbar">
+                            <IntroDemoForTab type={currentItem.type as IntroDemoType} tab={tab} scene={scene} />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
 
     // ========== 动态生成具体的 Tabs ==========
     const getTabs = () => {
@@ -1611,7 +1775,7 @@ export default function DetailDrawer() {
                 )}
                 <div className="bg-gray-50 rounded-lg border p-4 overflow-auto">
                     <div className="text-xs font-bold text-gray-700 mb-2">Mermaid 血缘图</div>
-                    <pre className="text-[10px] font-mono bg-white p-2 rounded border overflow-x-auto">{lineageData.mermaid}</pre>
+                    <pre className="text-[10px] font-mono bg-white p-2 rounded border overflow-x-auto">{`${lineageData.mermaid}${getMermaidCurrentClassDef(currentItem?.type)}`}</pre>
                 </div>
             </div>
         );
@@ -2456,14 +2620,15 @@ export default function DetailDrawer() {
                                             <Copy className="w-3 h-3" />
                                         </button>
                                     </div>
-                                    {currentItem?.type === 'views' && (
-                                        <a
-                                            href="/views/demo"
+                                    {currentItem?.type && supportedIntroTypes.has(currentItem.type) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setIntroOpen(true)}
                                             className="inline-flex items-center gap-1 text-[10px] font-medium text-indigo-600 hover:text-indigo-800 hover:underline transition-colors"
-                                            title="查看视图详情介绍示例"
+                                            title="查看该类型详情页介绍"
                                         >
-                                            详情介绍
-                                        </a>
+                                            介绍
+                                        </button>
                                     )}
                                     {isCertified && (
                                         <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-green-50 text-green-700 px-2 py-0.5 rounded-full border border-green-100">
@@ -2528,6 +2693,7 @@ export default function DetailDrawer() {
 
     return (
         <>
+            {renderIntroModal()}
             <div
                 className={`fixed inset-0 bg-gray-900/20 backdrop-blur-[2px] z-40 transition-opacity duration-500 ${isOpen && readyToShow ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                 onClick={closeDrawer}
