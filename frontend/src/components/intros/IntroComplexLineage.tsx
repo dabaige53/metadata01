@@ -26,6 +26,12 @@ export function IntroComplexLineage({ highlight, className = '' }: IntroComplexL
         if (highlight === 'tables' && (type === 'physical_table' || type === 'embedded_table')) return true;
         if (highlight === 'datasources' && (type === 'published_datasource' || type === 'embedded_datasource')) return true;
         if (highlight === 'fields' && (type === 'raw_field' || type === 'deduped_field' || type === 'calculated_field' || type === 'deduped_calculation')) return true;
+        if (highlight === 'metrics' && (type === 'calculated_field' || type === 'deduped_calculation')) return true;
+        if (highlight === 'columns' && (type === 'physical_table' || type === 'embedded_table')) return true;
+        if (highlight === 'databases' && (type === 'physical_table' || type === 'embedded_table')) return true;
+        // projects 和 users 高亮整个消费层
+        if (highlight === 'projects' && (type === 'workbooks' || type === 'views')) return true;
+        if (highlight === 'users' && (type === 'workbooks' || type === 'views')) return true;
 
         // 专门的高亮匹配
         return highlight === type;

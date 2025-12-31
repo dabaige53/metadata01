@@ -2,14 +2,13 @@
 
 import React from 'react';
 import {
-    Database,
+    Columns,
     AlertTriangle,
     CheckCircle2,
     GitBranch,
     Layers,
     Link2,
     FileText,
-    Columns,
     Eye,
     Shield,
     TrendingUp,
@@ -21,7 +20,8 @@ import {
     ListFilter,
     Copy,
     Search,
-    Info
+    Info,
+    Database
 } from 'lucide-react';
 import { IntroComplexLineage } from './IntroComplexLineage';
 
@@ -37,7 +37,7 @@ export function IntroFields() {
                     <div className="flex-1 space-y-6">
                         <div className="flex items-center gap-5">
                             <div className="p-4 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-600 text-white shadow-lg ring-4 ring-orange-50">
-                                <Database className="w-10 h-10" />
+                                <Columns className="w-10 h-10" />
                             </div>
                             <div>
                                 <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">字段治理指南</h1>

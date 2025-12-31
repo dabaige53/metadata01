@@ -100,7 +100,7 @@ export function IntroUsers() {
                         <span>用户在全链路治理中的位置</span>
                     </h2>
                     <p className="text-sm text-gray-500 mt-1 ml-8">
-                        用户处于 <span className="font-bold text-indigo-600">全链路的两端</span>：既是数据的生产者（发布），也是消费者（查看）。
+                        用户是数据资产的 <span className="font-bold text-indigo-600">责任主体</span>，作为工作簿和数据源的所有者参与治理。
                     </p>
                 </div>
                 <IntroComplexLineage highlight="users" className="border-none shadow-none" />

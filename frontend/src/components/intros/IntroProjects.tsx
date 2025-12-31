@@ -100,7 +100,7 @@ export function IntroProjects() {
                         <span>项目在全链路治理中的位置</span>
                     </h2>
                     <p className="text-sm text-gray-500 mt-1 ml-8">
-                        项目是 <span className="font-bold text-indigo-600">资源容器层</span>，向下包含数据源、工作簿等所有应用层资产。
+                        项目是 <span className="font-bold text-indigo-600">资源容器层</span>，管理工作簿与数据源等应用层资产的组织边界。
                     </p>
                 </div>
                 <IntroComplexLineage highlight="projects" className="border-none shadow-none" />
