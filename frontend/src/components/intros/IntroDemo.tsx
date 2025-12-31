@@ -106,6 +106,17 @@ function getCopy(type: IntroDemoType, tab: IntroDemoTab, scene: IntroDemoScene):
         };
     }
 
+    if (tab === 'overview') {
+        return {
+            title: `${t} · 概览（布局导览）`,
+            bullets: [
+                ...baseBullets,
+                '布局解读：顶部是标题/ID/认证与外链；中部是核心属性与状态；底部根据类型展示统计与快速入口。',
+                '读法建议：先看认证与负责人，再看“引用/访问/影响范围”判断风险等级。'
+            ]
+        };
+    }
+
     if (type === 'metrics' && tab === 'duplicates') {
         return {
             title: '指标 · 同名定义（聚合页）',
@@ -607,56 +618,145 @@ export function IntroDemo({ type }: { type: IntroDemoType }) {
 
                         <rect x="10" y="10" width="820" height="180" rx="12" fill="#f9fafb" stroke="#f3f4f6" />
 
-                        <g transform="translate(40, 40)">
-                            <rect width="100" height="40" rx="6" fill="#eef2ff" stroke="#c7d2fe" />
+                        {(() => {
+                            const current = {
+                                databases: type === 'databases',
+                                tables: type === 'tables',
+                                datasources: type === 'datasources',
+                                workbooks: type === 'workbooks',
+                                fields: type === 'fields',
+                                metrics: type === 'metrics',
+                                views: type === 'views'
+                            };
+                            const hi = {
+                                rectFill: '#fee2e2',
+                                rectStroke: '#fecdd3',
+                                text: '#be123c'
+                            };
+                            return (
+                                <>
+                                    <g transform="translate(40, 40)">
+                                        <rect
+                                            width="100"
+                                            height="40"
+                                            rx="6"
+                                            fill={current.databases ? hi.rectFill : '#eef2ff'}
+                                            stroke={current.databases ? hi.rectStroke : '#c7d2fe'}
+                                            strokeWidth={current.databases ? 2 : 1}
+                                        />
                             <text x="50" y="24" textAnchor="middle" fontSize="11" fill="#3730a3" fontWeight="600">数据库</text>
                             <line x1="100" y1="20" x2="160" y2="20" stroke="#9ca3af" strokeWidth="1.5" markerEnd="url(#arrow-sm)" />
                             <text x="130" y="15" textAnchor="middle" fontSize="9" fill="#9ca3af">数据读取</text>
-                        </g>
+                                        {current.databases && (
+                                            <text x="50" y="-8" textAnchor="middle" fontSize="10" fill={hi.text} fontWeight="700">当前</text>
+                                        )}
+                                    </g>
 
-                        <g transform="translate(200, 40)">
-                            <rect width="100" height="40" rx="6" fill="#ecfeff" stroke="#bae6fd" />
+                                    <g transform="translate(200, 40)">
+                                        <rect
+                                            width="100"
+                                            height="40"
+                                            rx="6"
+                                            fill={current.tables ? hi.rectFill : '#ecfeff'}
+                                            stroke={current.tables ? hi.rectStroke : '#bae6fd'}
+                                            strokeWidth={current.tables ? 2 : 1}
+                                        />
                             <text x="50" y="24" textAnchor="middle" fontSize="11" fill="#0369a1" fontWeight="600">数据表</text>
                             <line x1="100" y1="20" x2="160" y2="20" stroke="#9ca3af" strokeWidth="1.5" markerEnd="url(#arrow-sm)" />
                             <text x="130" y="15" textAnchor="middle" fontSize="9" fill="#9ca3af">物理连接</text>
-                        </g>
+                                        {current.tables && (
+                                            <text x="50" y="-8" textAnchor="middle" fontSize="10" fill={hi.text} fontWeight="700">当前</text>
+                                        )}
+                                    </g>
 
-                        <g transform="translate(360, 40)">
-                            <rect width="120" height="40" rx="6" fill="#ecfdf3" stroke="#bbf7d0" />
+                                    <g transform="translate(360, 40)">
+                                        <rect
+                                            width="120"
+                                            height="40"
+                                            rx="6"
+                                            fill={current.datasources ? hi.rectFill : '#ecfdf3'}
+                                            stroke={current.datasources ? hi.rectStroke : '#bbf7d0'}
+                                            strokeWidth={current.datasources ? 2 : 1}
+                                        />
                             <text x="60" y="24" textAnchor="middle" fontSize="11" fill="#15803d" fontWeight="600">数据源</text>
-                        </g>
+                                        {current.datasources && (
+                                            <text x="60" y="-8" textAnchor="middle" fontSize="10" fill={hi.text} fontWeight="700">当前</text>
+                                        )}
+                                    </g>
 
                         <line x1="480" y1="60" x2="640" y2="60" stroke="#9ca3af" strokeWidth="1.5" markerEnd="url(#arrow-sm)" />
                         <text x="560" y="55" textAnchor="middle" fontSize="9" fill="#9ca3af">作为数据源发布到</text>
 
-                        <g transform="translate(640, 40)">
-                            <rect width="120" height="40" rx="6" fill="#fef3c7" stroke="#fde68a" />
+                                    <g transform="translate(640, 40)">
+                                        <rect
+                                            width="120"
+                                            height="40"
+                                            rx="6"
+                                            fill={current.workbooks ? hi.rectFill : '#fef3c7'}
+                                            stroke={current.workbooks ? hi.rectStroke : '#fde68a'}
+                                            strokeWidth={current.workbooks ? 2 : 1}
+                                        />
                             <text x="60" y="24" textAnchor="middle" fontSize="11" fill="#b45309" fontWeight="600">工作簿</text>
-                        </g>
+                                        {current.workbooks && (
+                                            <text x="60" y="-8" textAnchor="middle" fontSize="10" fill={hi.text} fontWeight="700">当前</text>
+                                        )}
+                                    </g>
 
                         <path d="M 420 80 L 420 120" fill="none" stroke="#9ca3af" strokeWidth="1.5" markerEnd="url(#arrow-sm)" />
                         <text x="425" y="100" fontSize="9" fill="#9ca3af">包含字段</text>
 
-                        <g transform="translate(360, 120)">
-                            <rect width="120" height="36" rx="6" fill="#fff7ed" stroke="#fed7aa" />
+                                    <g transform="translate(360, 120)">
+                                        <rect
+                                            width="120"
+                                            height="36"
+                                            rx="6"
+                                            fill={current.fields ? hi.rectFill : '#fff7ed'}
+                                            stroke={current.fields ? hi.rectStroke : '#fed7aa'}
+                                            strokeWidth={current.fields ? 2 : 1}
+                                        />
                             <text x="60" y="22" textAnchor="middle" fontSize="11" fill="#9a3412">原始字段</text>
                             <line x1="120" y1="18" x2="160" y2="18" stroke="#9ca3af" strokeWidth="1.5" markerEnd="url(#arrow-sm)" />
                             <text x="140" y="14" textAnchor="middle" fontSize="9" fill="#9ca3af">计算加工</text>
-                        </g>
+                                        {current.fields && (
+                                            <text x="60" y="-8" textAnchor="middle" fontSize="10" fill={hi.text} fontWeight="700">当前</text>
+                                        )}
+                                    </g>
 
-                        <g transform="translate(520, 120)">
-                            <rect width="100" height="36" rx="6" fill="#fffbeb" stroke="#fde68a" />
+                                    <g transform="translate(520, 120)">
+                                        <rect
+                                            width="100"
+                                            height="36"
+                                            rx="6"
+                                            fill={current.metrics ? hi.rectFill : '#fffbeb'}
+                                            stroke={current.metrics ? hi.rectStroke : '#fde68a'}
+                                            strokeWidth={current.metrics ? 2 : 1}
+                                        />
                             <text x="50" y="22" textAnchor="middle" fontSize="11" fill="#b45309">计算指标</text>
-                        </g>
+                                        {current.metrics && (
+                                            <text x="50" y="-8" textAnchor="middle" fontSize="10" fill={hi.text} fontWeight="700">当前</text>
+                                        )}
+                                    </g>
 
                         <path d="M 700 80 L 700 110" fill="none" stroke="#9ca3af" strokeWidth="1.5" markerEnd="url(#arrow-sm)" />
                         <text x="705" y="95" fontSize="9" fill="#9ca3af">包含视图</text>
 
-                        <g transform="translate(640, 110)">
-                            <rect width="120" height="56" rx="8" fill="#ffe4e6" stroke="#fecdd3" strokeWidth="2" />
-                            <text x="60" y="24" textAnchor="middle" fontSize="12" fill="#be123c" fontWeight="700">视图 (View)</text>
-                            <text x="60" y="42" textAnchor="middle" fontSize="10" fill="#9f1239">你在这里</text>
-                        </g>
+                                    <g transform="translate(640, 110)">
+                                        <rect
+                                            width="120"
+                                            height="56"
+                                            rx="8"
+                                            fill={current.views ? hi.rectFill : '#ffe4e6'}
+                                            stroke={current.views ? hi.rectStroke : '#fecdd3'}
+                                            strokeWidth={current.views ? 2 : 2}
+                                        />
+                                        <text x="60" y="24" textAnchor="middle" fontSize="12" fill="#be123c" fontWeight="700">视图 (View)</text>
+                                        <text x="60" y="42" textAnchor="middle" fontSize="10" fill={current.views ? hi.text : '#9f1239"'}>
+                                            {current.views ? '当前' : '消费端'}
+                                        </text>
+                                    </g>
+                                </>
+                            );
+                        })()}
 
                         <path d="M 620 138 L 640 138" fill="none" stroke="#e11d48" strokeWidth="1.5" strokeDasharray="3" markerEnd="url(#arrow-usage)" />
                         <text x="630" y="134" textAnchor="middle" fontSize="9" fill="#e11d48">最终展示</text>

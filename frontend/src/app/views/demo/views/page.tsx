@@ -1,7 +1,5 @@
-'use client';
-
 import { IntroDemo } from '@/components/intros/IntroDemo';
 
-export default function ViewIntroDemoPage() {
+export default function Page() {
     return <IntroDemo type="views" />;
 }
