@@ -1,5 +1,5 @@
-import { IntroDemo } from '@/components/intros/IntroDemo';
+import { IntroFields } from '@/components/intros/IntroFields';
 
 export default function Page() {
-    return <IntroDemo type="fields" />;
+    return <IntroFields />;
 }

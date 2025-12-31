@@ -9,11 +9,17 @@ export interface DrawerItem {
     name?: string;
     mode?: string;  // 'aggregate' | 'instance' - 用于计算字段区分聚合/实例模式
     activeTab?: string;  // 当前激活的 tab 页，用于回退时恢复状态
+    // Context properties for instances
+    workbookId?: string;
+    workbookName?: string;
+    datasourceId?: string;
+    datasourceName?: string;
+    [key: string]: any; // Allow flexible context
 }
 
 interface DrawerContextType {
-    openDrawer: (id: string, type: string, name?: string, mode?: string) => void;
-    pushItem: (id: string, type: string, name?: string, mode?: string) => void;
+    openDrawer: (id: string, type: string, name?: string, mode?: string, context?: Record<string, any>) => void;
+    pushItem: (id: string, type: string, name?: string, mode?: string, context?: Record<string, any>) => void;
     goBack: () => void;
     goToIndex: (index: number) => void;
     closeDrawer: () => void;
@@ -57,13 +63,13 @@ export function DrawerProvider({ children }: { children: ReactNode }) {
         return cache[key] || null;
     };
 
-    const openDrawer = (id: string, type: string, name?: string, mode?: string) => {
-        setHistory([{ id, type, name, mode, activeTab: 'overview' }]);
+    const openDrawer = (id: string, type: string, name?: string, mode?: string, context?: Record<string, any>) => {
+        setHistory([{ id, type, name, mode, activeTab: 'overview', ...context }]);
         setIsOpen(true);
     };
 
-    const pushItem = (id: string, type: string, name?: string, mode?: string) => {
-        setHistory(prev => [...prev, { id, type, name, mode, activeTab: 'overview' }]);
+    const pushItem = (id: string, type: string, name?: string, mode?: string, context?: Record<string, any>) => {
+        setHistory(prev => [...prev, { id, type, name, mode, activeTab: 'overview', ...context }]);
     };
 
     const updateCurrentTab = (tab: string) => {

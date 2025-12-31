@@ -1,5 +1,5 @@
-import { IntroDemo } from '@/components/intros/IntroDemo';
+import { IntroWorkbooks } from '@/components/intros/IntroWorkbooks';
 
 export default function Page() {
-    return <IntroDemo type="workbooks" />;
+    return <IntroWorkbooks />;
 }

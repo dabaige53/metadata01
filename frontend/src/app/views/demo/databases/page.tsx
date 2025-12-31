@@ -1,5 +1,5 @@
-import { IntroDemo } from '@/components/intros/IntroDemo';
+import { IntroDatabases } from '@/components/intros/IntroDatabases';
 
 export default function Page() {
-    return <IntroDemo type="databases" />;
+    return <IntroDatabases />;
 }

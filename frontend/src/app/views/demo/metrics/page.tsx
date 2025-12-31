@@ -1,5 +1,5 @@
-import { IntroDemo } from '@/components/intros/IntroDemo';
+import { IntroMetrics } from '@/components/intros/IntroMetrics';
 
 export default function Page() {
-    return <IntroDemo type="metrics" />;
+    return <IntroMetrics />;
 }

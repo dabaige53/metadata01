@@ -1,5 +1,5 @@
-import { IntroDemo } from '@/components/intros/IntroDemo';
+import { IntroTables } from '@/components/intros/IntroTables';
 
 export default function Page() {
-    return <IntroDemo type="tables" />;
+    return <IntroTables />;
 }

@@ -357,6 +357,163 @@ def get_lineage_graph(item_type, item_id):
     })
 
 
+@api_bp.route('/lineage/sankey')
+def get_lineage_sankey():
+    """获取全局血缘桑基图数据 - 按 data_lineage_sankey.html 结构展示（不含僵尸字段）"""
+    session = g.db_session
+    from sqlalchemy import text
+    
+    # 获取完整的统计数据
+    stats_data = session.execute(text("""
+        SELECT
+            -- 数据库
+            (SELECT COUNT(*) FROM databases) as db_count,
+            
+            -- 表统计: 非嵌入式、嵌入式、孤立
+            (SELECT COUNT(*) FROM tables WHERE is_embedded = 0 OR is_embedded IS NULL) as table_normal,
+            (SELECT COUNT(*) FROM tables WHERE is_embedded = 1) as table_embedded,
+            (SELECT COUNT(*) FROM tables t 
+             LEFT JOIN table_to_datasource td ON t.id = td.table_id 
+             WHERE td.datasource_id IS NULL) as table_orphan,
+            
+            -- 已发布数据源: 正常、孤立、CustomSQL
+            (SELECT COUNT(*) FROM datasources d
+             WHERE (d.is_embedded = 0 OR d.is_embedded IS NULL)
+             AND EXISTS (SELECT 1 FROM datasource_to_workbook dw WHERE dw.datasource_id = d.id)) as ds_normal,
+            (SELECT COUNT(*) FROM datasources d 
+             WHERE (d.is_embedded = 0 OR d.is_embedded IS NULL)
+             AND NOT EXISTS (SELECT 1 FROM datasource_to_workbook dw WHERE dw.datasource_id = d.id)) as ds_orphan,
+            (SELECT COUNT(*) FROM datasources WHERE contains_unsupported_custom_sql = 1) as ds_custom_sql,
+            
+            -- 嵌入式数据源: 引用已发布、直连物理表
+            (SELECT COUNT(*) FROM datasources WHERE is_embedded = 1 AND source_published_datasource_id IS NOT NULL AND source_published_datasource_id != '') as ds_embed_ref,
+            (SELECT COUNT(*) FROM datasources WHERE is_embedded = 1 AND (source_published_datasource_id IS NULL OR source_published_datasource_id = '')) as ds_embed_direct,
+            
+            -- 原生字段(总数)
+            (SELECT COUNT(*) FROM regular_fields) as field_total,
+            
+            -- 计算字段(总数)
+            (SELECT COUNT(*) FROM calculated_fields) as calc_total,
+            
+            -- 工作簿和视图
+            (SELECT COUNT(*) FROM workbooks) as workbook_count,
+            (SELECT COUNT(*) FROM views) as view_count
+    """)).fetchone()
+    
+    # 解构数据
+    db_count = stats_data[0] or 0
+    table_normal = stats_data[1] or 0
+    table_embedded = stats_data[2] or 0
+    table_orphan = stats_data[3] or 0
+    ds_normal = stats_data[4] or 0
+    ds_orphan = stats_data[5] or 0
+    ds_custom_sql = stats_data[6] or 0
+    ds_embed_ref = stats_data[7] or 0
+    ds_embed_direct = stats_data[8] or 0
+    field_total = stats_data[9] or 0
+    calc_total = stats_data[10] or 0
+    workbook_count = stats_data[11] or 0
+    view_count = stats_data[12] or 0
+    
+    # 节点定义 - 完全按照 data_lineage_sankey.html 结构（不含僵尸字段）
+    nodes = [
+        # Layer 0: 数据库
+        {'name': f'数据库 ({db_count})', 'depth': 0, 'itemStyle': {'color': '#3b82f6'}},
+        
+        # Layer 1: 数据表
+        {'name': f'非嵌入式表 ({table_normal})', 'depth': 1, 'itemStyle': {'color': '#3b82f6'}},
+        {'name': f'嵌入式表 ({table_embedded})', 'depth': 1, 'itemStyle': {'color': '#a855f7'}},
+        {'name': f'孤立表 ({table_orphan})', 'depth': 1, 'itemStyle': {'color': '#f43f5e'}},
+        
+        # Layer 2: 已发布数据源
+        {'name': f'正常发布数据源 ({ds_normal})', 'depth': 2, 'itemStyle': {'color': '#3b82f6'}},
+        {'name': f'孤立发布数据源 ({ds_orphan})', 'depth': 2, 'itemStyle': {'color': '#f43f5e'}},
+        {'name': f'CustomSQL数据源 ({ds_custom_sql})', 'depth': 2, 'itemStyle': {'color': '#f59e0b'}},
+        
+        # Layer 3: 嵌入式数据源
+        {'name': f'嵌入式:引用已发布 ({ds_embed_ref})', 'depth': 3, 'itemStyle': {'color': '#a855f7'}},
+        {'name': f'嵌入式:直连物理表 ({ds_embed_direct})', 'depth': 3, 'itemStyle': {'color': '#a855f7'}},
+        
+        # Layer 4: 原生字段
+        {'name': f'原生字段 ({field_total:,})', 'depth': 4, 'itemStyle': {'color': '#3b82f6'}},
+        
+        # Layer 5: 计算字段
+        {'name': f'计算字段 ({calc_total:,})', 'depth': 5, 'itemStyle': {'color': '#3b82f6'}},
+        
+        # Layer 6: 工作簿
+        {'name': f'工作簿 ({workbook_count})', 'depth': 6, 'itemStyle': {'color': '#3b82f6'}},
+        
+        # Layer 7: 视图
+        {'name': f'视图 ({view_count:,})', 'depth': 7, 'itemStyle': {'color': '#3b82f6'}}
+    ]
+    
+    # 链接定义
+    links = [
+        # Layer 0→1: 数据库 → 表
+        {'source': 0, 'target': 1, 'value': max(1, table_normal)},
+        {'source': 0, 'target': 2, 'value': max(1, table_embedded)},
+        {'source': 0, 'target': 3, 'value': max(1, table_orphan)},
+        
+        # Layer 1→2: 非嵌入式表 → 已发布数据源
+        {'source': 1, 'target': 4, 'value': max(1, ds_normal)},
+        {'source': 1, 'target': 5, 'value': max(1, ds_orphan)},
+        
+        # Layer 1→3: 嵌入式表 → 嵌入式数据源(直连型)
+        {'source': 2, 'target': 8, 'value': max(1, ds_embed_direct)},
+        
+        # Layer 2→3: 已发布数据源 → 嵌入式数据源(引用型)
+        {'source': 4, 'target': 7, 'value': max(1, ds_embed_ref)},
+        
+        # Layer 2→4 & 3→4: 数据源 → 原生字段
+        {'source': 4, 'target': 9, 'value': max(1, field_total // 3)},
+        {'source': 7, 'target': 9, 'value': max(1, field_total // 3)},
+        {'source': 8, 'target': 9, 'value': max(1, field_total // 3)},
+        
+        # Layer 4→5: 原生字段 → 计算字段
+        {'source': 9, 'target': 10, 'value': max(1, calc_total)},
+        
+        # Layer 4→6 & 5→6: 字段 → 工作簿
+        {'source': 9, 'target': 11, 'value': max(1, field_total // 2)},
+        {'source': 10, 'target': 11, 'value': max(1, calc_total)},
+        
+        # Layer 6→7: 工作簿 → 视图
+        {'source': 11, 'target': 12, 'value': max(1, view_count)}
+    ]
+    
+    # 统计信息
+    stats = {
+        'databases': db_count,
+        'tables': {
+            'total': table_normal + table_embedded + table_orphan,
+            'normal': table_normal,
+            'embedded': table_embedded,
+            'orphan': table_orphan
+        },
+        'datasources': {
+            'total': ds_normal + ds_orphan + ds_custom_sql + ds_embed_ref + ds_embed_direct,
+            'normal': ds_normal,
+            'orphan': ds_orphan,
+            'custom_sql': ds_custom_sql,
+            'embedded_ref': ds_embed_ref,
+            'embedded_direct': ds_embed_direct
+        },
+        'fields': {
+            'total': field_total
+        },
+        'calculated_fields': {
+            'total': calc_total
+        },
+        'workbooks': workbook_count,
+        'views': view_count
+    }
+    
+    return jsonify({
+        'nodes': nodes,
+        'links': links,
+        'stats': stats
+    })
+
+
 @api_bp.route('/governance/merge', methods=['POST'])
 def merge_metrics(): return jsonify({'error': '只读模式，治理操作已禁用'}), 405
 

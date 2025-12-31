@@ -1,5 +1,5 @@
-import { IntroDemo } from '@/components/intros/IntroDemo';
+import { IntroColumns } from '@/components/intros/IntroColumns';
 
 export default function Page() {
-    return <IntroDemo type="columns" />;
+    return <IntroColumns />;
 }

@@ -29,6 +29,12 @@ export interface Stats {
     workbooks: number;
     projects: number;
     users: number;
+    views: number;
+    calculatedFields: number;
+    uniqueFields: number;
+    uniqueMetrics: number;
+    duplicateMetrics: number;
+    orphanedFields: number;
 }
 
 export interface PaginatedResponse<T> {
@@ -244,6 +250,9 @@ export const api = {
 
     // 血缘
     getLineage: (type: string, id: string) => request<unknown>(`/lineage/${type}/${id}`),
+    
+    // 血缘桑基图
+    getLineageSankey: (limit = 50) => request<SankeyData>(`/lineage/sankey?limit=${limit}`),
 
     // 质量分析
     getDuplicateMetrics: () => request<PaginatedResponse<DuplicateGroup>>('/quality/duplicates'),
@@ -277,5 +286,49 @@ export interface DuplicateGroup {
         workbook_name: string;
         project_name: string;
     }>;
+}
+
+export interface SankeyNode {
+    name: string;
+    depth: number;
+    itemStyle: { color: string };
+}
+
+export interface SankeyLink {
+    source: number;
+    target: number;
+    value: number;
+}
+
+export interface SankeyStats {
+    databases: number;
+    tables: {
+        total: number;
+        normal: number;
+        embedded: number;
+        orphan: number;
+    };
+    datasources: {
+        total: number;
+        normal: number;
+        orphan: number;
+        custom_sql: number;
+        embedded_ref: number;
+        embedded_direct: number;
+    };
+    fields: {
+        total: number;
+    };
+    calculated_fields: {
+        total: number;
+    };
+    workbooks: number;
+    views: number;
+}
+
+export interface SankeyData {
+    nodes: SankeyNode[];
+    links: SankeyLink[];
+    stats: SankeyStats;
 }
 

@@ -1,5 +1,5 @@
-import { IntroDemo } from '@/components/intros/IntroDemo';
+import { IntroUsers } from '@/components/intros/IntroUsers';
 
 export default function Page() {
-    return <IntroDemo type="users" />;
+    return <IntroUsers />;
 }

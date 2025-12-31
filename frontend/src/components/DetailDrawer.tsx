@@ -297,9 +297,9 @@ export default function DetailDrawer() {
         return `\nclassDef current fill:#fee2e2,stroke:#be123c,stroke-width:2px,color:#9f1239;\nclass ${cls} current;\n`;
     };
 
-    const handleAssetClick = (id: string | undefined, type: string, name?: string, mode?: string) => {
+    const handleAssetClick = (id: string | undefined, type: string, name?: string, mode?: string, context?: Record<string, any>) => {
         if (!id) return;
-        pushItem(id, type, name, mode);
+        pushItem(id, type, name, mode, context);
     };
 
     if (!isOpen) return null;
@@ -398,8 +398,51 @@ export default function DetailDrawer() {
             }
         };
 
-        const scene: IntroDemoScene = sceneByTypeAndTab[currentItem.type]?.[activeTab] || 'default';
+        // 动态计算 scene (智能上下文感知)
+        const getScene = (): IntroDemoScene => {
+            const defaultScene = sceneByTypeAndTab[currentItem.type]?.[activeTab] || 'default';
+
+            // 针对 Metrics 的特殊判断：区分“标准指标”与“工作簿实例”
+            if (currentItem.type === 'metrics' && activeTab === 'overview') {
+                // 优先检查 currentItem (来源上下文)
+                if (currentItem.workbookId || currentItem.workbook_id || currentItem.workbookName || currentItem.workbook_name) {
+                    return 'metrics_instances';
+                }
+                // 再检查 data (详细信息)，但要小心，因为 aggregated 模式下 aggregated metric 可能没有 workbookId，而 instance 有
+                // 如果 data 显示它是 instance (在 instances 列表中且 id 匹配，或者 root 有 workbookId)
+                if (data?.workbookId || data?.workbook_id || data?.workbookName || data?.workbook_name) {
+                    return 'metrics_instances';
+                }
+            }
+
+            // 针对 Fields 的特殊判断：区分“标准字段”与“工作簿字段实例”
+            if (currentItem.type === 'fields' && activeTab === 'overview') {
+                if (currentItem.workbookId || currentItem.workbook_id || currentItem.workbookName || currentItem.workbook_name) {
+                    return 'workbook_fields';
+                }
+                if (data?.workbookId || data?.workbook_id || data?.workbookName || data?.workbook_name) {
+                    return 'workbook_fields';
+                }
+            }
+            return defaultScene;
+        };
+
+        const scene = getScene();
         const tab = activeTab as IntroDemoTab;
+
+        const getIntroTitle = () => {
+            const baseName = getModuleName(currentItem.type);
+            switch (scene) {
+                case 'embedded': return `嵌入式${baseName}`;
+                case 'metrics_instances': return `${baseName}实例`;
+                case 'metrics_duplicates': return `同名${baseName}定义`;
+                case 'fields_grouped_by_column': return '原始列详情';
+                case 'fields_grouped_by_table': return '原始表结构';
+                case 'workbook_fields': return '工作簿字段实例';
+                case 'raw_fields': return '物理字段';
+                case 'default': default: return `${baseName}治理指南`;
+            }
+        };
 
         return (
             <div className={`fixed inset-0 z-[100] ${introOpen ? '' : 'pointer-events-none'}`} aria-hidden={!introOpen}>
@@ -414,7 +457,12 @@ export default function DetailDrawer() {
                         className={`w-full max-w-5xl h-[85vh] bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden transition-all ${introOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-[0.98]'}`}
                     >
                         <div className="h-12 px-4 flex items-center justify-between border-b border-gray-100 bg-white">
-                            <div className="text-sm font-bold text-gray-900">{getModuleName(currentItem.type)} · 介绍</div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-bold text-gray-900">{getIntroTitle()}</span>
+                                <span className="text-xs text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100 font-mono">
+                                    {currentItem.type} / {activeTab}
+                                </span>
+                            </div>
                             <button
                                 type="button"
                                 onClick={() => setIntroOpen(false)}
@@ -702,7 +750,23 @@ export default function DetailDrawer() {
                 <div className="space-y-1">
                     {visibleItems.map((asset: any, ai: number) => (
                         <div key={ai}
-                            onClick={() => handleAssetClick(asset.id, type, asset.name, mode)}
+                            onClick={() => {
+                                // 提取上下文信息
+                                const context: Record<string, any> = {};
+                                if (asset.workbookId || asset.workbook_id) context.workbookId = asset.workbookId || asset.workbook_id;
+                                if (asset.workbookName || asset.workbook_name) context.workbookName = asset.workbookName || asset.workbook_name;
+                                if (asset.datasourceId || asset.datasource_id) context.datasourceId = asset.datasourceId || asset.datasource_id;
+                                if (asset.datasourceName || asset.datasource_name) context.datasourceName = asset.datasourceName || asset.datasource_name;
+
+                                // 特殊处理：如果是在 Workbooks 下点击 Metrics，且 mode='instance'，确保 workbookId 存在
+                                if (type === 'metrics' && mode === 'instance' && currentItem?.type === 'workbooks') {
+                                    // 如果 asset 本身没有 workbookId (比如列表里只有 id/name), 使用 currentItem 的 id
+                                    if (!context.workbookId) context.workbookId = currentItem.id;
+                                    if (!context.workbookName) context.workbookName = currentItem.name;
+                                }
+
+                                handleAssetClick(asset.id, type, asset.name, mode, context);
+                            }}
                             onMouseEnter={() => asset.id && prefetch(asset.id, type, mode)}
                             className={`bg-white p-2.5 rounded border border-${colorClass}-100 ${asset.id ? 'cursor-pointer hover:border-${colorClass}-300 hover:bg-${colorClass}-50' : ''} transition-all shadow-sm animate-in fade-in slide-in-up fill-mode-backwards`}>
                             {/* 第一行：标题 + 专属标签 */}
@@ -871,7 +935,8 @@ export default function DetailDrawer() {
                             </div>
                         </div>
 
-                    ))}
+                    ))
+                    }
                     {hasMore && (
                         <div
                             data-group-key={groupKey}
@@ -1030,7 +1095,11 @@ export default function DetailDrawer() {
                                                     onClick={() => {
                                                         // 如果只有一个实例，直接跳转；否则展开子列表
                                                         if (agg.fields.length === 1) {
-                                                            handleAssetClick(agg.fields[0].id, 'fields', agg.name);
+                                                            const field = agg.fields[0];
+                                                            const context: Record<string, any> = {};
+                                                            if (field.workbook_name) context.workbookName = field.workbook_name;
+                                                            if (field.datasource_name) context.datasourceName = field.datasource_name;
+                                                            handleAssetClick(field.id, 'fields', agg.name, undefined, context);
                                                         } else {
                                                             toggleGroupExpand(subGroupKey);
                                                         }
@@ -1091,7 +1160,11 @@ export default function DetailDrawer() {
                                                                 key={fi}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
-                                                                    handleAssetClick(field.id, 'fields', field.name);
+                                                                    const context: Record<string, any> = {};
+                                                                    if (field.workbook_name) context.workbookName = field.workbook_name;
+                                                                    if (field.datasource_name) context.datasourceName = field.datasource_name;
+                                                                    // add other potential IDs if available on 'field' object
+                                                                    handleAssetClick(field.id, 'fields', field.name, undefined, context);
                                                                 }}
                                                                 onMouseEnter={() => field.id && prefetch(field.id, 'fields')}
                                                                 className="bg-white p-2 rounded border border-gray-200 cursor-pointer hover:border-blue-300 hover:bg-blue-50/50 transition-all text-[11px]"
@@ -1356,7 +1429,11 @@ export default function DetailDrawer() {
                                                                         className="px-2 py-1.5 cursor-pointer hover:bg-blue-50/50 transition-all"
                                                                         onClick={() => {
                                                                             if (agg.fields.length === 1) {
-                                                                                handleAssetClick(agg.fields[0].id, 'fields', agg.name);
+                                                                                const field = agg.fields[0];
+                                                                                const context: Record<string, any> = {};
+                                                                                if (field.workbook_name) context.workbookName = field.workbook_name;
+                                                                                if (field.datasource_name) context.datasourceName = field.datasource_name;
+                                                                                handleAssetClick(field.id, 'fields', agg.name, undefined, context);
                                                                             } else {
                                                                                 toggleGroupExpand(subGroupKey);
                                                                             }
@@ -1410,7 +1487,13 @@ export default function DetailDrawer() {
                                                                             {agg.fields.map((field: any, fi: number) => (
                                                                                 <div
                                                                                     key={fi}
-                                                                                    onClick={(e) => { e.stopPropagation(); handleAssetClick(field.id, 'fields', field.name); }}
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        const context: Record<string, any> = {};
+                                                                                        if (field.workbook_name) context.workbookName = field.workbook_name;
+                                                                                        if (field.datasource_name) context.datasourceName = field.datasource_name;
+                                                                                        handleAssetClick(field.id, 'fields', field.name, undefined, context);
+                                                                                    }}
                                                                                     className="bg-white px-2 py-1 rounded border border-gray-100 cursor-pointer hover:border-blue-300 text-[10px] flex items-center gap-2"
                                                                                 >
                                                                                     {field.workbook_name && (
@@ -2624,10 +2707,39 @@ export default function DetailDrawer() {
                                         <button
                                             type="button"
                                             onClick={() => setIntroOpen(true)}
-                                            className="inline-flex items-center gap-1 text-[10px] font-medium text-indigo-600 hover:text-indigo-800 hover:underline transition-colors"
-                                            title="查看该类型详情页介绍"
+                                            className="inline-flex items-center gap-1.5 text-[10px] font-medium text-indigo-600 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 hover:border-indigo-200 px-2 py-0.5 rounded-full transition-all group"
+                                            title="点击查看该场景的详细治理介绍"
                                         >
-                                            介绍
+                                            <Info className="w-3 h-3 text-indigo-500 group-hover:text-indigo-600" />
+                                            <span>
+                                                {(() => {
+                                                    // Move mapping logic to a function or reuse if possible, but for now duplicate the lightweight mapping or use a simple switch 
+                                                    // to determine the label directly here. 
+                                                    // To avoid code duplication properly, let's just do a quick check based on activeTab
+                                                    const type = currentItem.type;
+                                                    const tab = activeTab;
+
+                                                    // Simple heuristic mapping for button label
+                                                    if (type === 'datasources' && tab === 'embedded') return '嵌入式数据源治理';
+
+                                                    // 智能判断指标场景
+                                                    if (type === 'metrics') {
+                                                        if (tab === 'instances' || tab === 'metrics_instances') return '指标实例详情';
+
+                                                        // 优先上下文判断
+                                                        if (tab === 'overview') {
+                                                            if (currentItem.workbookId || currentItem.workbook_id || currentItem.workbookName) return '指标实例详情';
+                                                            if (data?.workbookId || data?.workbook_id || data?.workbookName) return '指标实例详情';
+                                                        }
+
+                                                        if (tab === 'duplicates') return '同名指标定义';
+                                                    }
+                                                    if (type === 'fields' && (tab === 'fields_grouped_by_column' || tab === 'raw_fields')) return '原始列属性';
+                                                    if (type === 'fields' && tab === 'workbook_fields') return '字段实例';
+
+                                                    return `${getModuleName(type)}治理指南`;
+                                                })()}
+                                            </span>
                                         </button>
                                     )}
                                     {isCertified && (
