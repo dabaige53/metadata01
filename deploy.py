@@ -7,6 +7,77 @@ Tableau 元数据治理平台 - 生产部署脚本
     python3 deploy.py           # 构建并启动
     python3 deploy.py --skip-build  # 跳过构建，直接启动
     python3 deploy.py stop      # 停止服务
+
+访问地址:
+    本机: http://localhost:3200
+    局域网: http://<内网IP>:3200 (启动时显示)
+
+========================================
+性能优化记录 (2026-01-05)
+========================================
+
+1. Flask 后端优化:
+   - threaded=True: 启用多线程模式，支持并发请求
+   - 避免单线程阻塞导致局域网用户访问慢
+
+2. Next.js 前端优化:
+   - compress: true - 启用 gzip 压缩
+   - optimizePackageImports - ECharts/Mermaid/Lucide 按需加载
+   - Cache-Control 长缓存 - 静态资源一年缓存
+   - ECharts 延迟加载 - 使用 lazy() + Suspense
+   - 渐进式 API 加载 - stats 先加载显示，其他后台加载
+
+3. 首页加载优化:
+   - 资产卡片使用 stats API (292B) 快速显示
+   - dashboard API (9.5KB) 异步加载治理图表
+   - sankey API (3.3KB) 配合 ECharts 懒加载
+
+========================================
+局域网访问问题排查
+========================================
+
+问题: 局域网用户访问慢或无法加载
+
+排查步骤:
+
+1. 确认使用正确的 IP 地址:
+   - ✅ 使用: http://172.29.x.x:3200 (真实局域网 IP)
+   - ❌ 不要用: http://198.18.x.x:3200 (VPN/隧道接口，会超时)
+
+   查看正确 IP:
+   $ ifconfig | grep "inet " | grep -v 127.0.0.1
+
+2. 检查服务状态:
+   $ lsof -i:3200 -i:8201 | grep LISTEN
+   应该看到 node (3200) 和 Python (8201) 两个进程
+
+3. 测试 API 连通性:
+   $ curl -w "时间: %{time_total}s" -o /dev/null -s http://localhost:3200/api/stats
+   $ curl -w "时间: %{time_total}s" -o /dev/null -s http://<局域网IP>:3200/api/stats
+   正常应该 < 100ms
+
+4. 检查防火墙:
+   $ /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate
+   如果开启，需要允许 node 和 Python 的入站连接
+
+5. 查看后端日志:
+   $ tail -f /tmp/backend.log
+   确认是否收到局域网用户的请求
+
+6. 首次加载慢是正常的:
+   - 首次需要下载 ~650KB (压缩后) 的 JS 资源
+   - 二次访问会使用缓存，秒开
+
+常见问题:
+
+Q: 侧边栏显示了，但卡片/数据不显示
+A: JS 资源加载完成，但 API 请求未返回。检查网络延迟或 API 错误。
+
+Q: 完全白屏很久
+A: JS 资源加载慢。检查网络带宽，或让用户刷新重试（缓存后会变快）。
+
+Q: 血缘图不显示
+A: ECharts 是延迟加载的，等待 "加载血缘图..." 提示消失即可。
 """
 import subprocess
 import os
@@ -23,15 +94,25 @@ PID_DIR = os.path.join(ROOT_DIR, '.dev')
 BACKEND_PID_FILE = os.path.join(PID_DIR, 'backend.pid')
 FRONTEND_PID_FILE = os.path.join(PID_DIR, 'frontend.pid')
 
+# 虚拟环境 Python 路径
+VENV_PYTHON = os.path.join(ROOT_DIR, "venv", "bin", "python3")
+
 
 def get_local_ip():
-    """获取本机内网 IP"""
+    """获取本机内网 IP（优先返回常见内网网段）"""
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        local_ip = s.getsockname()[0]
-        s.close()
-        return local_ip
+        import subprocess
+        result = subprocess.run(
+            "ifconfig | grep 'inet ' | grep -v 127.0.0.1 | awk '{print $2}'",
+            shell=True, capture_output=True, text=True
+        )
+        ips = result.stdout.strip().split('\n')
+        # 优先选择常见内网网段
+        for ip in ips:
+            if ip.startswith('192.168.') or ip.startswith('10.') or ip.startswith('172.'):
+                return ip
+        # 如果没有找到，返回第一个非 127 的 IP
+        return ips[0] if ips and ips[0] else None
     except:
         return None
 
@@ -194,11 +275,18 @@ def start_services():
     """启动生产服务"""
     processes = []
     
+    # 检查虚拟环境是否存在
+    if os.path.exists(VENV_PYTHON):
+        python_cmd = VENV_PYTHON
+    else:
+        python_cmd = "python3"
+        print("⚠️  未找到虚拟环境，使用系统 Python")
+    
     try:
         # 1. 启动后端
         print("\n🚀 正在启动后端服务...")
         backend_proc = subprocess.Popen(
-            "python3 run_backend.py",
+            f"{python_cmd} run_backend.py",
             shell=True,
             cwd=ROOT_DIR,
             stdout=sys.stdout,
@@ -227,11 +315,11 @@ def start_services():
         
         print("✨ 生产环境已启动！")
         print("=" * 50)
-        print("🔗 本机访问: http://localhost:3100")
-        
+        print("🔗 本机访问: http://localhost:3200")
+
         local_ip = get_local_ip()
         if local_ip:
-            print(f"🌐 内网访问: http://{local_ip}:3100")
+            print(f"🌐 内网访问: http://{local_ip}:3200")
         
         print("\n💡 提示: 使用 'python3 deploy.py stop' 停止服务")
         print("按 Ctrl+C 停止所有服务...\n")

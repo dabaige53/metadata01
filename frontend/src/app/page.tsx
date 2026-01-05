@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, type DashboardAnalysis, type SankeyData, type Stats } from '@/lib/api';
@@ -22,6 +22,7 @@ import {
   GitBranch,
   LayoutGrid,
   Layers,
+  Loader2,
   ShieldCheck,
   Sparkles,
   Table,
@@ -44,7 +45,9 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
-import ReactECharts from 'echarts-for-react';
+
+// 延迟加载 ECharts（减少首屏加载时间）
+const ReactECharts = lazy(() => import('echarts-for-react'));
 
 type CardTone = 'neutral' | 'good' | 'warn' | 'bad';
 
@@ -100,18 +103,23 @@ export default function OverviewPage() {
   const { openDrawer } = useDrawer();
 
   useEffect(() => {
-    Promise.all([
-      api.getDashboardAnalysis(),
-      api.getLineageSankey(30),
-      api.getStats()
-    ])
-      .then(([dashData, sankey, statsData]) => {
-        setData(dashData);
-        setSankeyData(sankey);
+    // 渐进式加载：stats 最小最快，先加载显示基本框架
+    api.getStats()
+      .then(statsData => {
         setStats(statsData);
+        setLoading(false); // 有 stats 就先显示
       })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .catch(console.error);
+
+    // dashboard 数据稍大，单独加载
+    api.getDashboardAnalysis()
+      .then(setData)
+      .catch(console.error);
+
+    // sankey 数据最后加载（配合 ECharts 懒加载）
+    api.getLineageSankey(30)
+      .then(setSankeyData)
+      .catch(console.error);
   }, []);
 
   const safe = data ?? {
@@ -191,16 +199,27 @@ export default function OverviewPage() {
   }, [safe.health_score]);
 
   const assetCards = useMemo(() => {
+    // 优先使用 stats（更快），回退到 dashboard 数据
+    const assets = stats ? {
+      databases: stats.databases,
+      tables: stats.tables,
+      datasources: stats.datasources,
+      workbooks: stats.workbooks,
+      views: stats.views,
+      fields: stats.fields,
+      calculated_fields: stats.calculatedFields
+    } : safe.total_assets;
+
     return [
-      { key: 'databases', label: '数据库', value: safe.total_assets.databases, icon: Database, href: '/databases', color: '#6366f1' },
-      { key: 'tables', label: '数据表', value: safe.total_assets.tables, icon: Table, href: '/tables', color: '#8b5cf6' },
-      { key: 'datasources', label: '数据源', value: safe.total_assets.datasources, icon: Boxes, href: '/datasources', color: '#06b6d4' },
-      { key: 'workbooks', label: '工作簿', value: safe.total_assets.workbooks, icon: LayoutGrid, href: '/workbooks', color: '#10b981' },
-      { key: 'views', label: '视图', value: safe.total_assets.views, icon: BarChart3, href: '/views', color: '#f59e0b' },
-      { key: 'fields', label: '原始字段', value: safe.total_assets.fields, icon: Layers, href: '/fields', color: '#ec4899' },
-      { key: 'metrics', label: '计算字段', value: safe.total_assets.calculated_fields, icon: Activity, href: '/metrics', color: '#ef4444' }
+      { key: 'databases', label: '数据库', value: assets.databases, icon: Database, href: '/databases', color: '#6366f1' },
+      { key: 'tables', label: '数据表', value: assets.tables, icon: Table, href: '/tables', color: '#8b5cf6' },
+      { key: 'datasources', label: '数据源', value: assets.datasources, icon: Boxes, href: '/datasources', color: '#06b6d4' },
+      { key: 'workbooks', label: '工作簿', value: assets.workbooks, icon: LayoutGrid, href: '/workbooks', color: '#10b981' },
+      { key: 'views', label: '视图', value: assets.views, icon: BarChart3, href: '/views', color: '#f59e0b' },
+      { key: 'fields', label: '原始字段', value: assets.fields, icon: Layers, href: '/fields', color: '#ec4899' },
+      { key: 'metrics', label: '计算字段', value: assets.calculated_fields, icon: Activity, href: '/metrics', color: '#ef4444' }
     ] as const;
-  }, [safe.total_assets]);
+  }, [stats, safe.total_assets]);
 
   const complexityData = useMemo(() => {
     const map = safe.complexity_distribution as Record<string, number>;
@@ -986,7 +1005,15 @@ export default function OverviewPage() {
         </div>
         <div className="h-[600px]">
           {sankeyData && sankeyData.nodes.length > 0 && sankeyData.links.length > 0 ? (
-            <ReactECharts
+            <Suspense fallback={
+              <div className="h-full flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3 text-gray-400">
+                  <Loader2 className="w-8 h-8 animate-spin" />
+                  <span className="text-sm">加载血缘图...</span>
+                </div>
+              </div>
+            }>
+              <ReactECharts
               style={{ height: '100%', width: '100%' }}
               option={{
                 tooltip: {
@@ -1066,6 +1093,7 @@ export default function OverviewPage() {
                 }
               }}
             />
+            </Suspense>
           ) : (
             <div className="h-full flex items-center justify-center text-gray-400 text-sm">
               暂无血缘数据，请先完成数据同步

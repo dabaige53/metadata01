@@ -33,12 +33,12 @@ def main():
     print("\n💡 提示: 首次使用请点击 '同步数据' 按钮加载数据")
     print("=" * 60)
     
-    # 启动服务器
+    # 启动服务器（多线程模式，支持并发请求）
     app.run(
         host=Config.HOST,
         port=Config.PORT,
         debug=Config.DEBUG,
-        threaded=False,
+        threaded=True,
         use_reloader=False
     )
 
