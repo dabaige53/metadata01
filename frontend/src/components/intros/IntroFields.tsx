@@ -71,16 +71,23 @@ export function IntroFields() {
                         </div>
                     </div>
 
-                    {/* 右侧：血缘缩略图 */}
-                    <div className="hidden lg:block relative w-80 h-48 rounded-2xl bg-white/50 border border-white/60 shadow-inner overflow-hidden">
-                        <div className="absolute inset-0 p-4 opacity-80 hover:opacity-100 transition-opacity">
-                            <IntroComplexLineage highlight="raw_field" />
-                        </div>
-                        <div className="absolute bottom-2 right-2 text-[10px] text-gray-400 font-mono bg-white/80 px-2 py-0.5 rounded-full backdrop-blur-sm">
-                            Lineage Preview
-                        </div>
-                    </div>
+                    {/* 右侧：血缘缩略图 (已移除，改为下方完整展示) */}
                 </div>
+            </div>
+
+            {/* 新版高级血缘图 (Moved from Hero) */}
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-xl shadow-gray-100/50 p-1 overflow-hidden">
+                <div className="bg-gradient-to-r from-gray-50 to-white px-8 py-6 border-b border-gray-100">
+                    <h2 className="text-lg font-bold text-gray-900 flex items-center gap-3">
+                        <GitBranch className="w-5 h-5 text-indigo-600" />
+                        <span>字段在全链路治理中的位置</span>
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-1 ml-8">
+                        高亮展示 <span className="font-bold text-indigo-600">原始列 (Raw Columns)</span> 与 <span className="font-bold text-green-600">标准字段 (Standard Fields)</span> 的映射与治理关系
+                    </p>
+                </div>
+                {/* 使用 deduped_field 高亮，强调治理后的标准字段状态，配合上文"您当前查看的是标准字段定义" */}
+                <IntroComplexLineage highlight="deduped_field" className="border-none shadow-none" />
             </div>
 
             {/* 底部功能区 - 对应 DetailDrawer 结构 */}

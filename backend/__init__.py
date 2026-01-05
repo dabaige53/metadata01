@@ -38,6 +38,30 @@ def create_app(config_class=Config):
     from .routes import api_bp
     app.register_blueprint(api_bp, url_prefix='/api')
     
+    # 全局 JSON 错误处理器 - 确保所有错误都返回 JSON 而不是 HTML
+    from flask import jsonify
+    from werkzeug.exceptions import HTTPException
+    
+    @app.errorhandler(HTTPException)
+    def handle_http_exception(e):
+        """处理所有 HTTP 错误，返回 JSON 格式"""
+        return jsonify({
+            "error": e.name,
+            "message": e.description,
+            "status_code": e.code
+        }), e.code
+    
+    @app.errorhandler(Exception)
+    def handle_generic_exception(e):
+        """处理所有未捕获的异常，返回 JSON 格式"""
+        import traceback
+        app.logger.error(f"Unhandled exception: {e}\n{traceback.format_exc()}")
+        return jsonify({
+            "error": "Internal Server Error",
+            "message": str(e),
+            "status_code": 500
+        }), 500
+    
     @app.route('/')
     def index():
         return {"status": "ok", "message": "Tableau Metadata API is running"}

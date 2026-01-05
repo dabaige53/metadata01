@@ -308,123 +308,38 @@ export default function DetailDrawer() {
         if (!currentItem?.type) return null;
         if (!supportedIntroTypes.has(currentItem.type)) return null;
 
+        // 场景映射：统一标签，同一详情页所有Tab显示相同标签
+        // 仅 embedded 场景特殊处理（嵌入式数据源详情页）
         const sceneByTypeAndTab: Record<string, Record<string, IntroDemoScene>> = {
-            databases: {
-                overview: 'default',
-                tables: 'default',
-                lineage: 'default'
-            },
-            tables: {
-                overview: 'default',
-                db: 'default',
-                columns: 'default',
-                fields: 'fields_grouped_by_column',
-                datasources: 'default',
-                embedded_datasources: 'default',
-                workbooks: 'default',
-                lineage: 'default'
-            },
-            columns: {
-                overview: 'default',
-                table: 'default',
-                db: 'default',
-                lineage: 'default'
-            },
-            datasources: {
-                overview: 'default',
-                tables: 'default',
-                embedded_tables: 'default',
-                columns: 'default',
-                fields: 'fields_grouped_by_table',
-                metrics: 'default',
-                workbooks: 'default',
-                embedded: 'default',
-                lineage: 'default'
-            },
-            workbooks: {
-                overview: 'default',
-                views: 'default',
-                datasources: 'default',
-                embedded_datasources: 'default',
-                tables: 'default',
-                embedded_tables: 'default',
-                fields: 'default',
-                metrics: 'default',
-                usage: 'default',
-                lineage: 'default'
-            },
-            views: {
-                overview: 'default',
-                workbook: 'default',
-                fields: 'default',
-                metrics: 'default',
-                usage: 'default',
-                contained_views: 'default',
-                lineage: 'default'
-            },
-            fields: {
-                overview: 'default',
-                table: 'default',
-                deps: 'default',
-                datasources: 'default',
-                embedded_datasources: 'default',
-                impact_metrics: 'default',
-                views: 'default',
-                workbooks: 'default',
-                lineage: 'default'
-            },
-            metrics: {
-                overview: 'default',
-                table: 'default',
-                deps: 'default',
-                datasources: 'default',
-                embedded_datasources: 'default',
-                impact_metrics: 'default',
-                views: 'default',
-                workbooks: 'default',
-                duplicates: 'metrics_duplicates',
-                instances: 'metrics_instances',
-                lineage: 'default'
-            },
-            projects: {
-                overview: 'default',
-                datasources: 'default',
-                workbooks: 'default'
-            },
-            users: {
-                overview: 'default',
-                datasources: 'default',
-                workbooks: 'default'
-            }
+            databases: { overview: 'default' },
+            tables: { overview: 'default' },
+            columns: { overview: 'default' },
+            datasources: { overview: 'default', embedded: 'embedded' },
+            workbooks: { overview: 'default' },
+            views: { overview: 'default' },
+            fields: { overview: 'default' },
+            metrics: { overview: 'default' },
+            projects: { overview: 'default' },
+            users: { overview: 'default' }
         };
 
-        // 动态计算 scene (智能上下文感知)
+        // 动态计算 scene - 统一标签：同一详情页所有Tab显示相同标签
+        // 仅根据 type 和 mode 判断，不区分 activeTab
         const getScene = (): IntroDemoScene => {
-            const defaultScene = sceneByTypeAndTab[currentItem.type]?.[activeTab] || 'default';
-
-            // 针对 Metrics 的特殊判断：区分“标准指标”与“工作簿实例”
-            if (currentItem.type === 'metrics' && activeTab === 'overview') {
-                // 优先检查 currentItem (来源上下文)
-                if (currentItem.workbookId || currentItem.workbook_id || currentItem.workbookName || currentItem.workbook_name) {
-                    return 'metrics_instances';
-                }
-                // 再检查 data (详细信息)，但要小心，因为 aggregated 模式下 aggregated metric 可能没有 workbookId，而 instance 有
-                // 如果 data 显示它是 instance (在 instances 列表中且 id 匹配，或者 root 有 workbookId)
-                if (data?.workbookId || data?.workbook_id || data?.workbookName || data?.workbook_name) {
-                    return 'metrics_instances';
-                }
+            // 指标实例（从工作簿点击进入）
+            if (currentItem.type === 'metrics' && currentItem.mode === 'instance') {
+                return 'metrics_instances';
             }
-
-            // 针对 Fields 的特殊判断：区分“标准字段”与“工作簿字段实例”
-            if (currentItem.type === 'fields' && activeTab === 'overview') {
-                if (currentItem.workbookId || currentItem.workbook_id || currentItem.workbookName || currentItem.workbook_name) {
-                    return 'workbook_fields';
-                }
-                if (data?.workbookId || data?.workbook_id || data?.workbookName || data?.workbook_name) {
-                    return 'workbook_fields';
-                }
+            // 字段实例（从工作簿点击进入）
+            if (currentItem.type === 'fields' && currentItem.mode === 'instance') {
+                return 'workbook_fields';
             }
-            return defaultScene;
+            // 嵌入式数据源
+            if (currentItem.type === 'datasources' && currentItem.mode === 'embedded') {
+                return 'embedded';
+            }
+            // 默认：显示该类型的治理指南
+            return 'default';
         };
 
         const scene = getScene();
@@ -435,12 +350,8 @@ export default function DetailDrawer() {
             switch (scene) {
                 case 'embedded': return `嵌入式${baseName}`;
                 case 'metrics_instances': return `${baseName}实例`;
-                case 'metrics_duplicates': return `同名${baseName}定义`;
-                case 'fields_grouped_by_column': return '原始列详情';
-                case 'fields_grouped_by_table': return '原始表结构';
-                case 'workbook_fields': return '工作簿字段实例';
-                case 'raw_fields': return '物理字段';
-                case 'default': default: return `${baseName}治理指南`;
+                case 'workbook_fields': return `${baseName}实例`;
+                case 'default': default: return `${baseName}`;
             }
         };
 
@@ -718,8 +629,9 @@ export default function DetailDrawer() {
 
     const getModuleName = (type: string) => {
         const names: Record<string, string> = {
-            databases: '数据库', tables: '数据表', fields: '字段', metrics: '指标',
-            datasources: '数据源', workbooks: '工作簿', projects: '项目', users: '用户', views: '视图'
+            databases: '数据库', tables: '数据表', columns: '原始列', fields: '字段', metrics: '指标',
+            datasources: '数据源', workbooks: '工作簿', projects: '项目', users: '用户', views: '视图',
+            embedded_datasources: '嵌入式数据源', embedded_tables: '嵌入式表'
         };
         return names[type] || type;
     };
@@ -2722,20 +2634,10 @@ export default function DetailDrawer() {
                                                     // Simple heuristic mapping for button label
                                                     if (type === 'datasources' && tab === 'embedded') return '嵌入式数据源治理';
 
-                                                    // 智能判断指标场景
-                                                    if (type === 'metrics') {
-                                                        if (tab === 'instances' || tab === 'metrics_instances') return '指标实例详情';
-
-                                                        // 优先上下文判断
-                                                        if (tab === 'overview') {
-                                                            if (currentItem.workbookId || currentItem.workbook_id || currentItem.workbookName) return '指标实例详情';
-                                                            if (data?.workbookId || data?.workbook_id || data?.workbookName) return '指标实例详情';
-                                                        }
-
-                                                        if (tab === 'duplicates') return '同名指标定义';
-                                                    }
-                                                    if (type === 'fields' && (tab === 'fields_grouped_by_column' || tab === 'raw_fields')) return '原始列属性';
-                                                    if (type === 'fields' && tab === 'workbook_fields') return '字段实例';
+                                                    // 统一标签：根据 type 和 mode 判断，不区分 tab
+                                                    if (type === 'metrics' && currentItem.mode === 'instance') return '指标实例';
+                                                    if (type === 'fields' && currentItem.mode === 'instance') return '字段实例';
+                                                    if (type === 'datasources' && currentItem.mode === 'embedded') return '嵌入式数据源';
 
                                                     return `${getModuleName(type)}治理指南`;
                                                 })()}
