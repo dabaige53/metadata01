@@ -17,8 +17,10 @@ import SortButtons from '@/components/data-table/SortButtons';
 interface DatabaseItem {
     id: string;
     name: string;
+    type?: string;
     connectionType?: string;
     connection_type?: string;
+    host?: string;
     hostName?: string;
     host_name?: string;
     port?: number;
@@ -27,7 +29,7 @@ interface DatabaseItem {
     state?: 'active' | 'inactive';
     tables?: number;
     table_count?: number;
-    [key: string]: string | number | undefined;
+    [key: string]: string | number | boolean | string[] | undefined;
 }
 
 function DatabasesContent() {
@@ -158,9 +160,11 @@ function DatabasesContent() {
                                     <Database className="w-5 h-5" />
                                 </div>
                                 <div className="flex flex-col items-end gap-1">
-                                    <div className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-600 text-white uppercase tracking-wider">
-                                        {db.connectionType || db.connection_type || 'Unknown'}
-                                    </div>
+                                    {(db.type || db.connectionType || db.connection_type) && (
+                                        <div className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-600 text-white uppercase tracking-wider">
+                                            {db.type || db.connectionType || db.connection_type}
+                                        </div>
+                                    )}
                                     <div className="px-2 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-700">
                                         使用中
                                     </div>
@@ -171,12 +175,14 @@ function DatabasesContent() {
                                 <h3 className="font-bold text-gray-800 mb-1 truncate text-base group-hover:text-indigo-600 transition-colors" title={db.name}>
                                     {db.name}
                                 </h3>
-                                <div className="flex items-center gap-1.5 mb-4 text-gray-500 min-h-[1.5rem]">
-                                    <div className="shrink-0 w-1 h-1 rounded-full bg-gray-300"></div>
-                                    <p className="text-[11px] font-mono truncate" title={db.hostName || db.host_name || 'N/A'}>
-                                        {db.hostName || db.host_name || '无物理地址信息'}
-                                    </p>
-                                </div>
+                                {(db.host || db.hostName || db.host_name) && (
+                                    <div className="flex items-center gap-1.5 mb-4 text-gray-500 min-h-[1.5rem]">
+                                        <div className="shrink-0 w-1 h-1 rounded-full bg-gray-300"></div>
+                                        <p className="text-[11px] font-mono truncate" title={db.host || db.hostName || db.host_name}>
+                                            {db.host || db.hostName || db.host_name}
+                                        </p>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="border-t border-gray-50 pt-3 mt-auto flex items-center justify-between text-xs text-gray-500">

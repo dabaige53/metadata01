@@ -4,9 +4,9 @@ Tableau 元数据治理平台 - 生产部署脚本
 使用预编译的生产构建，性能比开发模式提升 10-50 倍。
 
 用法:
-    python3 deploy.py           # 构建并启动
-    python3 deploy.py --skip-build  # 跳过构建，直接启动
-    python3 deploy.py stop      # 停止服务
+    venv/bin/python deploy.py           # 构建并启动
+    venv/bin/python deploy.py --skip-build  # 跳过构建，直接启动
+    venv/bin/python deploy.py stop      # 停止服务
 
 访问地址:
     本机: http://localhost:3200
@@ -95,7 +95,7 @@ BACKEND_PID_FILE = os.path.join(PID_DIR, 'backend.pid')
 FRONTEND_PID_FILE = os.path.join(PID_DIR, 'frontend.pid')
 
 # 虚拟环境 Python 路径
-VENV_PYTHON = os.path.join(ROOT_DIR, "venv", "bin", "python3")
+VENV_PYTHON = os.path.join(ROOT_DIR, "venv", "bin", "python")
 
 
 def get_local_ip():
@@ -321,7 +321,7 @@ def start_services():
         if local_ip:
             print(f"🌐 内网访问: http://{local_ip}:3200")
         
-        print("\n💡 提示: 使用 'python3 deploy.py stop' 停止服务")
+        print("\n💡 提示: 使用 'venv/bin/python deploy.py stop' 停止服务")
         print("按 Ctrl+C 停止所有服务...\n")
         
         # 保持运行

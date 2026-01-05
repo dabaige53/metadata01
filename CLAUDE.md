@@ -26,6 +26,27 @@ Tableau 元数据治理平台前端 - 基于 Next.js 构建的现代化 Web 应�
 - **UI 风格**: 参考 [ui_style.md](docs/ui_style.md)
 - **图表**: Mermaid 11.x（用于血缘可视化）
 
+## Python 虚拟环境
+
+**重要**: 本项目使用 Python 虚拟环境，所有 Python 命令必须使用虚拟环境中的解释器。
+
+```bash
+# 虚拟环境位置
+venv/
+
+# 激活虚拟环境（推荐方式）
+source venv/bin/activate
+
+# 或直接使用虚拟环境中的 Python（无需激活）
+venv/bin/python <script.py>
+```
+
+**AI 助手规范**：
+- ✅ 执行 Python 脚本时，必须使用 `venv/bin/python` 而非系统 `python3`
+- ✅ 示例：`venv/bin/python backend/tableau_sync.py`
+- ✅ 示例：`venv/bin/python dev.py`
+- ❌ 禁止：`python3 backend/tableau_sync.py`（会因缺少依赖而失败）
+
 ## 快速开始
 
 ### 首次设置
@@ -44,26 +65,26 @@ TABLEAU_PAT_SECRET=your_pat_secret
 EOF
 
 # 3. 初始化数据库（可选，首次同步会自动创建）
-python3 backend/init_db.py
+venv/bin/python backend/init_db.py
 
 # 4. 首次数据同步
-python3 backend/tableau_sync.py
+venv/bin/python backend/tableau_sync.py
 
 # 5. 启动服务
-python3 dev.py
+venv/bin/python dev.py
 ```
 
 ### 启动服务
 
 ```bash
 # 一键启动 - 开发模式 (推荐日常开发)
-python3 dev.py
+venv/bin/python dev.py
 
 # 一键启动 - 生产模式 (推荐内网部署，性能提升 10-50 倍)
-python3 deploy.py
+venv/bin/python deploy.py
 
 # 分步启动 (手动控制)
-# 后端: python3 run_backend.py
+# 后端: venv/bin/python run_backend.py
 # 前端: cd frontend && npm run dev
 ```
 
@@ -79,21 +100,21 @@ python3 deploy.py
 
 ```bash
 # 开发模式启动（实时编译，适合开发调试）
-python3 dev.py start
+venv/bin/python dev.py start
 
 # 生产模式启动（预编译，适合内网部署）
-python3 deploy.py
-python3 deploy.py --skip-build  # 跳过构建，直接启动
+venv/bin/python deploy.py
+venv/bin/python deploy.py --skip-build  # 跳过构建，直接启动
 
 # 停止服务
-python3 dev.py stop
-python3 deploy.py stop
+venv/bin/python dev.py stop
+venv/bin/python deploy.py stop
 
 # 重启服务
-python3 dev.py restart
+venv/bin/python dev.py restart
 
 # 手动启动后端（端口 8201）
-python3 run_backend.py
+venv/bin/python run_backend.py
 
 # 手动启动前端（端口 3100，需在 frontend/ 目录下执行）
 cd frontend && npm run dev
@@ -103,16 +124,16 @@ cd frontend && npm run dev
 
 ```bash
 # 完整同步 Tableau 元数据（包括视图使用统计）
-python3 backend/tableau_sync.py
+venv/bin/python backend/tableau_sync.py
 
 # 跳过视图使用统计同步
-python3 backend/tableau_sync.py --skip-usage
+venv/bin/python backend/tableau_sync.py --skip-usage
 
 # 仅同步视图使用统计
-python3 backend/tableau_sync.py --usage-only
+venv/bin/python backend/tableau_sync.py --usage-only
 
 # 指定数据库路径
-python3 backend/tableau_sync.py --db-path data/metadata.db
+venv/bin/python backend/tableau_sync.py --db-path data/metadata.db
 ```
 
 **重要说明**（2025-12-25 修复）：
@@ -156,25 +177,25 @@ node tests/e2e/test-performance.mjs
 
 ```bash
 # 数据分析（scripts/analysis/）
-python3 scripts/analysis/get_lineage_counts.py      # 血缘链路统计
-python3 scripts/analysis/get_orphan_counts.py       # 孤立资源分析
-python3 scripts/analysis/analyze_anomalies.py       # 异常数据分析
+venv/bin/python scripts/analysis/get_lineage_counts.py      # 血缘链路统计
+venv/bin/python scripts/analysis/get_orphan_counts.py       # 孤立资源分析
+venv/bin/python scripts/analysis/analyze_anomalies.py       # 异常数据分析
 
 # 数据验证（scripts/validation/）
-python3 scripts/validation/check_lineage_breaks.py  # 血缘链路完整性检查
-python3 scripts/validation/cross_validate_lineage.py # 血缘交叉验证
+venv/bin/python scripts/validation/check_lineage_breaks.py  # 血缘链路完整性检查
+venv/bin/python scripts/validation/cross_validate_lineage.py # 血缘交叉验证
 
 # 数据维护（scripts/maintenance/）
-python3 scripts/maintenance/update_datasource_stats.py  # 更新数据源统计
-python3 scripts/maintenance/cleanup_embedded_tables.py  # 清理嵌入式表
-python3 scripts/maintenance/calculate_complexity.py     # 计算字段复杂度
+venv/bin/python scripts/maintenance/update_datasource_stats.py  # 更新数据源统计
+venv/bin/python scripts/maintenance/cleanup_embedded_tables.py  # 清理嵌入式表
+venv/bin/python scripts/maintenance/calculate_complexity.py     # 计算字段复杂度
 
 # 术语表初始化
-python3 scripts/seed_glossary_terms.py                  # 初始化业务术语
+venv/bin/python scripts/seed_glossary_terms.py                  # 初始化业务术语
 
 # 可视化生成（scripts/generation/）
-python3 scripts/generation/generate_sankey.py       # 生成 Sankey 血缘图
-python3 scripts/generation/generate_lineage_html.py # 生成血缘 HTML 报告
+venv/bin/python scripts/generation/generate_sankey.py       # 生成 Sankey 血缘图
+venv/bin/python scripts/generation/generate_lineage_html.py # 生成血缘 HTML 报告
 ```
 
 ### 调试和日志

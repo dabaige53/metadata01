@@ -1,7 +1,10 @@
 
 import sqlite3
+import os
 
-DB_PATH = '/Users/w/Desktop/吉祥/Team/代码管理/metadata分析/metadata.db'
+# 使用相对路径，基于项目根目录
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DB_PATH = os.path.join(ROOT_DIR, 'data', 'metadata.db')
 
 def main():
     conn = sqlite3.connect(DB_PATH)

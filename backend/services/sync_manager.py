@@ -76,14 +76,18 @@ class MetadataSync:
                 # 新模型: CalculatedField 使用 id 作为主键，与 Field.id 相同
                 self.session.query(CalculatedField).filter_by(id=record.id).delete()
                 self.session.query(FieldDependency).filter(
-                    (FieldDependency.source_field_id == record.id) | 
+                    (FieldDependency.source_field_id == record.id) |
                     (FieldDependency.dependency_field_id == record.id)
                 ).delete()
                 from backend.models import Metric, field_to_view
                 self.session.query(Metric).filter_by(id=record.id).delete()
                 self.session.execute(field_to_view.delete().where(field_to_view.c.field_id == record.id))
                 self.session.execute(text("DELETE FROM field_full_lineage WHERE field_id = :fid"), {"fid": record.id})
-            
+
+            # 对于 View，需要先清理 view_usage_history 表中的相关记录
+            if model_class == View:
+                self.session.execute(text("DELETE FROM view_usage_history WHERE view_id = :vid"), {"vid": record.id})
+
             self.session.delete(record)
             count += 1
             

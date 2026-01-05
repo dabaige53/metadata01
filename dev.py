@@ -4,10 +4,10 @@ Tableau 元数据治理平台 - 一键启动脚本
 并发启动前端 Next.js 服务和后端 Flask API 服务。
 
 用法:
-    python3 dev.py start    # 启动服务
-    python3 dev.py stop     # 停止服务
-    python3 dev.py restart  # 重启服务
-    python3 dev.py          # 默认启动服务
+    venv/bin/python dev.py start    # 启动服务
+    venv/bin/python dev.py stop     # 停止服务
+    venv/bin/python dev.py restart  # 重启服务
+    venv/bin/python dev.py          # 默认启动服务
 """
 import subprocess
 import os
@@ -16,8 +16,12 @@ import time
 import signal
 import argparse
 
+# 项目根目录和虚拟环境 Python 路径
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+VENV_PYTHON = os.path.join(ROOT_DIR, "venv", "bin", "python")
+
 # PID 文件路径
-PID_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.dev')
+PID_DIR = os.path.join(ROOT_DIR, '.dev')
 BACKEND_PID_FILE = os.path.join(PID_DIR, 'backend.pid')
 FRONTEND_PID_FILE = os.path.join(PID_DIR, 'frontend.pid')
 LOG_DIR = os.path.join(PID_DIR, 'logs')
@@ -91,7 +95,7 @@ def check_port_availability():
         print("\n" + "=" * 60)
         print("💡 建议操作:")
         print("   1. 手动终止占用进程: kill -9 <PID>")
-        print("   2. 或者运行: python3 dev.py stop")
+        print("   2. 或者运行: venv/bin/python dev.py stop")
         print("=" * 60)
         
         # 移除交互式询问，改为直接警告
@@ -413,7 +417,7 @@ def start_services(is_daemon=False):
                     print(f"    命令: {p_args[:80]}...")
         print("\n💡 建议操作:")
         print("   1. 手动终止占用进程: kill -9 <PID>")
-        print("   2. 或者使用: python3 dev.py stop")
+        print("   2. 或者使用: venv/bin/python dev.py stop")
         print("⚠️ " * 20 + "\n")
         
         print("❌ 端口被占用，启动已中止。请清理端口后重试。")
@@ -437,7 +441,7 @@ def start_services(is_daemon=False):
     try:
         # 1. 启动后端 Flask (端口 8201)
         backend_proc = run_command(
-            "python3 run_backend.py",
+            f"{VENV_PYTHON} run_backend.py",
             cwd=root_dir,
             name=f"后端服务 (Port {backend_port})",
             log_file=backend_log,
@@ -475,7 +479,7 @@ def start_services(is_daemon=False):
 
         if is_daemon:
             print("\n💡 服务已在后台成功启动！")
-            print("💡 提示: 使用 'python3 dev.py stop' 可以停止服务")
+            print("💡 提示: 使用 'venv/bin/python dev.py stop' 可以停止服务")
             print(f"💡 日志已存放在: {LOG_DIR}")
             print("✅ 脚本执行完成，已返回。再见！\n")
         else:
@@ -515,9 +519,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 示例:
-  python3 dev.py start    # 启动服务
-  python3 dev.py stop     # 停止服务
-  python3 dev.py restart  # 重启服务
+  venv/bin/python dev.py start    # 启动服务
+  venv/bin/python dev.py stop     # 停止服务
+  venv/bin/python dev.py restart  # 重启服务
         '''
     )
     parser.add_argument(

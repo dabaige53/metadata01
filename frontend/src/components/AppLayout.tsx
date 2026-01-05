@@ -14,8 +14,6 @@ import {
     FolderOpen,
     Users,
     Search,
-    Bell,
-    HelpCircle,
     BookText,
 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -122,11 +120,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <div className="p-4 border-t border-gray-100">
                     <div className="flex items-center gap-3 px-2 py-2">
                         <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">
-                            N
+                            营
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">Admin User</p>
-                            <p className="text-xs text-gray-500 truncate">admin@company.com</p>
+                            <p className="text-sm font-medium text-gray-900 truncate">营销数据处</p>
+                            <p className="text-xs text-gray-500 truncate">DataOffice@juneyaoair.com</p>
                         </div>
                     </div>
                 </div>
@@ -150,14 +148,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                             />
                         </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                        <button className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-50">
-                            <Bell className="w-5 h-5" />
-                        </button>
-                        <button className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-50">
-                            <HelpCircle className="w-5 h-5" />
-                        </button>
-                    </div>
+                    <span className="text-sm text-gray-500">本地测试版</span>
                 </header>
 
                 {/* Page Content */}

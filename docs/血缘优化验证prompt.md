@@ -31,8 +31,9 @@
 
 ### 2.1 重启后端
 ```bash
-cd /Users/w/Desktop/吉祥/Team/代码管理/metadata分析
-pkill -f "run_backend.py" ; sleep 1 && python3 run_backend.py &
+# 在项目根目录执行
+venv/bin/python dev.py stop
+venv/bin/python dev.py start
 ```
 
 ### 2.2 SQL 验证 - 血缘覆盖率

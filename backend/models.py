@@ -8,7 +8,7 @@ from sqlalchemy import (
     Text, DateTime, ForeignKey, Table
 )
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.orm import relationship, sessionmaker, backref
 
 Base = declarative_base()
 
@@ -953,15 +953,15 @@ class TermEnum(Base):
 class ViewUsageHistory(Base):
     """视图访问统计历史（每次同步快照）"""
     __tablename__ = 'view_usage_history'
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    view_id = Column(String(255), ForeignKey('views.id'), nullable=False)
+    view_id = Column(String(255), ForeignKey('views.id', ondelete='CASCADE'), nullable=False)
     view_luid = Column(String(255))  # REST API 标识符
     total_view_count = Column(Integer, default=0)  # 累计访问次数
     recorded_at = Column(DateTime, default=datetime.utcnow)  # 记录时间
-    
-    # 关系
-    view = relationship('View', backref='usage_history')
+
+    # 关系 - 使用 passive_deletes 让数据库处理级联删除
+    view = relationship('View', backref=backref('usage_history', cascade='all, delete-orphan', passive_deletes=True))
     
     def to_dict(self):
         return {
