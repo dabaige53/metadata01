@@ -10,7 +10,7 @@ services:
     container_name: metadata-backend
     restart: unless-stopped
     ports:
-      - "8201:8201"
+      - "8202:8201"
     environment:
       - FLASK_ENV=production
       - DEBUG=false
@@ -44,7 +44,7 @@ services:
     container_name: metadata-frontend
     restart: unless-stopped
     ports:
-      - "3200:3200"
+      - "3201:3200"
     environment:
       - NODE_ENV=production
       - PORT=3200

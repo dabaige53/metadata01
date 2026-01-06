@@ -43,4 +43,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # 启动命令
 ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["gunicorn", "--bind", "0.0.0.0:8201", "--workers", "4", "--threads", "2", "--timeout", "120", "backend:create_app()"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8201", "--workers", "4", "--threads", "2", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-", "backend:create_app()"]
