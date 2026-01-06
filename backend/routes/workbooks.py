@@ -2,6 +2,7 @@
 工作簿接口路由模块
 包含工作簿列表、详情和治理分析接口
 """
+
 from flask import jsonify, request, g
 from sqlalchemy import text, bindparam, func
 from sqlalchemy.orm import selectinload
@@ -13,12 +14,13 @@ from ..models import Workbook, Field, View
 
 # -------------------- 工作簿治理分析专用 API --------------------
 
-@api_bp.route('/workbooks/governance/empty')
+
+@api_bp.route("/workbooks/governance/empty")
 def get_workbooks_empty():
     """获取无视图工作簿分析（基于全量数据）"""
     session = g.db_session
     from sqlalchemy import text
-    
+
     # 查询视图数为0的工作簿
     sql = """
         SELECT 
@@ -30,26 +32,26 @@ def get_workbooks_empty():
         ORDER BY w.name
     """
     rows = session.execute(text(sql)).fetchall()
-    
-    items = [{
-        'id': row.id,
-        'name': row.name,
-        'project_name': row.project_name or '-',
-        'owner': row.owner or '-'
-    } for row in rows]
-    
-    return jsonify({
-        'total_count': len(items),
-        'items': items
-    })
+
+    items = [
+        {
+            "id": row.id,
+            "name": row.name,
+            "project_name": row.project_name or "-",
+            "owner": row.owner or "-",
+        }
+        for row in rows
+    ]
+
+    return jsonify({"total_count": len(items), "items": items})
 
 
-@api_bp.route('/workbooks/governance/single-source')
+@api_bp.route("/workbooks/governance/single-source")
 def get_workbooks_single_source():
     """获取单源依赖工作簿分析（基于全量数据）"""
     session = g.db_session
     from sqlalchemy import text
-    
+
     # 查询只依赖一个数据源的工作簿
     sql = """
         SELECT 
@@ -65,53 +67,55 @@ def get_workbooks_single_source():
         ORDER BY w.name
     """
     rows = session.execute(text(sql)).fetchall()
-    
-    items = [{
-        'id': row.id,
-        'name': row.name,
-        'project_name': row.project_name or '-',
-        'owner': row.owner or '-',
-        'datasource_name': row.datasource_name or '-',
-        'view_count': row.view_count or 0
-    } for row in rows]
-    
-    return jsonify({
-        'total_count': len(items),
-        'items': items
-    })
+
+    items = [
+        {
+            "id": row.id,
+            "name": row.name,
+            "project_name": row.project_name or "-",
+            "owner": row.owner or "-",
+            "datasource_name": row.datasource_name or "-",
+            "view_count": row.view_count or 0,
+        }
+        for row in rows
+    ]
+
+    return jsonify({"total_count": len(items), "items": items})
 
 
 # -------------------- 工作簿列表 API --------------------
 
-@api_bp.route('/workbooks')
+
+@api_bp.route("/workbooks")
 def get_workbooks():
     """获取工作簿列表 - 增加动态统计"""
     session = g.db_session
-    search = request.args.get('search', '')
-    project_name = request.args.get('project_name', '')
-    sort = request.args.get('sort', 'name') # 默认按名称排序
-    order = request.args.get('order', 'asc')
+    search = request.args.get("search", "")
+    project_name = request.args.get("project_name", "")
+    sort = request.args.get("sort", "name")
+    order = request.args.get("order", "desc")
 
     def parse_list(value: str) -> list[str]:
-        return [item.strip() for item in value.split(',') if item.strip()]
-    
+        return [item.strip() for item in value.split(",") if item.strip()]
+
     query = session.query(Workbook)
-    if search: query = query.filter(Workbook.name.ilike(f'%{search}%'))
+    if search:
+        query = query.filter(Workbook.name.ilike(f"%{search}%"))
     if project_name:
         project_values = parse_list(project_name)
         if len(project_values) == 1:
             query = query.filter(Workbook.project_name == project_values[0])
         elif project_values:
             query = query.filter(Workbook.project_name.in_(project_values))
-    
+
     # SQL 级别排序
-    if sort == 'viewCount':
-        if order == 'desc':
+    if sort == "viewCount":
+        if order == "desc":
             query = query.order_by(Workbook.view_count.desc())
         else:
             query = query.order_by(Workbook.view_count.asc())
-    elif sort == 'name':
-        if order == 'desc':
+    elif sort == "name":
+        if order == "desc":
             query = query.order_by(Workbook.name.desc())
         else:
             query = query.order_by(Workbook.name.asc())
@@ -120,13 +124,13 @@ def get_workbooks():
         query = query.order_by(Workbook.name.asc())
 
     # 分页参数
-    page = request.args.get('page', 1, type=int)
-    page_size = request.args.get('page_size', 50, type=int)
+    page = request.args.get("page", 1, type=int)
+    page_size = request.args.get("page_size", 50, type=int)
     offset = (page - 1) * page_size
-    
+
     total_count = query.count()
     workbooks = query.limit(page_size).offset(offset).all()
-    
+
     # 预查询统计数据，确保列表与详情一致
     wb_ids = [wb.id for wb in workbooks]
     stats_map = {}
@@ -144,129 +148,164 @@ def get_workbooks():
                  WHERE v.workbook_id = w.id AND f.is_calculated = 0) as used_field_count
             FROM workbooks w
             WHERE w.id IN :wb_ids
-        """).bindparams(bindparam('wb_ids', expanding=True))
-        rows = session.execute(stats_sql, {'wb_ids': list(wb_ids)}).fetchall()
-        stats_map = {row[0]: {'view_count': row[1], 'datasource_count': row[2], 'field_count': row[3]} for row in rows}
+        """).bindparams(bindparam("wb_ids", expanding=True))
+        rows = session.execute(stats_sql, {"wb_ids": list(wb_ids)}).fetchall()
+        stats_map = {
+            row[0]: {
+                "view_count": row[1],
+                "datasource_count": row[2],
+                "field_count": row[3],
+            }
+            for row in rows
+        }
 
     results = []
     for wb in workbooks:
         data = wb.to_dict()
         # 补全统计信息
         wb_stats = stats_map.get(wb.id, {})
-        data['view_count'] = wb_stats.get('view_count', 0)
-        data['datasource_count'] = wb_stats.get('datasource_count', 0)
-        data['field_count'] = wb_stats.get('field_count', 0)
-       
-        data['upstream_datasources'] = [ds.name for ds in wb.datasources]
+        data["view_count"] = wb_stats.get("view_count", 0)
+        data["datasource_count"] = wb_stats.get("datasource_count", 0)
+        data["field_count"] = wb_stats.get("field_count", 0)
+
+        data["upstream_datasources"] = [ds.name for ds in wb.datasources]
         results.append(data)
 
-    # Facets 统计
+    # Facets 统计 - 只应用搜索条件
     facets = {}
-    
-    # project_name facet
-    project_stats = session.execute(text("""
+
+    facet_params = {}
+    facet_where = "WHERE project_name IS NOT NULL AND project_name != ''"
+    if search:
+        facet_params["search"] = f"%{search}%"
+        facet_where = "WHERE name LIKE :search AND project_name IS NOT NULL AND project_name != ''"
+
+    project_stats = session.execute(
+        text(f"""
         SELECT project_name, COUNT(*) as cnt
         FROM workbooks
-        WHERE project_name IS NOT NULL AND project_name != ''
+        {facet_where}
         GROUP BY project_name
         ORDER BY cnt DESC
         LIMIT 20
-    """)).fetchall()
-    facets['project_name'] = {row[0]: row[1] for row in project_stats if row[0]}
-        
-    return jsonify({
-        'items': results,
-        'total': total_count,
-        'page': page,
-        'page_size': page_size,
-        'facets': facets
-    })
+    """),
+        facet_params,
+    ).fetchall()
+    facets["project_name"] = {row[0]: row[1] for row in project_stats if row[0]}
+
+    return jsonify(
+        {
+            "items": results,
+            "total": total_count,
+            "page": page,
+            "page_size": page_size,
+            "facets": facets,
+        }
+    )
 
 
-@api_bp.route('/workbooks/<wb_id>')
+@api_bp.route("/workbooks/<wb_id>")
 def get_workbook_detail(wb_id):
     """获取工作簿详情 - 完整上下文"""
     session = g.db_session
-    
+
     from sqlalchemy.orm import selectinload
-    
+
     # 预加载 views.fields 和 datasources，避免 N+1
-    wb = session.query(Workbook).options(
-        selectinload(Workbook.views).selectinload(View.fields),
-        selectinload(Workbook.datasources)
-    ).filter(Workbook.id == wb_id).first()
-    
+    wb = (
+        session.query(Workbook)
+        .options(
+            selectinload(Workbook.views).selectinload(View.fields),
+            selectinload(Workbook.datasources),
+        )
+        .filter(Workbook.id == wb_id)
+        .first()
+    )
+
     if not wb:
-        return jsonify({'error': 'Not found'}), 404
-    
+        return jsonify({"error": "Not found"}), 404
+
     data = wb.to_dict()
-    
+
     # 关联视图列表
     views_data = []
     for v in wb.views:
-        views_data.append({
-            'id': v.id,
-            'name': v.name,
-            'view_type': v.view_type,
-            'path': v.path,
-            'field_count': len(v.fields) if v.fields else 0
-        })
-    data['views'] = views_data
-    
+        views_data.append(
+            {
+                "id": v.id,
+                "name": v.name,
+                "view_type": v.view_type,
+                "path": v.path,
+                "field_count": len(v.fields) if v.fields else 0,
+            }
+        )
+    data["views"] = views_data
+
     # 上游数据源列表
     datasources_data = []
     seen_ds_ids = set()
     for ds in wb.datasources:
         if ds.id not in seen_ds_ids:
-            datasources_data.append({
-                'id': ds.id,
-                'name': ds.name,
-                'project_name': ds.project_name,
-                'owner': ds.owner,
-                'is_certified': ds.is_certified,
-                'has_extract': ds.has_extract,
-                'is_embedded': ds.is_embedded
-            })
+            datasources_data.append(
+                {
+                    "id": ds.id,
+                    "name": ds.name,
+                    "project_name": ds.project_name,
+                    "owner": ds.owner,
+                    "is_certified": ds.is_certified,
+                    "has_extract": ds.has_extract,
+                    "is_embedded": ds.is_embedded,
+                }
+            )
             seen_ds_ids.add(ds.id)
-    data['datasources'] = datasources_data
-    
+    data["datasources"] = datasources_data
+
     # 上游数据表列表 (通过 Published Datasource + Direct Fields)
     tables_data = []
     seen_table_ids = set()
-    
+
     # 1. 通过 Published Datasource 关联
     for ds in wb.datasources:
         for tbl in ds.tables:
             if tbl.id not in seen_table_ids:
-                tables_data.append({
-                    'id': tbl.id,
-                    'name': tbl.name,
-                    'schema': tbl.schema,
-                    'connection_type': 'published',
-                    'is_embedded': tbl.is_embedded
-                })
+                tables_data.append(
+                    {
+                        "id": tbl.id,
+                        "name": tbl.name,
+                        "schema": tbl.schema,
+                        "connection_type": "published",
+                        "is_embedded": tbl.is_embedded,
+                    }
+                )
                 seen_table_ids.add(tbl.id)
-                
+
     # 2. 通过 Direct Field 关联 (Embedded Connection)
     # 查找属于该工作簿的所有字段，如果有上游列，则关联到表
-    direct_fields = session.query(Field).filter(Field.workbook_id == wb.id).filter(Field.upstream_column_id.isnot(None)).all()
-    
+    direct_fields = (
+        session.query(Field)
+        .filter(Field.workbook_id == wb.id)
+        .filter(Field.upstream_column_id.isnot(None))
+        .all()
+    )
+
     for f in direct_fields:
         if f.upstream_column and f.upstream_column.table:
             tbl = f.upstream_column.table
             if tbl.id not in seen_table_ids:
-                tables_data.append({
-                    'id': tbl.id,
-                    'name': tbl.name,
-                    'schema': tbl.schema,
-                    'connection_type': 'embedded',
-                    'is_embedded': tbl.is_embedded
-                })
+                tables_data.append(
+                    {
+                        "id": tbl.id,
+                        "name": tbl.name,
+                        "schema": tbl.schema,
+                        "connection_type": "embedded",
+                        "is_embedded": tbl.is_embedded,
+                    }
+                )
                 seen_table_ids.add(tbl.id)
-                
-    data['tables'] = tables_data
-    data['datasources'] = datasources_data
-    
+
+    data["tables"] = tables_data
+    data["datasources"] = datasources_data
+
     # 收集所有视图中使用的字段
     fields_set = {}
     metrics_set = {}
@@ -274,42 +313,47 @@ def get_workbook_detail(wb_id):
         for f in v.fields:
             if f.id not in fields_set:
                 f_data = {
-                    'id': f.id,
-                    'name': f.name,
-                    'data_type': f.data_type,
-                    'role': f.role,
-                    'is_calculated': f.is_calculated
+                    "id": f.id,
+                    "name": f.name,
+                    "data_type": f.data_type,
+                    "role": f.role,
+                    "is_calculated": f.is_calculated,
                 }
                 if f.is_calculated:
                     metrics_set[f.id] = f_data
                 else:
                     fields_set[f.id] = f_data
-    
-    data['used_fields'] = list(fields_set.values())
-    data['used_metrics'] = list(metrics_set.values())
-    
+
+    data["used_fields"] = list(fields_set.values())
+    data["used_metrics"] = list(metrics_set.values())
+
     # 统计直接关联的所有字段 (fields.workbook_id = wb.id)
     from sqlalchemy import func
-    total_field_count = session.query(func.count(Field.id)).filter(
-        Field.workbook_id == wb.id, 
-        Field.is_calculated == 0
-    ).scalar() or 0
-    total_metric_count = session.query(func.count(Field.id)).filter(
-        Field.workbook_id == wb.id, 
-        Field.is_calculated == 1
-    ).scalar() or 0
-    
+
+    total_field_count = (
+        session.query(func.count(Field.id))
+        .filter(Field.workbook_id == wb.id, Field.is_calculated == 0)
+        .scalar()
+        or 0
+    )
+    total_metric_count = (
+        session.query(func.count(Field.id))
+        .filter(Field.workbook_id == wb.id, Field.is_calculated == 1)
+        .scalar()
+        or 0
+    )
+
     # 统计信息
-    data['stats'] = {
-        'view_count': len(views_data),
-        'datasource_count': len(datasources_data),
-        'table_count': len(tables_data),
-        'field_count': len(fields_set),  # 被视图使用的字段
-        'metric_count': len(metrics_set),  # 被视图使用的指标
-        'total_field_count': total_field_count,  # 直接关联的所有字段
-        'total_metric_count': total_metric_count  # 直接关联的所有指标
+    data["stats"] = {
+        "view_count": len(views_data),
+        "datasource_count": len(datasources_data),
+        "table_count": len(tables_data),
+        "field_count": len(fields_set),  # 被视图使用的字段
+        "metric_count": len(metrics_set),  # 被视图使用的指标
+        "total_field_count": total_field_count,  # 直接关联的所有字段
+        "total_metric_count": total_metric_count,  # 直接关联的所有指标
     }
-    
+
     # 构建 Tableau Server 在线查看链接
     # 对于工作簿，使用第一个视图的路径来构建可访问的 URL
     first_view_path = None
@@ -318,92 +362,108 @@ def get_workbook_detail(wb_id):
             if v.path:
                 first_view_path = v.path
                 break
-    data['tableau_url'] = build_tableau_url('workbook', path=first_view_path, uri=wb.uri, luid=wb.luid)
-    
+    data["tableau_url"] = build_tableau_url(
+        "workbook", path=first_view_path, uri=wb.uri, luid=wb.luid
+    )
+
     return jsonify(data)
 
 
 # -------------------- 工作簿子资源路由 --------------------
 
-@api_bp.route('/workbooks/<wb_id>/views')
+
+@api_bp.route("/workbooks/<wb_id>/views")
 def get_workbook_views(wb_id):
     """获取工作簿包含的视图列表"""
     session = g.db_session
     wb = session.query(Workbook).filter(Workbook.id == wb_id).first()
     if not wb:
-        return jsonify({'error': 'Not found'}), 404
+        return jsonify({"error": "Not found"}), 404
 
-    views_data = [{
-        'id': v.id, 'name': v.name, 'view_type': v.view_type, 'path': v.path
-    } for v in wb.views]
-    return jsonify({'items': views_data, 'total': len(views_data)})
+    views_data = [
+        {"id": v.id, "name": v.name, "view_type": v.view_type, "path": v.path}
+        for v in wb.views
+    ]
+    return jsonify({"items": views_data, "total": len(views_data)})
 
 
-@api_bp.route('/workbooks/<wb_id>/datasources')
+@api_bp.route("/workbooks/<wb_id>/datasources")
 def get_workbook_datasources(wb_id):
     """获取工作簿使用的数据源列表"""
     session = g.db_session
     wb = session.query(Workbook).filter(Workbook.id == wb_id).first()
     if not wb:
-        return jsonify({'error': 'Not found'}), 404
+        return jsonify({"error": "Not found"}), 404
 
-    ds_data = [{
-        'id': ds.id, 'name': ds.name, 'project_name': ds.project_name, 'owner': ds.owner
-    } for ds in wb.datasources]
-    return jsonify({'items': ds_data, 'total': len(ds_data)})
+    ds_data = [
+        {
+            "id": ds.id,
+            "name": ds.name,
+            "project_name": ds.project_name,
+            "owner": ds.owner,
+        }
+        for ds in wb.datasources
+    ]
+    return jsonify({"items": ds_data, "total": len(ds_data)})
 
 
-@api_bp.route('/workbooks/<wb_id>/tables')
+@api_bp.route("/workbooks/<wb_id>/tables")
 def get_workbook_tables(wb_id):
     """获取工作簿关联的数据表列表"""
     session = g.db_session
     wb = session.query(Workbook).filter(Workbook.id == wb_id).first()
     if not wb:
-        return jsonify({'error': 'Not found'}), 404
+        return jsonify({"error": "Not found"}), 404
 
     seen_table_ids = set()
     tables_data = []
     for ds in wb.datasources:
         for tbl in ds.tables:
             if tbl.id not in seen_table_ids:
-                tables_data.append({
-                    'id': tbl.id, 'name': tbl.name, 'schema': tbl.schema
-                })
+                tables_data.append(
+                    {"id": tbl.id, "name": tbl.name, "schema": tbl.schema}
+                )
                 seen_table_ids.add(tbl.id)
-    return jsonify({'items': tables_data, 'total': len(tables_data)})
+    return jsonify({"items": tables_data, "total": len(tables_data)})
 
 
-@api_bp.route('/workbooks/<wb_id>/fields')
+@api_bp.route("/workbooks/<wb_id>/fields")
 def get_workbook_fields(wb_id):
     """获取工作簿使用的字段列表"""
     session = g.db_session
-    wb = session.query(Workbook).options(
-        selectinload(Workbook.views).selectinload(View.fields)
-    ).filter(Workbook.id == wb_id).first()
+    wb = (
+        session.query(Workbook)
+        .options(selectinload(Workbook.views).selectinload(View.fields))
+        .filter(Workbook.id == wb_id)
+        .first()
+    )
     if not wb:
-        return jsonify({'error': 'Not found'}), 404
+        return jsonify({"error": "Not found"}), 404
 
     fields_set = {}
     for v in wb.views:
         for f in v.fields:
             if f.id not in fields_set and not f.is_calculated:
-                fields_set[f.id] = {'id': f.id, 'name': f.name, 'role': f.role}
-    return jsonify({'items': list(fields_set.values()), 'total': len(fields_set)})
+                fields_set[f.id] = {"id": f.id, "name": f.name, "role": f.role}
+    return jsonify({"items": list(fields_set.values()), "total": len(fields_set)})
 
 
-@api_bp.route('/workbooks/<wb_id>/metrics')
+@api_bp.route("/workbooks/<wb_id>/metrics")
 def get_workbook_metrics(wb_id):
     """获取工作簿使用的指标列表"""
     session = g.db_session
-    wb = session.query(Workbook).options(
-        selectinload(Workbook.views).selectinload(View.fields)
-    ).filter(Workbook.id == wb_id).first()
+    wb = (
+        session.query(Workbook)
+        .options(selectinload(Workbook.views).selectinload(View.fields))
+        .filter(Workbook.id == wb_id)
+        .first()
+    )
     if not wb:
-        return jsonify({'error': 'Not found'}), 404
+        return jsonify({"error": "Not found"}), 404
 
     metrics_set = {}
     for v in wb.views:
         for f in v.fields:
             if f.id not in metrics_set and f.is_calculated:
-                metrics_set[f.id] = {'id': f.id, 'name': f.name, 'formula': f.formula}
-    return jsonify({'items': list(metrics_set.values()), 'total': len(metrics_set)})
+                metrics_set[f.id] = {"id": f.id, "name": f.name, "formula": f.formula}
+    return jsonify({"items": list(metrics_set.values()), "total": len(metrics_set)})

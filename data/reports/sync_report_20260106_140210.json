@@ -1,9 +1,9 @@
 {
-  "report_time": "2026-01-06T14:39:03.635426",
+  "report_time": "2026-01-06T14:02:10.829446",
   "sync_summary": {
-    "start_time": "2026-01-06T14:37:38.549443",
-    "end_time": "2026-01-06T14:39:03.635402",
-    "duration_seconds": 85.085959,
+    "start_time": "2026-01-06T14:00:53.986883",
+    "end_time": "2026-01-06T14:02:10.829423",
+    "duration_seconds": 76.84254,
     "status": "completed"
   },
   "module_stats": {
@@ -20,28 +20,28 @@
       "count": 541
     },
     "datasources": {
-      "count": 192
+      "count": 190
     },
     "workbooks": {
-      "count": 87
+      "count": 86
     },
     "views": {
-      "count": 1777
+      "count": 1691
     },
     "fields": {
-      "count": 22653
+      "count": 22159
     },
     "calculated_fields": {
-      "count": 5332
+      "count": 5161
     },
     "regular_fields": {
-      "count": 17321
+      "count": 16998
     },
     "unique_regular_fields": {
       "count": 7242
     },
     "unique_calculated_fields": {
-      "count": 1736
+      "count": 1735
     }
   },
   "module_lineage_details": {
@@ -57,97 +57,97 @@
       "linked_to_datasource": 194
     },
     "datasources": {
-      "total": 192,
-      "embedded": 126,
+      "total": 190,
+      "embedded": 124,
       "certified": 0,
-      "with_upstream_tables": 172,
-      "with_downstream_workbooks": 158,
+      "with_upstream_tables": 170,
+      "with_downstream_workbooks": 156,
       "with_fields": 116
     },
     "workbooks": {
-      "total": 87,
-      "with_views": 87,
-      "with_datasources": 87,
-      "with_fields": 87
+      "total": 86,
+      "with_views": 86,
+      "with_datasources": 86,
+      "with_fields": 86
     },
     "views": {
-      "total": 1777,
-      "dashboards": 233,
-      "sheets": 1544,
-      "with_field_references": 1704,
-      "sheets_included_in_dashboards": 715
+      "total": 1691,
+      "dashboards": 214,
+      "sheets": 1477,
+      "with_field_references": 1622,
+      "sheets_included_in_dashboards": 662
     },
     "fields": {
-      "total": 22653,
-      "calculated": 5332,
-      "regular": 17321,
-      "with_table": 17576,
-      "with_datasource": 22653,
-      "with_workbook": 17943,
-      "used_in_views": 3301
+      "total": 22159,
+      "calculated": 5161,
+      "regular": 16998,
+      "with_table": 17110,
+      "with_datasource": 22159,
+      "with_workbook": 17449,
+      "used_in_views": 3200
     }
   },
   "lineage_stats": {
     "table_to_datasource": {
-      "total": 415,
+      "total": 409,
       "by_lineage_source": {
-        "api": 415
+        "api": 409
       }
     },
     "datasource_to_workbook": {
-      "total": 211,
+      "total": 207,
       "by_lineage_source": {
-        "api": 211
+        "api": 207
       }
     },
     "field_to_view": {
-      "total": 19792,
+      "total": 18717,
       "by_lineage_source": {
-        "api": 19792
+        "api": 18717
       }
     },
     "dashboard_to_sheet": {
-      "total": 738,
+      "total": 685,
       "by_lineage_source": {
-        "api": 738
+        "api": 685
       }
     },
     "field_dependencies": {
-      "total": 10613
+      "total": 10293
     },
     "calc_field_dependencies": {
-      "total": 10613
+      "total": 10293
     },
     "field_full_lineage": {
-      "total": 324951
+      "total": 299402
     },
     "regular_field_full_lineage": {
-      "total": 139786
+      "total": 126852
     },
     "calc_field_full_lineage": {
-      "total": 5331
+      "total": 5160
     }
   },
   "label_distribution": {
     "fields_by_source": {
-      "api": 22653
+      "api": 22159
     },
     "fields_by_penetration": {
       "failed": 1427,
-      "not_applicable": 21226
+      "not_applicable": 20732
     },
     "regular_fields_by_source": {
-      "null": 17321
+      "null": 16998
     },
     "regular_fields_by_penetration": {
-      "null": 17321
+      "null": 16998
     }
   },
   "type_distribution": {
     "field_roles": {
-      "unknown": 9142,
-      "dimension": 8035,
-      "measure": 5476
+      "unknown": 8821,
+      "dimension": 7949,
+      "measure": 5389
     },
     "field_data_types": {},
     "table_types": {
@@ -155,21 +155,21 @@
       "physical": 41
     },
     "view_types": {
-      "dashboard": 233,
-      "sheet": 1544
+      "dashboard": 214,
+      "sheet": 1477
     }
   },
   "coverage_stats": {
     "field_description": {
-      "total": 22653,
+      "total": 22159,
       "with_description": 3,
-      "without_description": 22650,
+      "without_description": 22156,
       "coverage_rate": 0.0001
     },
     "datasource_description": {
-      "total": 192,
+      "total": 190,
       "with_description": 5,
-      "coverage_rate": 0.026
+      "coverage_rate": 0.0263
     },
     "datasource_certification": {
       "published_total": 66,
@@ -181,89 +181,59 @@
     "hot_views": [
       {
         "name": "提前期分布",
-        "views": 20479,
+        "views": 19172,
         "workbook_id": "7499f780-7f55-7d9f-2a51-e875c7d42a00"
       },
       {
         "name": "到达四象限",
-        "views": 20479,
+        "views": 19172,
         "workbook_id": "7499f780-7f55-7d9f-2a51-e875c7d42a00"
       },
       {
         "name": "每日均价",
-        "views": 20479,
+        "views": 19172,
         "workbook_id": "7499f780-7f55-7d9f-2a51-e875c7d42a00"
       },
       {
         "name": "舱位均价",
-        "views": 20479,
+        "views": 19172,
         "workbook_id": "7499f780-7f55-7d9f-2a51-e875c7d42a00"
       },
       {
         "name": "票价周期 雷达图",
-        "views": 20479,
+        "views": 19172,
         "workbook_id": "7499f780-7f55-7d9f-2a51-e875c7d42a00"
       },
       {
         "name": "始发四象限",
-        "views": 20479,
+        "views": 19172,
         "workbook_id": "7499f780-7f55-7d9f-2a51-e875c7d42a00"
       },
       {
         "name": "票价监控",
-        "views": 20479,
+        "views": 19172,
         "workbook_id": "7499f780-7f55-7d9f-2a51-e875c7d42a00"
       },
       {
         "name": "全周期成长线",
-        "views": 10905,
+        "views": 10206,
         "workbook_id": "8c53c444-2ae8-8781-7660-d69989f01e4b"
       },
       {
         "name": "分月概况",
-        "views": 10905,
+        "views": 10206,
         "workbook_id": "8c53c444-2ae8-8781-7660-d69989f01e4b"
       },
       {
         "name": "分天销售还原",
-        "views": 10905,
+        "views": 10206,
         "workbook_id": "8c53c444-2ae8-8781-7660-d69989f01e4b"
       }
     ],
     "hot_fields": [
       {
         "name": "销售航段张数",
-        "usage": 549,
-        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
-      },
-      {
-        "name": "航班日期",
-        "usage": 365,
-        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
-      },
-      {
-        "name": "分摊票价",
-        "usage": 256,
-        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
-      },
-      {
-        "name": "TICKETNUMBER",
-        "usage": 188,
-        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
-      },
-      {
-        "name": "航程",
-        "usage": 153,
-        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
-      },
-      {
-        "name": "航段",
-        "usage": 138,
-        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
-      },
-      {
-        "name": "航班号",
-        "usage": 124,
+        "usage": 500,
         "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
       },
       {
@@ -272,25 +242,55 @@
         "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
       },
       {
-        "name": "CLAZZ",
-        "usage": 104,
+        "name": "航班日期",
+        "usage": 93,
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
+      },
+      {
+        "name": "销售航段张数",
+        "usage": 83,
         "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
       },
       {
         "name": "出票日期",
-        "usage": 97,
+        "usage": 81,
+        "datasource_id": "4a04e1e4-dd14-e5a5-a271-5691aeccd79e"
+      },
+      {
+        "name": "分摊票价_人民币",
+        "usage": 77,
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
+      },
+      {
+        "name": "航班班次",
+        "usage": 77,
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
+      },
+      {
+        "name": "实际销售_标识",
+        "usage": 72,
+        "datasource_id": "4a04e1e4-dd14-e5a5-a271-5691aeccd79e"
+      },
+      {
+        "name": "CLAZZ",
+        "usage": 69,
+        "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
+      },
+      {
+        "name": "客票状态",
+        "usage": 67,
         "datasource_id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
       }
     ],
     "hot_datasources": [
       {
         "name": "销售航段",
-        "workbook_count": 18,
+        "workbook_count": 17,
         "id": "41057d26-b41a-dad6-5d4b-1bc2e4b44d72"
       },
       {
         "name": "销售票面",
-        "workbook_count": 14,
+        "workbook_count": 13,
         "id": "b1b414eb-f6d8-929e-8e84-932bf07913c6"
       },
       {
@@ -394,18 +394,18 @@
         "total_assets": 6
       },
       {
-        "name": "国际",
-        "id": "project_9b3b28f4",
-        "datasource_count": 0,
-        "workbook_count": 5,
-        "total_assets": 5
-      },
-      {
         "name": "综合",
         "id": "project_88e7de9f",
         "datasource_count": 0,
         "workbook_count": 5,
         "total_assets": 5
+      },
+      {
+        "name": "国际",
+        "id": "project_9b3b28f4",
+        "datasource_count": 0,
+        "workbook_count": 4,
+        "total_assets": 4
       },
       {
         "name": "国内",
@@ -446,137 +446,137 @@
   },
   "deduplication_stats": {
     "regular_fields": {
-      "total_instances": 17321,
+      "total_instances": 16998,
       "unique_fields": 7242,
-      "dedup_ratio": 0.5819,
-      "avg_instances_per_field": 2.39,
+      "dedup_ratio": 0.5739,
+      "avg_instances_per_field": 2.35,
       "by_table_association": {
         "has_table": 6416,
         "no_table": 826
       }
     },
     "calculated_fields": {
-      "total_instances": 5332,
-      "unique_fields": 1736,
-      "dedup_ratio": 0.6744,
-      "avg_instances_per_field": 3.07,
+      "total_instances": 5161,
+      "unique_fields": 1735,
+      "dedup_ratio": 0.6638,
+      "avg_instances_per_field": 2.97,
       "by_complexity": {
-        "simple": 1736
+        "simple": 1735
       }
     }
   },
   "dedup_top_duplicates": {
     "top_regular_fields": [
       {
-        "name": "POD-是否免签",
-        "instances": 80,
-        "id": "fcab2818-c380-46a4-ab6a-22361651bcb0"
+        "name": "POO-免签开始日期",
+        "instances": 76,
+        "id": "f583046d-c452-40fa-824d-2f587a5d4701"
       },
       {
-        "name": "出港-排序",
-        "instances": 80,
-        "id": "f963a679-d7bb-4fc9-9533-146c294d22e3"
-      },
-      {
-        "name": "POD-地区",
-        "instances": 80,
-        "id": "e69e0f47-c62f-4d98-b184-7c227f11d9a5"
-      },
-      {
-        "name": "出港-城市中文名",
-        "instances": 80,
-        "id": "be547d08-0d4d-4929-9245-e56a6a3dde75"
-      },
-      {
-        "name": "进港-城市英文名",
-        "instances": 80,
-        "id": "a30d0d1c-a183-4989-bffd-64481f7eb8fa"
+        "name": "POD-营业部",
+        "instances": 76,
+        "id": "f48f0ca4-04f7-4505-b771-18842bc2a29d"
       },
       {
         "name": "出港-机场代码",
-        "instances": 80,
-        "id": "9c93e281-8ac3-4353-a758-e35cfc500e17"
+        "instances": 76,
+        "id": "e3aa7835-517c-4b16-b222-a628d5d75799"
       },
       {
-        "name": "出港-航协大区",
-        "instances": 80,
-        "id": "96696454-24fc-484e-98ca-8543958f60c1"
+        "name": "进港-航协次区",
+        "instances": 76,
+        "id": "da72cfd7-697d-44be-83b6-370320d672bb"
       },
       {
-        "name": "POD-Continent",
-        "instances": 80,
-        "id": "8e68492f-3eb7-48ea-ac39-12f38237fe95"
+        "name": "POO-省份",
+        "instances": 76,
+        "id": "d426c206-8c3b-484a-97e3-533e449e11e6"
+      },
+      {
+        "name": "POD-国家二字码",
+        "instances": 76,
+        "id": "c5cd6981-eb42-4248-a8a8-97488295e800"
+      },
+      {
+        "name": "POD-C/R",
+        "instances": 76,
+        "id": "ab4756cd-2988-43c7-bbce-1bb77d3b976f"
       },
       {
         "name": "出港-区域",
-        "instances": 80,
-        "id": "8c047cd5-489d-4fa3-a782-b6d043fc7c12"
+        "instances": 76,
+        "id": "a010f939-947f-4f4e-862b-bd026497dfc5"
       },
       {
-        "name": "进港-国家",
-        "instances": 80,
-        "id": "7c46beb6-e229-4fea-a4dc-21cc1a4a4523"
+        "name": "POD-地区",
+        "instances": 76,
+        "id": "8448d4b6-8785-44eb-93e1-9c423d397f74"
+      },
+      {
+        "name": "POD-是否免签",
+        "instances": 76,
+        "id": "70e1de8f-fa77-4e95-bf8c-6d9ed165e39c"
       }
     ],
     "top_calculated_fields": [
       {
         "name": "销售票面张数",
-        "instances": 29,
-        "id": "7577e31a-8598-4bfc-9cd0-57cd912525b6"
+        "instances": 27,
+        "id": "be75d2c3-0b6e-4c21-af48-d1da1ac689ae"
       },
       {
         "name": "INDEX()",
-        "instances": 25,
-        "id": "787e09c3-d18f-4e30-84fd-32876d5de845"
+        "instances": 24,
+        "id": "a7989170-d757-4004-93dc-adb18e23a558"
       },
       {
         "name": "是否国际线",
-        "instances": 18,
-        "id": "cbe3901a-de80-4522-a04d-1527a55827f3"
+        "instances": 17,
+        "id": "c32ad38c-29de-4d43-888e-ee1a03719e39"
       },
       {
         "name": "平均票价-中位数",
-        "instances": 18,
-        "id": "42382785-fad4-408e-914b-a5ea98d6a6e2"
+        "instances": 17,
+        "id": "000be911-30ac-418f-8652-d578ab56d901"
       },
       {
         "name": "平均票价-航段含油",
-        "instances": 16,
-        "id": "6cbaa3fe-9763-42db-aa54-621d2d9c5a1a"
+        "instances": 15,
+        "id": "aae6d657-930c-46eb-bb10-be6bf06c4771"
       },
       {
         "name": "帕累托占比",
-        "instances": 16,
-        "id": "28d86651-676a-4fd3-8254-2b036360aaab"
+        "instances": 15,
+        "id": "0057e722-7ec3-4c54-87d7-fadac27d0ece"
       },
       {
-        "name": "代理人&集团",
-        "instances": 15,
-        "id": "fdf2792a-f6aa-4e6e-baeb-504dc90e9faa"
+        "name": "年龄分布-销售",
+        "instances": 14,
+        "id": "f4b2e62a-98a7-48af-acec-e5e4402b3e0b"
       },
       {
-        "name": "承运航班日期",
-        "instances": 15,
-        "id": "f94d3603-2106-4d78-aadf-9eb2f54efa49"
+        "name": "ASCII([DEPARTURE_AIRPORTCODE])",
+        "instances": 14,
+        "id": "f27a9dbe-4cb3-4c9f-bc0c-4ebed73e37ea"
       },
       {
-        "name": "销量-中位数",
-        "instances": 15,
-        "id": "f8600f74-6189-4ac0-87ed-d41e2f68639e"
+        "name": "航线-融合",
+        "instances": 14,
+        "id": "d83c1c77-921a-4b56-aadc-8dd375db3c6d"
       },
       {
         "name": "分摊含油收入",
-        "instances": 15,
-        "id": "ed30543b-fe8b-4f78-9abd-03f067bee5a0"
+        "instances": 14,
+        "id": "d815374b-885a-4c0b-8107-d713a52ec31a"
       }
     ]
   },
   "unestablished_lineage": {
     "fields_without_datasource": 0,
-    "fields_without_table": 5077,
+    "fields_without_table": 5049,
     "fields_without_workbook": 4710,
-    "fields_without_views": 19352,
+    "fields_without_views": 18959,
     "penetration_failed": 1427,
-    "column_fields_without_upstream": 1309
+    "column_fields_without_upstream": 1284
   }
 }

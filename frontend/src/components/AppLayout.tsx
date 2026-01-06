@@ -15,6 +15,10 @@ import {
     Users,
     Search,
     BookText,
+    RefreshCw,
+    Loader2,
+    CheckCircle2,
+    XCircle,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import DetailDrawer from '@/components/DetailDrawer';
@@ -52,13 +56,32 @@ function NavItem({ href, icon: Icon, label, count }: NavItemProps) {
 }
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
+    const [mounted, setMounted] = useState(false);
     const [stats, setStats] = useState<any>({});
     const [searchQuery, setSearchQuery] = useState('');
+    const [syncState, setSyncState] = useState<{
+        isRunning: boolean;
+        progress: string | null;
+        error: string | null;
+        lastCompleted: string | null;
+        startedAt: string | null;
+    }>({ isRunning: false, progress: null, error: null, lastCompleted: null, startedAt: null });
+    const [showSyncModal, setShowSyncModal] = useState(false);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const router = useRouter();
 
     useEffect(() => {
+        setMounted(true);
         api.getStats().then(setStats).catch(console.error);
+        api.getSyncStatus().then(res => {
+            setSyncState({
+                isRunning: res.current.is_running,
+                progress: res.current.progress,
+                error: res.current.error,
+                lastCompleted: res.current.last_completed,
+                startedAt: res.current.started_at,
+            });
+        }).catch(console.error);
     }, []);
 
     // Keyboard shortcut: Cmd+K to focus search
@@ -81,6 +104,44 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setSearchQuery(e.target.value);
+    };
+
+    const handleSync = async () => {
+        if (syncState.isRunning) return;
+        
+        setShowSyncModal(true);
+        const now = new Date().toISOString();
+        setSyncState(prev => ({ ...prev, isRunning: true, progress: '启动中...', error: null, startedAt: now }));
+        
+        try {
+            await api.triggerSync();
+            
+            const pollStatus = setInterval(async () => {
+                try {
+                    const res = await api.getSyncStatus();
+                    setSyncState({
+                        isRunning: res.current.is_running,
+                        progress: res.current.progress,
+                        error: res.current.error,
+                        lastCompleted: res.current.last_completed,
+                        startedAt: res.current.started_at,
+                    });
+                    
+                    if (!res.current.is_running) {
+                        clearInterval(pollStatus);
+                        api.getStats().then(setStats);
+                    }
+                } catch {
+                    clearInterval(pollStatus);
+                }
+            }, 2000);
+        } catch (err) {
+            setSyncState(prev => ({ 
+                ...prev, 
+                isRunning: false, 
+                error: err instanceof Error ? err.message : '同步失败' 
+            }));
+        }
     };
 
     return (
@@ -148,7 +209,34 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                             />
                         </div>
                     </div>
-                    <span className="text-sm text-gray-500">本地测试版</span>
+                    <div className="flex items-center gap-4">
+                        {mounted && (
+                            <button
+                                onClick={handleSync}
+                                disabled={syncState.isRunning}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                                    syncState.isRunning 
+                                        ? 'bg-indigo-100 text-indigo-600 cursor-not-allowed'
+                                        : syncState.error
+                                        ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                                        : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                                }`}
+                                title={syncState.progress || syncState.error || '点击同步 Tableau 元数据'}
+                            >
+                                {syncState.isRunning ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : syncState.error ? (
+                                    <XCircle className="w-4 h-4" />
+                                ) : syncState.lastCompleted ? (
+                                    <CheckCircle2 className="w-4 h-4" />
+                                ) : (
+                                    <RefreshCw className="w-4 h-4" />
+                                )}
+                                {syncState.isRunning ? '同步中...' : '同步数据'}
+                            </button>
+                        )}
+                        <span className="text-sm text-gray-500">本地测试版</span>
+                    </div>
                 </header>
 
                 {/* Page Content */}
@@ -159,6 +247,87 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
             {/* Global Components */}
             <DetailDrawer />
+
+            {/* Sync Modal */}
+            {mounted && showSyncModal && (
+                <>
+                    <div 
+                        className="fixed inset-0 bg-black/50 z-50"
+                        onClick={() => !syncState.isRunning && setShowSyncModal(false)}
+                    />
+                    <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-2xl shadow-2xl p-6 w-[420px] z-50">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className={`p-3 rounded-xl ${
+                                syncState.isRunning 
+                                    ? 'bg-indigo-100' 
+                                    : syncState.error 
+                                    ? 'bg-red-100' 
+                                    : 'bg-green-100'
+                            }`}>
+                                {syncState.isRunning ? (
+                                    <Loader2 className="w-6 h-6 text-indigo-600 animate-spin" />
+                                ) : syncState.error ? (
+                                    <XCircle className="w-6 h-6 text-red-600" />
+                                ) : (
+                                    <CheckCircle2 className="w-6 h-6 text-green-600" />
+                                )}
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900">数据同步</h3>
+                                <p className="text-sm text-gray-500">
+                                    {syncState.isRunning ? '正在同步中...' : syncState.error ? '同步失败' : '同步完成'}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4 mb-6">
+                            <div className="bg-gray-50 rounded-xl p-4">
+                                <div className="text-xs font-medium text-gray-500 mb-1">当前状态</div>
+                                <div className="text-sm text-gray-900 font-medium">
+                                    {syncState.progress || '等待中...'}
+                                </div>
+                            </div>
+
+                            {syncState.startedAt && (
+                                <div className="bg-gray-50 rounded-xl p-4">
+                                    <div className="text-xs font-medium text-gray-500 mb-1">开始时间</div>
+                                    <div className="text-sm text-gray-900">
+                                        {new Date(syncState.startedAt).toLocaleString('zh-CN')}
+                                    </div>
+                                </div>
+                            )}
+
+                            {syncState.error && (
+                                <div className="bg-red-50 rounded-xl p-4 border border-red-100">
+                                    <div className="text-xs font-medium text-red-600 mb-1">错误信息</div>
+                                    <div className="text-sm text-red-700">{syncState.error}</div>
+                                </div>
+                            )}
+
+                            {!syncState.isRunning && !syncState.error && syncState.lastCompleted && (
+                                <div className="bg-green-50 rounded-xl p-4 border border-green-100">
+                                    <div className="text-xs font-medium text-green-600 mb-1">完成时间</div>
+                                    <div className="text-sm text-green-700">
+                                        {new Date(syncState.lastCompleted).toLocaleString('zh-CN')}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <button
+                            onClick={() => setShowSyncModal(false)}
+                            disabled={syncState.isRunning}
+                            className={`w-full py-3 rounded-xl text-sm font-medium transition-all ${
+                                syncState.isRunning
+                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                    : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                            }`}
+                        >
+                            {syncState.isRunning ? '同步进行中，请稍候...' : '关闭'}
+                        </button>
+                    </div>
+                </>
+            )}
         </div>
     );
 }

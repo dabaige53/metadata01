@@ -254,6 +254,10 @@ export const api = {
     // 血缘桑基图
     getLineageSankey: (limit = 50) => request<SankeyData>(`/lineage/sankey?limit=${limit}`),
 
+    // 同步管理
+    triggerSync: () => request<{ success: boolean; message: string; status: SyncStatus }>('/sync', { method: 'POST' }),
+    getSyncStatus: () => request<{ current: SyncStatus; last_sync: SyncLogInfo | null; history: SyncHistoryItem[] }>('/sync/status'),
+
     // 质量分析
     getDuplicateMetrics: () => request<PaginatedResponse<DuplicateGroup>>('/quality/duplicates'),
 
@@ -330,5 +334,29 @@ export interface SankeyData {
     nodes: SankeyNode[];
     links: SankeyLink[];
     stats: SankeyStats;
+}
+
+export interface SyncStatus {
+    is_running: boolean;
+    started_at: string | null;
+    progress: string | null;
+    error: string | null;
+    last_completed: string | null;
+}
+
+export interface SyncLogInfo {
+    type: string;
+    status: string;
+    started_at: string | null;
+    completed_at: string | null;
+    records: number;
+    error: string | null;
+}
+
+export interface SyncHistoryItem {
+    type: string;
+    status: string;
+    count: number;
+    last_run: string;
 }
 

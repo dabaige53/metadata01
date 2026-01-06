@@ -14,10 +14,11 @@
 - lineage.py: 血缘接口
 - api_legacy.py: 剩余接口（统计、搜索、质量、项目、用户等）
 """
+
 from flask import Blueprint
 
 # 创建主 API 蓝图
-api_bp = Blueprint('api', __name__)
+api_bp = Blueprint("api", __name__)
 
 # 导入公共工具模块
 from . import utils
@@ -32,6 +33,7 @@ from . import fields
 from . import metrics
 from . import glossary
 from . import lineage
+from . import sync
 
 # 导入原 api_legacy.py 中剩余的路由
 from . import api_legacy

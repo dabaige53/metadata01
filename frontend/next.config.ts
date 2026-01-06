@@ -12,12 +12,14 @@ const nextConfig: NextConfig = {
     optimizePackageImports: ['echarts', 'echarts-for-react', 'mermaid', 'lucide-react'],
   },
 
-  // API 代理到 Flask 后端
+  output: 'standalone',
+
   async rewrites() {
+    const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8201';
     return [
       {
         source: '/api/:path*',
-        destination: 'http://127.0.0.1:8201/api/:path*',
+        destination: `${backendUrl}/api/:path*`,
       },
     ];
   },

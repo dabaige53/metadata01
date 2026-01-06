@@ -12,74 +12,41 @@
 
 ## 快速开始
 
-### 1. 环境要求
-
-- Python 3.10+
-- Node.js 18+
-- Tableau Server (需要管理员权限创建 PAT)
-
-### 2. 安装
+### 方式一：Docker 一键部署（推荐）
 
 ```bash
-# 克隆项目
-git clone <repository-url>
-cd metadata
+# 1. 配置环境变量
+cp .env.example .env
+# 编辑 .env 填入 Tableau PAT 凭据
 
-# 创建并激活虚拟环境
+# 2. 启动服务
+docker-compose up -d
+
+# 3. 访问
+open http://localhost:3200
+```
+
+### 方式二：本地开发
+
+```bash
+# 1. 安装依赖
 python3 -m venv venv
-source venv/bin/activate  # macOS/Linux
-# Windows: venv\Scripts\activate
-
-# 安装 Python 依赖
+source venv/bin/activate
 pip install -r requirements.txt
-
-# 安装前端依赖
 cd frontend && npm install && cd ..
-```
 
-### 3. 配置
+# 2. 配置
+cp .env.example .env
+# 编辑 .env 填入 Tableau PAT 凭据
 
-创建 `.env` 文件：
-
-```bash
-TABLEAU_BASE_URL=http://your-tableau-server.com
-TABLEAU_PAT_NAME=your_pat_name
-TABLEAU_PAT_SECRET=your_pat_secret
-```
-
-### 4. 同步数据
-
-```bash
+# 3. 同步数据
 venv/bin/python backend/tableau_sync.py
-```
 
-### 5. 启动服务
-
-```bash
-# 开发模式
+# 4. 启动服务
 venv/bin/python dev.py
 
-# 生产模式
-venv/bin/python deploy.py
-```
-
-访问 http://localhost:3200
-
-## 项目结构
-
-```
-metadata/
-├── frontend/           # Next.js 前端 (React 19 + TypeScript)
-├── backend/            # Flask 后端 API
-│   ├── routes/         # API 路由
-│   ├── services/       # 业务逻辑
-│   └── models.py       # 数据模型
-├── data/               # SQLite 数据库
-├── tests/              # E2E 测试
-├── docs/               # 文档
-├── dev.py              # 开发启动脚本
-├── deploy.py           # 生产部署脚本
-└── requirements.txt    # Python 依赖
+# 5. 访问
+open http://localhost:3200
 ```
 
 ## 技术栈
@@ -90,25 +57,40 @@ metadata/
 | 后端 | Flask 3.0 + SQLAlchemy |
 | 数据库 | SQLite |
 | 数据源 | Tableau Metadata API (GraphQL) |
+| 部署 | Docker Compose |
+
+## 项目结构
+
+```
+metadata/
+├── frontend/           # Next.js 前端
+├── backend/            # Flask 后端 API
+│   ├── routes/         # API 路由
+│   ├── services/       # 业务逻辑
+│   └── models.py       # 数据模型
+├── data/               # SQLite 数据库
+├── docker-compose.yml  # Docker 编排
+├── Dockerfile.backend  # 后端镜像
+├── Dockerfile.frontend # 前端镜像
+└── .env.example        # 环境变量模板
+```
 
 ## 文档
 
-- [快速启动指南](docs/快速启动指南.md) - 详细安装和使用说明
-- [CLAUDE.md](CLAUDE.md) - 完整项目文档（架构、API、开发指南）
+- [CLAUDE.md](CLAUDE.md) - 完整技术文档
+- [AGENTS.md](AGENTS.md) - AI 助手规范
 
 ## 常用命令
 
 ```bash
-# 启动/停止服务
-venv/bin/python dev.py start
-venv/bin/python dev.py stop
+# Docker 部署
+docker-compose up -d        # 启动
+docker-compose down         # 停止
+docker-compose logs -f      # 查看日志
 
-# 数据同步
-venv/bin/python backend/tableau_sync.py
-
-# 运行测试
-node tests/e2e/test-e2e.mjs
-node tests/e2e/test-features.mjs
+# 本地开发
+venv/bin/python dev.py      # 启动开发服务
+venv/bin/python backend/tableau_sync.py  # 同步数据
 ```
 
 ## 许可证

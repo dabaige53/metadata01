@@ -1,0 +1,70 @@
+# Tableau 元数据治理平台 - Docker Compose 配置
+# 一键部署前后端服务
+
+services:
+  # ========== 后端 Flask API ==========
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: metadata-backend
+    restart: unless-stopped
+    ports:
+      - "8201:8201"
+    environment:
+      - FLASK_ENV=production
+      - DEBUG=false
+      - HOST=0.0.0.0
+      - PORT=8201
+      # Tableau 配置 (从 .env 文件读取)
+      - TABLEAU_BASE_URL=${TABLEAU_BASE_URL}
+      - TABLEAU_PAT_NAME=${TABLEAU_PAT_NAME}
+      - TABLEAU_PAT_SECRET=${TABLEAU_PAT_SECRET}
+    volumes:
+      # 数据持久化
+      - ./data:/app/data
+      # 日志持久化
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8201/api/stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - metadata-network
+
+  # ========== 前端 Next.js ==========
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        - BACKEND_URL=http://backend:8201
+    container_name: metadata-frontend
+    restart: unless-stopped
+    ports:
+      - "3200:3200"
+    environment:
+      - NODE_ENV=production
+      - PORT=3200
+      - BACKEND_URL=http://backend:8201
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3200/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - metadata-network
+
+networks:
+  metadata-network:
+    driver: bridge
+
+volumes:
+  metadata-data:
+    driver: local
