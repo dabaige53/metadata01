@@ -70,21 +70,34 @@ def get_metrics_unused():
 
 @api_bp.route("/metrics/governance/complex")
 def get_metrics_complex():
-    """获取高复杂度指标分析（基于全量数据，公式长度 > 200 或复杂度 > 5）"""
+    """获取高复杂度指标分析（支持分页，公式长度 > 200 或复杂度 > 5）"""
     session = g.db_session
     from sqlalchemy import text
 
-    # 直接从 calculated_fields 表查询（新的四表架构）
-    sql = """
+    page = request.args.get("page", 1, type=int)
+    page_size = request.args.get("page_size", 20, type=int)
+    page_size = min(page_size, 100)
+
+    base_sql = """
         SELECT 
             cf.id, cf.name, cf.datasource_id, d.name as datasource_name,
             cf.formula, cf.complexity_score, cf.reference_count
         FROM calculated_fields cf
         LEFT JOIN datasources d ON cf.datasource_id = d.id
         WHERE LENGTH(cf.formula) > 200 OR cf.complexity_score > 5
-        ORDER BY LENGTH(cf.formula) DESC
     """
-    rows = session.execute(text(sql)).fetchall()
+
+    count_sql = f"SELECT COUNT(*) FROM ({base_sql}) sub"
+    total_count = session.execute(text(count_sql)).scalar() or 0
+    total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 0
+
+    offset = (page - 1) * page_size
+    data_sql = (
+        f"{base_sql} ORDER BY LENGTH(cf.formula) DESC LIMIT :limit OFFSET :offset"
+    )
+    rows = session.execute(
+        text(data_sql), {"limit": page_size, "offset": offset}
+    ).fetchall()
 
     items = []
     for row in rows:
@@ -110,18 +123,13 @@ def get_metrics_complex():
             }
         )
 
-    # 统计
-    super_complex = len([x for x in items if x["formula_length"] >= 500])
-    avg_length = (
-        round(sum(x["formula_length"] for x in items) / len(items)) if items else 0
-    )
-
     return jsonify(
         {
-            "total_count": len(items),
-            "super_complex_count": super_complex,
-            "avg_formula_length": avg_length,
+            "total_count": total_count,
             "items": items,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
         }
     )
 
@@ -763,7 +771,7 @@ def get_metrics_catalog_complex():
 @api_bp.route("/metrics/catalog/unused")
 def get_metrics_catalog_unused():
     """
-    获取未使用指标分析 - 聚合视角
+    获取未使用指标分析 - 聚合视角（支持分页）
 
     聚合规则：按 (name + formula_hash) 分组
     筛选条件：total_references = 0 的指标
@@ -771,9 +779,11 @@ def get_metrics_catalog_unused():
     session = g.db_session
     from sqlalchemy import text
 
-    # 直接从 calculated_fields 表查询（新的四表架构）
-    # 修正：使用 unique_id 进行聚合，区分不同数据源
-    sql = """
+    page = request.args.get("page", 1, type=int)
+    page_size = request.args.get("page_size", 20, type=int)
+    page_size = min(page_size, 100)
+
+    base_sql = """
         SELECT 
             MIN(cf.id) as representative_id,
             cf.unique_id,
@@ -797,9 +807,19 @@ def get_metrics_catalog_unused():
         GROUP BY cf.unique_id
         HAVING COALESCE(SUM(cf.reference_count), 0) = 0
            AND COALESCE(SUM(cf.usage_count), 0) = 0
-        ORDER BY instance_count DESC, name
     """
-    rows = session.execute(text(sql)).fetchall()
+
+    count_sql = f"SELECT COUNT(*) FROM ({base_sql}) sub"
+    total_count = session.execute(text(count_sql)).scalar() or 0
+    total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 0
+
+    offset = (page - 1) * page_size
+    data_sql = (
+        f"{base_sql} ORDER BY instance_count DESC, name LIMIT :limit OFFSET :offset"
+    )
+    rows = session.execute(
+        text(data_sql), {"limit": page_size, "offset": offset}
+    ).fetchall()
 
     items = []
     for row in rows:
@@ -822,7 +842,9 @@ def get_metrics_catalog_unused():
                 "representative_id": row.representative_id,
                 "unique_id": row.unique_id,
                 "name": row.name,
-                "formula": row.formula,
+                "formula": row.formula[:200] + "..."
+                if row.formula and len(row.formula) > 200
+                else row.formula,
                 "formula_hash": row.formula_hash,
                 "role": row.role,
                 "data_type": row.data_type,
@@ -838,7 +860,15 @@ def get_metrics_catalog_unused():
             }
         )
 
-    return jsonify({"total_count": len(items), "items": items})
+    return jsonify(
+        {
+            "total_count": total_count,
+            "items": items,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+        }
+    )
 
 
 # -------------------- 指标列表 API --------------------

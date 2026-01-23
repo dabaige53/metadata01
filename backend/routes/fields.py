@@ -461,13 +461,17 @@ def get_fields_catalog():
 @api_bp.route("/fields/catalog/no-description")
 def get_fields_catalog_no_description():
     """
-    获取无描述字段分析 - 聚合视角
+    获取无描述字段分析 - 聚合视角（支持分页）
     基于 unique_regular_fields 表
     """
     session = g.db_session
     from sqlalchemy import text
 
-    sql = """
+    page = request.args.get("page", 1, type=int)
+    page_size = request.args.get("page_size", 20, type=int)
+    page_size = min(page_size, 100)
+
+    base_sql = """
         WITH field_stats AS (
             SELECT 
                 rf.unique_id,
@@ -514,9 +518,17 @@ def get_fields_catalog_no_description():
         LEFT JOIN field_stats fs ON urf.id = fs.unique_id
         LEFT JOIN field_lineage fl ON urf.id = fl.unique_id
         WHERE (urf.description IS NULL OR urf.description = '')
-        ORDER BY fs.total_usage DESC
     """
-    rows = session.execute(text(sql)).fetchall()
+
+    count_sql = f"SELECT COUNT(*) FROM ({base_sql}) sub"
+    total_count = session.execute(text(count_sql)).scalar() or 0
+    total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 0
+
+    offset = (page - 1) * page_size
+    data_sql = f"{base_sql} ORDER BY total_usage DESC LIMIT :limit OFFSET :offset"
+    rows = session.execute(
+        text(data_sql), {"limit": page_size, "offset": offset}
+    ).fetchall()
 
     items = []
     for row in rows:
@@ -546,19 +558,31 @@ def get_fields_catalog_no_description():
             }
         )
 
-    return jsonify({"total_count": len(items), "items": items})
+    return jsonify(
+        {
+            "total_count": total_count,
+            "items": items,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+        }
+    )
 
 
 @api_bp.route("/fields/catalog/orphan")
 def get_fields_catalog_orphan():
     """
-    获取孤立字段分析 - 聚合视角
+    获取孤立字段分析 - 聚合视角（支持分页）
     基于 unique_regular_fields 表，筛选在任何数据源下都无使用的字段
     """
     session = g.db_session
     from sqlalchemy import text
 
-    sql = """
+    page = request.args.get("page", 1, type=int)
+    page_size = request.args.get("page_size", 20, type=int)
+    page_size = min(page_size, 100)
+
+    base_sql = """
         WITH field_stats AS (
             SELECT 
                 rf.unique_id,
@@ -605,9 +629,17 @@ def get_fields_catalog_orphan():
         LEFT JOIN field_stats fs ON urf.id = fs.unique_id
         LEFT JOIN field_lineage fl ON urf.id = fl.unique_id
         WHERE COALESCE(fs.total_usage, 0) = 0
-        ORDER BY fs.instance_count DESC
     """
-    rows = session.execute(text(sql)).fetchall()
+
+    count_sql = f"SELECT COUNT(*) FROM ({base_sql}) sub"
+    total_count = session.execute(text(count_sql)).scalar() or 0
+    total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 0
+
+    offset = (page - 1) * page_size
+    data_sql = f"{base_sql} ORDER BY instance_count DESC LIMIT :limit OFFSET :offset"
+    rows = session.execute(
+        text(data_sql), {"limit": page_size, "offset": offset}
+    ).fetchall()
 
     items = []
     for row in rows:
@@ -636,19 +668,31 @@ def get_fields_catalog_orphan():
             }
         )
 
-    return jsonify({"total_count": len(items), "items": items})
+    return jsonify(
+        {
+            "total_count": total_count,
+            "items": items,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+        }
+    )
 
 
 @api_bp.route("/fields/catalog/hot")
 def get_fields_catalog_hot():
     """
-    获取热门字段排行榜 - 聚合视角
+    获取热门字段排行榜 - 聚合视角（支持分页）
     基于 unique_regular_fields 表
     """
     session = g.db_session
     from sqlalchemy import text
 
-    sql = """
+    page = request.args.get("page", 1, type=int)
+    page_size = request.args.get("page_size", 20, type=int)
+    page_size = min(page_size, 100)
+
+    base_sql = """
         WITH field_stats AS (
             SELECT 
                 rf.unique_id,
@@ -695,11 +739,18 @@ def get_fields_catalog_hot():
         LEFT JOIN field_stats fs ON urf.id = fs.unique_id
         LEFT JOIN field_lineage fl ON urf.id = fl.unique_id
         WHERE COALESCE(fs.total_usage, 0) > 20
-        ORDER BY fs.total_usage DESC
     """
-    rows = session.execute(text(sql)).fetchall()
 
-    # 构建结果
+    count_sql = f"SELECT COUNT(*) FROM ({base_sql}) sub"
+    total_count = session.execute(text(count_sql)).scalar() or 0
+    total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 0
+
+    offset = (page - 1) * page_size
+    data_sql = f"{base_sql} ORDER BY total_usage DESC LIMIT :limit OFFSET :offset"
+    rows = session.execute(
+        text(data_sql), {"limit": page_size, "offset": offset}
+    ).fetchall()
+
     items = []
     for row in rows:
         ds_ids = row.datasource_ids.split(",") if row.datasource_ids else []
@@ -709,7 +760,6 @@ def get_fields_catalog_hot():
             for i in range(len(ds_names))
         ]
 
-        # 计算热度等级
         usage = row.total_usage
         if usage >= 200:
             heat_level = "超热门"
@@ -739,7 +789,15 @@ def get_fields_catalog_hot():
             }
         )
 
-    return jsonify({"total_count": len(items), "items": items})
+    return jsonify(
+        {
+            "total_count": total_count,
+            "items": items,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+        }
+    )
 
 
 # -------------------- 字段列表 API --------------------

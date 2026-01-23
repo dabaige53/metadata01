@@ -33,20 +33,32 @@ const SORT_OPTIONS: SortConfig[] = [
 export default function UnusedMetricsAnalysis({ onCountUpdate, onSortUpdate }: UnusedMetricsAnalysisProps) {
     const [allData, setAllData] = useState<MetricCatalogItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const [totalCount, setTotalCount] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(20);
     const { openDrawer } = useDrawer();
 
+    const loadData = async (page: number, size: number) => {
+        setLoading(true);
+        try {
+            const res = await fetch(`/api/metrics/catalog/unused?page=${page}&page_size=${size}`);
+            const result = await res.json();
+            setAllData(result.items || []);
+            setTotalCount(result.total_count || 0);
+            setTotalPages(result.total_pages || 0);
+            onCountUpdate?.(result.total_count || 0);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        fetch('/api/metrics/catalog/unused')
-            .then(res => res.json())
-            .then(result => {
-                const items = result.items || [];
-                setAllData(items);
-                onCountUpdate?.(items.length);
-            })
-            .catch(console.error)
-            .finally(() => setLoading(false));
+        loadData(currentPage, pageSize);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // 只在挂载时获取数据
+    }, [currentPage, pageSize]);
 
     const {
         displayData,
@@ -56,9 +68,6 @@ export default function UnusedMetricsAnalysis({ onCountUpdate, onSortUpdate }: U
         handleClearAllFilters,
         sortState,
         handleSortChange,
-        paginationState,
-        handlePageChange,
-        handlePageSizeChange,
         searchTerm,
         setSearchTerm,
         handleSearch,
@@ -68,7 +77,7 @@ export default function UnusedMetricsAnalysis({ onCountUpdate, onSortUpdate }: U
         data: allData,
         facetFields: ['role'],
         searchFields: ['name', 'formula'],
-        defaultPageSize: 20
+        defaultPageSize: 1000 // 禁用客户端分页，使用服务端分页
     });
 
     // 同步排序状态给父组件
@@ -110,7 +119,7 @@ export default function UnusedMetricsAnalysis({ onCountUpdate, onSortUpdate }: U
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-gray-500">
                     <div className="text-xs text-gray-500 uppercase mb-1">未使用规范指标</div>
-                    <div className="text-2xl font-bold text-gray-600">{allData.length.toLocaleString()}</div>
+                    <div className="text-2xl font-bold text-gray-600">{totalCount.toLocaleString()}</div>
                     <div className="text-xs text-gray-400 mt-1">公式聚合后全局引用次数为 0</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-purple-500">
@@ -244,12 +253,20 @@ export default function UnusedMetricsAnalysis({ onCountUpdate, onSortUpdate }: U
             </div>
 
             {/* 分页控制 */}
-            {allData.length > paginationState.pageSize && (
+            {totalCount > pageSize && (
                 <div className="mt-6">
                     <Pagination
-                        pagination={paginationState}
-                        onPageChange={handlePageChange}
-                        onPageSizeChange={handlePageSizeChange}
+                        pagination={{
+                            page: currentPage,
+                            pageSize,
+                            total: totalCount,
+                            totalPages
+                        }}
+                        onPageChange={setCurrentPage}
+                        onPageSizeChange={(size) => {
+                            setPageSize(size);
+                            setCurrentPage(1);
+                        }}
                     />
                 </div>
             )}

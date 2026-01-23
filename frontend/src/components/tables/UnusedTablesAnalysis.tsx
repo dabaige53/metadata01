@@ -45,22 +45,38 @@ interface UnusedTablesAnalysisProps {
 export default function UnusedTablesAnalysis({ onCountUpdate, onSortUpdate }: UnusedTablesAnalysisProps) {
     const [allData, setAllData] = useState<TableItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const [unusedCount, setUnusedCount] = useState(0);
+    const [wideCount, setWideCount] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(20);
     const { openDrawer } = useDrawer();
 
+    const loadData = async (page: number, size: number) => {
+        setLoading(true);
+        try {
+            const [unusedResult, wideResult] = await Promise.all([
+                fetch(`/api/tables/governance/unused?page=${page}&page_size=${size}`).then(res => res.json()),
+                fetch('/api/tables/governance/wide').then(res => res.json())
+            ]);
+            const unused = (unusedResult.items || []).map((t: any) => ({ ...t, issueType: 'unused' }));
+            const wide = (wideResult.items || []).map((t: any) => ({ ...t, issueType: 'wide' }));
+            setAllData([...unused, ...wide]);
+            setUnusedCount(unusedResult.total_count || 0);
+            setWideCount(wide.length);
+            setTotalPages(unusedResult.total_pages || 0);
+            onCountUpdate?.((unusedResult.total_count || 0) + wide.length);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        // 并行获取未使用表和宽表数据
-        Promise.all([
-            fetch('/api/tables/governance/unused').then(res => res.json()),
-            fetch('/api/tables/governance/wide').then(res => res.json())
-        ])
-            .then(([unusedResult, wideResult]) => {
-                const unused = (unusedResult.items || []).map((t: any) => ({ ...t, issueType: 'unused' }));
-                const wide = (wideResult.items || []).map((t: any) => ({ ...t, issueType: 'wide' }));
-                setAllData([...unused, ...wide]);
-            })
-            .catch(console.error)
-            .finally(() => setLoading(false));
-    }, []);
+        loadData(currentPage, pageSize);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentPage, pageSize]);
 
     const {
         displayData,
@@ -70,9 +86,6 @@ export default function UnusedTablesAnalysis({ onCountUpdate, onSortUpdate }: Un
         handleClearAllFilters,
         sortState,
         handleSortChange,
-        paginationState,
-        handlePageChange,
-        handlePageSizeChange,
         searchTerm,
         setSearchTerm
     } = useDataTable({
@@ -80,7 +93,7 @@ export default function UnusedTablesAnalysis({ onCountUpdate, onSortUpdate }: Un
         data: allData,
         facetFields: ['issueType', 'schema'],
         searchFields: ['name', 'schema', 'databaseName'],
-        defaultPageSize: 20
+        defaultPageSize: 1000 // 禁用客户端分页，使用服务端分页
     });
 
     // 同步排序状态给父组件
@@ -93,12 +106,6 @@ export default function UnusedTablesAnalysis({ onCountUpdate, onSortUpdate }: Un
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sortState]);
 
-    // 同步统计数量给父组件
-    useEffect(() => {
-        onCountUpdate?.(paginationState.total);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [paginationState.total]); // 不包含 onCountUpdate，避免匿名回调引起无限循环
-
     if (loading) {
         return (
             <div className="flex justify-center py-20">
@@ -107,7 +114,7 @@ export default function UnusedTablesAnalysis({ onCountUpdate, onSortUpdate }: Un
         );
     }
 
-    if (allData.length === 0) {
+    if (allData.length === 0 && !loading) {
         return (
             <div className="bg-green-50 border border-green-100 rounded-lg p-12 text-center">
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -118,9 +125,6 @@ export default function UnusedTablesAnalysis({ onCountUpdate, onSortUpdate }: Un
             </div>
         );
     }
-
-    const unusedCount = allData.filter(t => t.issueType === 'unused').length;
-    const wideCount = allData.filter(t => t.issueType === 'wide').length;
 
     return (
         <div className="space-y-6">
@@ -220,12 +224,20 @@ export default function UnusedTablesAnalysis({ onCountUpdate, onSortUpdate }: Un
                 </div>
 
                 {/* 分页 */}
-                {allData.length > paginationState.pageSize && (
+                {unusedCount > pageSize && (
                     <div className="p-4 border-t border-gray-50 bg-gray-50/30">
                         <Pagination
-                            pagination={paginationState}
-                            onPageChange={handlePageChange}
-                            onPageSizeChange={handlePageSizeChange}
+                            pagination={{
+                                page: currentPage,
+                                pageSize,
+                                total: unusedCount,
+                                totalPages
+                            }}
+                            onPageChange={setCurrentPage}
+                            onPageSizeChange={(size) => {
+                                setPageSize(size);
+                                setCurrentPage(1);
+                            }}
                         />
                     </div>
                 )}

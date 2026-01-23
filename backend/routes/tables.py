@@ -16,10 +16,14 @@ from ..models import DBTable, DBColumn, Field, Database
 
 @api_bp.route("/tables/governance/unused")
 def get_tables_unused():
-    """获取未使用数据表分析（基于全量数据，未被任何数据源引用）"""
+    """获取未使用数据表分析（支持分页，未被任何数据源引用）"""
     session = g.db_session
 
-    sql = """
+    page = request.args.get("page", 1, type=int)
+    page_size = request.args.get("page_size", 20, type=int)
+    page_size = min(page_size, 100)
+
+    base_sql = """
         SELECT 
             t.id, t.name, t.schema, t.database_id,
             db.name as database_name,
@@ -28,9 +32,17 @@ def get_tables_unused():
         LEFT JOIN databases db ON t.database_id = db.id
         LEFT JOIN table_to_datasource td ON t.id = td.table_id
         WHERE td.datasource_id IS NULL
-        ORDER BY t.name
     """
-    rows = session.execute(text(sql)).fetchall()
+
+    count_sql = f"SELECT COUNT(*) FROM ({base_sql}) sub"
+    total_count = session.execute(text(count_sql)).scalar() or 0
+    total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 0
+
+    offset = (page - 1) * page_size
+    data_sql = f"{base_sql} ORDER BY t.name LIMIT :limit OFFSET :offset"
+    rows = session.execute(
+        text(data_sql), {"limit": page_size, "offset": offset}
+    ).fetchall()
 
     items = [
         {
@@ -43,7 +55,15 @@ def get_tables_unused():
         for row in rows
     ]
 
-    return jsonify({"total_count": len(items), "items": items})
+    return jsonify(
+        {
+            "total_count": total_count,
+            "items": items,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+        }
+    )
 
 
 @api_bp.route("/tables/governance/wide")

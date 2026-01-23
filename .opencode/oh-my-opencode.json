@@ -11,19 +11,19 @@
   },
   "agents": {
     "Sisyphus": {
-      "model": "quotio/gemini-claude-opus-4-5-thinking",
+      "model": "proxypal/gemini-claude-opus-4-5-thinking",
       "prompt_append": "你必须使用简体中文进行、思考、回复和交流。使用产品经理语言进行回复"
     },
     "Prometheus (Planner)": {
-      "model": "quotio/gemini-claude-opus-4-5-thinking",
+      "model": "proxypal/gemini-claude-opus-4-5-thinking",
       "prompt_append": "你必须使用简体中文进行、思考、回复和交流。使用产品经理语言进行回复"
     },
     "Atlas": {
-      "model": "quotio/gemini-claude-opus-4-5-thinking",
+      "model": "proxypal/gemini-claude-opus-4-5-thinking",
       "prompt_append": "你必须使用简体中文进行、思考、回复和交流。使用产品经理语言进行回复"
     },
     "Sisyphus-Junior": {
-      "model": "quotio/gemini-claude-sonnet-4-5",
+      "model": "proxypal/gemini-claude-sonnet-4-5",
       "prompt_append": "你必须使用简体中文进行、思考、回复和交流。"
     },
     "Metis (Plan Consultant)": {
@@ -39,7 +39,7 @@
       "prompt_append": "你必须使用简体中文进行、思考、回复和交流。执行时间过长时，请每1分钟回复一次"
     },
     "librarian": {
-      "model": "quotio/gemini-claude-sonnet-4-5",
+      "model": "proxypal/gemini-claude-sonnet-4-5",
       "prompt_append": "你必须使用简体中文进行、思考、回复和交流。"
     },
     "explore": {
@@ -74,14 +74,14 @@
       "prompt_append": "你必须使用简体中文进行、思考、回复和交流。1. **参数名**：必须使用 `todos` 数组 。**固定字段**：每个任务对象仅包含 `id`, `content`, `priority`, `status`（严禁使用 name 或 description）。**全量覆盖**：每次调用 `todowrite` 必须包含所有任务项（含已完成的），否则未包含的任务会被删除。"
     },
     "most-capable": {
-      "model": "quotio/gemini-claude-opus-4-5-thinking"
+      "model": "proxypal/gemini-claude-opus-4-5-thinking"
     },
     "writing": {
       "model": "google/antigravity-gemini-3-flash",
       "prompt_append": "你必须使用简体中文进行、思考、回复和交流。1. **参数名**：必须使用 `todos` 数组 。**固定字段**：每个任务对象仅包含 `id`, `content`, `priority`, `status`（严禁使用 name 或 description）。**全量覆盖**：每次调用 `todowrite` 必须包含所有任务项（含已完成的），否则未包含的任务会被删除。"
     },
     "general": {
-      "model": "quotio/gemini-claude-sonnet-4-5-thinking"
+      "model": "proxypal/gemini-claude-sonnet-4-5-thinking"
     }
   }
 }

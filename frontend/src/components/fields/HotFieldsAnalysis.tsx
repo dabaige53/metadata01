@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { FieldCatalogItem } from '../cards/FieldCatalogCard';
 import FacetFilterBar from '../data-table/FacetFilterBar';
+import Pagination from '../data-table/Pagination';
 import { useDataTable, SortState, SortConfig } from '@/hooks/useDataTable';
 
 // 定义排序选项
@@ -36,18 +37,33 @@ export default function HotFieldsAnalysis({ onCountUpdate, onSortUpdate }: HotFi
     const [allData, setAllData] = useState<FieldCatalogItem[]>([]);
     const [maxUsage, setMaxUsage] = useState(0);
     const [loading, setLoading] = useState(true);
+    const [totalCount, setTotalCount] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(20);
     const { openDrawer } = useDrawer();
 
+    const loadData = async (page: number, size: number) => {
+        setLoading(true);
+        try {
+            const res = await fetch(`/api/fields/catalog/hot?page=${page}&page_size=${size}`);
+            const result = await res.json();
+            setAllData(result.items || []);
+            setMaxUsage(result.max_usage || 0);
+            setTotalCount(result.total_count || 0);
+            setTotalPages(result.total_pages || 0);
+            onCountUpdate?.(result.total_count || 0);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        fetch('/api/fields/catalog/hot')
-            .then(res => res.json())
-            .then(result => {
-                setAllData(result.items || []);
-                setMaxUsage(result.max_usage || 0);
-            })
-            .catch(console.error)
-            .finally(() => setLoading(false));
-    }, []);
+        loadData(currentPage, pageSize);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentPage, pageSize]);
 
     const {
         displayData,
@@ -57,7 +73,6 @@ export default function HotFieldsAnalysis({ onCountUpdate, onSortUpdate }: HotFi
         handleClearAllFilters,
         sortState,
         handleSortChange,
-        paginationState,
         searchTerm,
         setSearchTerm,
         handleSearch,
@@ -67,7 +82,7 @@ export default function HotFieldsAnalysis({ onCountUpdate, onSortUpdate }: HotFi
         data: allData,
         facetFields: ['role'],
         searchFields: ['canonical_name', 'table_name'],
-        defaultPageSize: 20
+        defaultPageSize: 1000 // 禁用客户端分页，使用服务端分页
     });
 
     // 同步排序状态给父组件
@@ -79,12 +94,6 @@ export default function HotFieldsAnalysis({ onCountUpdate, onSortUpdate }: HotFi
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sortState]);
-
-    // 同步统计数量给父组件
-    useEffect(() => {
-        onCountUpdate?.(paginationState.total);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [paginationState.total]); // 不包含 onCountUpdate，避免匿名回调引起无限循环
 
     // 统计多数据源字段数量
     const multiDatasourceCount = allData.filter(f => f.datasource_count > 1).length;
@@ -115,7 +124,7 @@ export default function HotFieldsAnalysis({ onCountUpdate, onSortUpdate }: HotFi
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-orange-500">
                     <div className="text-xs text-gray-500 uppercase mb-1">热门规范字段</div>
-                    <div className="text-2xl font-bold text-orange-600">{allData.length}</div>
+                    <div className="text-2xl font-bold text-orange-600">{totalCount}</div>
                     <div className="text-xs text-gray-400 mt-1">公式/名称聚合后引用 &gt; 20次</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-red-500">
@@ -264,6 +273,25 @@ export default function HotFieldsAnalysis({ onCountUpdate, onSortUpdate }: HotFi
                     })}
                 </div>
             </div>
+
+            {/* 分页控制 */}
+            {totalCount > pageSize && (
+                <div className="mt-6">
+                    <Pagination
+                        pagination={{
+                            page: currentPage,
+                            pageSize,
+                            total: totalCount,
+                            totalPages
+                        }}
+                        onPageChange={setCurrentPage}
+                        onPageSizeChange={(size) => {
+                            setPageSize(size);
+                            setCurrentPage(1);
+                        }}
+                    />
+                </div>
+            )}
         </div>
     );
 }

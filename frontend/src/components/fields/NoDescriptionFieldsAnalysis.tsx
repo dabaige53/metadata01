@@ -33,18 +33,33 @@ interface NoDescriptionFieldsAnalysisProps {
 
 export default function NoDescriptionFieldsAnalysis({ onCountUpdate, onSortUpdate }: NoDescriptionFieldsAnalysisProps) {
     const [allData, setAllData] = useState<FieldCatalogItem[]>([]);
+    const [totalCount, setTotalCount] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(20);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
 
+    const loadData = async (page: number, size: number) => {
+        setLoading(true);
+        try {
+            const res = await fetch(`/api/fields/catalog/no-description?page=${page}&page_size=${size}`);
+            const result = await res.json();
+            setAllData(result.items || []);
+            setTotalCount(result.total_count || 0);
+            setTotalPages(result.total_pages || 0);
+            onCountUpdate?.(result.total_count || 0);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        fetch('/api/fields/catalog/no-description')
-            .then(res => res.json())
-            .then(result => {
-                setAllData(result.items || []);
-            })
-            .catch(console.error)
-            .finally(() => setLoading(false));
-    }, []);
+        loadData(currentPage, pageSize);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentPage, pageSize]);
 
     const {
         displayData,
@@ -54,9 +69,6 @@ export default function NoDescriptionFieldsAnalysis({ onCountUpdate, onSortUpdat
         handleClearAllFilters,
         sortState,
         handleSortChange,
-        paginationState,
-        handlePageChange,
-        handlePageSizeChange,
         searchTerm,
         setSearchTerm,
         handleSearch,
@@ -66,7 +78,7 @@ export default function NoDescriptionFieldsAnalysis({ onCountUpdate, onSortUpdat
         data: allData,
         facetFields: ['role'],
         searchFields: ['canonical_name', 'table_name'],
-        defaultPageSize: 20
+        defaultPageSize: 1000
     });
 
     // 同步排序状态给父组件
@@ -78,15 +90,6 @@ export default function NoDescriptionFieldsAnalysis({ onCountUpdate, onSortUpdat
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sortState]);
-
-    // 同步统计数量给父组件
-    useEffect(() => {
-        onCountUpdate?.(paginationState.total);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [paginationState.total]); // 不包含 onCountUpdate，避免匿名回调引起无限循环
-
-    // 统计多数据源字段数量
-    const multiDatasourceCount = allData.filter(f => f.datasource_count > 1).length;
 
     if (loading) {
         return (
@@ -108,13 +111,15 @@ export default function NoDescriptionFieldsAnalysis({ onCountUpdate, onSortUpdat
         );
     }
 
+    const multiDatasourceCount = allData.filter(f => f.datasource_count > 1).length;
+
     return (
         <div className="space-y-6">
             {/* 概览统计报告 */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
                     <div className="text-xs text-gray-500 uppercase mb-1">无描述规范字段</div>
-                    <div className="text-2xl font-bold text-gray-800">{allData.length.toLocaleString()}</div>
+                    <div className="text-2xl font-bold text-gray-800">{totalCount.toLocaleString()}</div>
                     <div className="text-xs text-gray-400 mt-1">公式/名称聚合后的规范资产</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-amber-500">
@@ -259,12 +264,20 @@ export default function NoDescriptionFieldsAnalysis({ onCountUpdate, onSortUpdat
             </div>
 
             {/* 分页控制 */}
-            {allData.length > paginationState.pageSize && (
+            {totalCount > pageSize && (
                 <div className="mt-6">
                     <Pagination
-                        pagination={paginationState}
-                        onPageChange={handlePageChange}
-                        onPageSizeChange={handlePageSizeChange}
+                        pagination={{
+                            page: currentPage,
+                            pageSize,
+                            total: totalCount,
+                            totalPages
+                        }}
+                        onPageChange={setCurrentPage}
+                        onPageSizeChange={(size) => {
+                            setPageSize(size);
+                            setCurrentPage(1);
+                        }}
                     />
                 </div>
             )}
