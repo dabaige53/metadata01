@@ -38,9 +38,11 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 # 设置生产环境
+# HOSTNAME=0.0.0.0 解决局域网访问慢的问题 (Next.js 13.4.17+ 默认只监听127.0.0.1)
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
-    PORT=3200
+    PORT=3200 \
+    HOSTNAME=0.0.0.0
 
 # 创建非 root 用户
 RUN addgroup --system --gid 1001 nodejs && \

@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import DetailDrawer from '@/components/DetailDrawer';
+import { useVersionCheck } from '@/hooks/useVersionCheck';
 
 interface NavItemProps {
     href: string;
@@ -69,6 +70,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const [showSyncModal, setShowSyncModal] = useState(false);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const router = useRouter();
+
+    useVersionCheck();
 
     useEffect(() => {
         setMounted(true);

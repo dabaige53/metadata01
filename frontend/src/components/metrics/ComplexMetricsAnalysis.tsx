@@ -33,21 +33,33 @@ interface ComplexMetricsAnalysisProps {
 
 export default function ComplexMetricsAnalysis({ onCountUpdate, onSortUpdate }: ComplexMetricsAnalysisProps) {
     const [allData, setAllData] = useState<MetricCatalogItem[]>([]);
+    const [totalCount, setTotalCount] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(20);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
 
+    const loadData = async (page: number, size: number) => {
+        setLoading(true);
+        try {
+            const res = await fetch(`/api/metrics/catalog/complex?page=${page}&page_size=${size}`);
+            const result = await res.json();
+            setAllData(result.items || []);
+            setTotalCount(result.total_count || 0);
+            setTotalPages(result.total_pages || 0);
+            onCountUpdate?.(result.total_count || 0);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        fetch('/api/metrics/catalog/complex')
-            .then(res => res.json())
-            .then(result => {
-                const items = result.items || [];
-                setAllData(items);
-                onCountUpdate?.(items.length);
-            })
-            .catch(console.error)
-            .finally(() => setLoading(false));
+        loadData(currentPage, pageSize);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // 只在挂载时获取数据
+    }, [currentPage, pageSize]);
 
     const {
         displayData,
@@ -111,7 +123,7 @@ export default function ComplexMetricsAnalysis({ onCountUpdate, onSortUpdate }: 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-orange-500">
                     <div className="text-xs text-gray-500 uppercase mb-1">高复杂度指标</div>
-                    <div className="text-2xl font-bold text-orange-600">{allData.length}</div>
+                    <div className="text-2xl font-bold text-orange-600">{totalCount}</div>
                     <div className="text-xs text-gray-400 mt-1">评分 &gt; 10 或 长度 &gt; 300</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-red-500">
@@ -249,12 +261,20 @@ export default function ComplexMetricsAnalysis({ onCountUpdate, onSortUpdate }: 
                         })
                     )}
                 </div>
-                {allData.length > paginationState.pageSize && (
+                {totalCount > pageSize && (
                     <div className="p-4 border-t border-gray-100">
                         <Pagination
-                            pagination={paginationState}
-                            onPageChange={handlePageChange}
-                            onPageSizeChange={handlePageSizeChange}
+                            pagination={{
+                                page: currentPage,
+                                pageSize,
+                                total: totalCount,
+                                totalPages
+                            }}
+                            onPageChange={setCurrentPage}
+                            onPageSizeChange={(size) => {
+                                setPageSize(size);
+                                setCurrentPage(1);
+                            }}
                         />
                     </div>
                 )}

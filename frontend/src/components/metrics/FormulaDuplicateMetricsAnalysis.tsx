@@ -30,28 +30,41 @@ const SORT_OPTIONS: SortConfig[] = [
 
 export default function FormulaDuplicateMetricsAnalysis({ onCountUpdate, onSortUpdate }: FormulaDuplicateMetricsAnalysisProps) {
     const [allData, setAllData] = useState<MetricCatalogItem[]>([]);
+    const [totalCount, setTotalCount] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(20);
     const [loading, setLoading] = useState(true);
     const { openDrawer } = useDrawer();
 
+    const loadData = async (page: number, size: number) => {
+        setLoading(true);
+        try {
+            const res = await fetch(`/api/metrics/catalog/duplicate-formula?page=${page}&page_size=${size}`);
+            const result = await res.json();
+            const items = (result.items || []).map((item: MetricCatalogItem) => {
+                const score = item.complexity || 0;
+                let level = '低';
+                if (score > 10) level = '超高';
+                else if (score > 6) level = '高';
+                else if (score > 3) level = '中';
+                return { ...item, complexity_level: level };
+            });
+            setAllData(items);
+            setTotalCount(result.total_count || 0);
+            setTotalPages(result.total_pages || 0);
+            onCountUpdate?.(result.total_count || 0);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        fetch('/api/metrics/catalog/duplicate-formula')
-            .then(res => res.json())
-            .then(result => {
-                const items = (result.items || []).map((item: MetricCatalogItem) => {
-                    const score = item.complexity || 0;
-                    let level = '低';
-                    if (score > 10) level = '超高';
-                    else if (score > 6) level = '高';
-                    else if (score > 3) level = '中';
-                    return { ...item, complexity_level: level };
-                });
-                setAllData(items);
-                onCountUpdate?.(items.length);
-            })
-            .catch(console.error)
-            .finally(() => setLoading(false));
+        loadData(currentPage, pageSize);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [currentPage, pageSize]);
 
     const {
         displayData,
@@ -61,9 +74,6 @@ export default function FormulaDuplicateMetricsAnalysis({ onCountUpdate, onSortU
         handleClearAllFilters,
         sortState,
         handleSortChange,
-        paginationState,
-        handlePageChange,
-        handlePageSizeChange,
         searchTerm,
         setSearchTerm
     } = useDataTable({
@@ -71,7 +81,7 @@ export default function FormulaDuplicateMetricsAnalysis({ onCountUpdate, onSortU
         data: allData,
         facetFields: ['role'],
         searchFields: ['name', 'formula'],
-        defaultPageSize: 20,
+        defaultPageSize: 1000,  // 服务端分页
         defaultSelected: true
     });
 
@@ -112,7 +122,7 @@ export default function FormulaDuplicateMetricsAnalysis({ onCountUpdate, onSortU
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-red-500">
                     <div className="text-xs text-gray-500 uppercase mb-1">同公式多名称</div>
-                    <div className="text-2xl font-bold text-red-600">{allData.length}</div>
+                    <div className="text-2xl font-bold text-red-600">{totalCount}</div>
                     <div className="text-xs text-gray-400 mt-1">按公式哈希聚合的命名差异</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm border-l-4 border-l-purple-500">
@@ -232,12 +242,20 @@ export default function FormulaDuplicateMetricsAnalysis({ onCountUpdate, onSortU
                 )}
             </div>
 
-            {allData.length > paginationState.pageSize && (
+            {totalCount > pageSize && (
                 <div className="mt-6">
                     <Pagination
-                        pagination={paginationState}
-                        onPageChange={handlePageChange}
-                        onPageSizeChange={handlePageSizeChange}
+                        pagination={{
+                            page: currentPage,
+                            pageSize,
+                            total: totalCount,
+                            totalPages
+                        }}
+                        onPageChange={setCurrentPage}
+                        onPageSizeChange={(size) => {
+                            setPageSize(size);
+                            setCurrentPage(1);
+                        }}
                     />
                 </div>
             )}

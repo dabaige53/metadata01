@@ -20,6 +20,9 @@ services:
       - TABLEAU_BASE_URL=${TABLEAU_BASE_URL}
       - TABLEAU_PAT_NAME=${TABLEAU_PAT_NAME}
       - TABLEAU_PAT_SECRET=${TABLEAU_PAT_SECRET}
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     volumes:
       # 数据持久化
       - ./data:/app/data
@@ -49,11 +52,14 @@ services:
       - NODE_ENV=production
       - PORT=3200
       - BACKEND_URL=http://backend:8201
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3200/"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3200/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -64,6 +70,11 @@ services:
 networks:
   metadata-network:
     driver: bridge
+    # 禁用 IPv6 避免 DNS 解析延迟 (可减少 4-5 秒首次连接延迟)
+    enable_ipv6: false
+    driver_opts:
+      # MTU 优化 (VPN/虚拟化环境下默认 1500 可能过大)
+      com.docker.network.driver.mtu: 1400
 
 volumes:
   metadata-data:

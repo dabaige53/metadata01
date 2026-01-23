@@ -454,9 +454,16 @@ def get_metrics_catalog_duplicate():
 
     聚合规则：按 name 分组
     筛选条件：同名下存在多个不同 formula_hash
+
+    支持分页：page, page_size (默认20条)
     """
     session = g.db_session
     from sqlalchemy import text, bindparam
+
+    # 分页参数
+    page = request.args.get("page", 1, type=int)
+    page_size = request.args.get("page_size", 20, type=int)
+    page_size = min(page_size, 100)  # 最大100条
 
     name_stats_sql = """
         SELECT 
@@ -470,9 +477,24 @@ def get_metrics_catalog_duplicate():
         HAVING formula_count > 1
         ORDER BY formula_count DESC, instance_count DESC, name
     """
-    name_rows = session.execute(text(name_stats_sql)).fetchall()
-    if not name_rows:
-        return jsonify({"total_count": 0, "items": []})
+    all_name_rows = session.execute(text(name_stats_sql)).fetchall()
+    total_count = len(all_name_rows)
+
+    if not all_name_rows:
+        return jsonify(
+            {
+                "total_count": 0,
+                "items": [],
+                "page": page,
+                "page_size": page_size,
+                "total_pages": 0,
+            }
+        )
+
+    # 分页
+    offset = (page - 1) * page_size
+    name_rows = all_name_rows[offset : offset + page_size]
+    total_pages = (total_count + page_size - 1) // page_size
 
     names = [row.name for row in name_rows]
     variants_sql = text("""
@@ -500,19 +522,7 @@ def get_metrics_catalog_duplicate():
             v.total_usage,
             v.complexity,
             v.description,
-            v.representative_id,
-            (SELECT GROUP_CONCAT(DISTINCT cfl.datasource_id || '|' || COALESCE(d.name, 'Unknown') || '|' || COALESCE(d.is_embedded, 0))
-             FROM calc_field_full_lineage cfl 
-             LEFT JOIN datasources d ON cfl.datasource_id = d.id 
-             WHERE cfl.field_id = v.representative_id) as datasource_info,
-            (SELECT GROUP_CONCAT(DISTINCT cfl.workbook_id || '|' || COALESCE(w.name, 'Unknown'))
-             FROM calc_field_full_lineage cfl 
-             LEFT JOIN workbooks w ON cfl.workbook_id = w.id 
-             WHERE cfl.field_id = v.representative_id) as workbook_info,
-            (SELECT GROUP_CONCAT(DISTINCT cfl.table_id || '|' || COALESCE(t.name, 'Unknown'))
-             FROM calc_field_full_lineage cfl 
-             LEFT JOIN tables t ON cfl.table_id = t.id 
-             WHERE cfl.field_id = v.representative_id) as table_info
+            v.representative_id
         FROM variants v
         ORDER BY v.name, v.total_references DESC, v.instance_count DESC
     """).bindparams(bindparam("names", expanding=True))
@@ -531,66 +541,60 @@ def get_metrics_catalog_duplicate():
     }
 
     for row in variant_rows:
-        datasources = []
-        if row.datasource_info:
-            for ds_pair in row.datasource_info.split(","):
-                parts = ds_pair.split("|")
-                if len(parts) >= 2:
-                    ds_id, ds_name = parts[0], parts[1]
-                    is_embedded = parts[2] == "1" if len(parts) > 2 else False
-                    if ds_id and ds_id != "None":
-                        datasources.append(
-                            {"id": ds_id, "name": ds_name, "is_embedded": is_embedded}
-                        )
-
-        workbooks = []
-        if row.workbook_info:
-            for wb_pair in row.workbook_info.split(","):
-                if "|" in wb_pair:
-                    wb_id, wb_name = wb_pair.split("|", 1)
-                    if wb_id and wb_id != "None":
-                        workbooks.append({"id": wb_id, "name": wb_name})
-
-        tables = []
-        if row.table_info:
-            for tb_pair in row.table_info.split(","):
-                if "|" in tb_pair:
-                    tb_id, tb_name = tb_pair.split("|", 1)
-                    if tb_id and tb_id != "None":
-                        tables.append({"id": tb_id, "name": tb_name})
+        # 精简formula，列表只返回前200字符
+        formula_preview = (
+            row.formula[:200] + "..."
+            if row.formula and len(row.formula) > 200
+            else row.formula
+        )
 
         items_map[row.name]["variants"].append(
             {
                 "formula_hash": row.formula_hash,
-                "formula": row.formula,
+                "formula": formula_preview,
                 "instance_count": row.instance_count,
                 "total_references": row.total_references or 0,
                 "total_usage": row.total_usage or 0,
                 "complexity": row.complexity or 0,
                 "representative_id": row.representative_id,
-                "datasources": datasources,
-                "datasource_count": len(datasources),
-                "workbooks": workbooks,
-                "workbook_count": len(workbooks),
-                "tables": tables,
-                "table_count": len(tables),
             }
         )
 
     items = list(items_map.values())
-    return jsonify({"total_count": len(items), "items": items})
+    return jsonify(
+        {
+            "total_count": total_count,
+            "items": items,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+        }
+    )
 
 
 @api_bp.route("/metrics/catalog/duplicate-formula")
 def get_metrics_catalog_duplicate_formula():
     """
-    获取同公式不同名称的重复指标分析
-
-    聚合规则：按 formula_hash 分组
-    筛选条件：同一公式存在多个不同名称
+    获取同公式不同名称的重复指标分析（支持分页）
     """
     session = g.db_session
     from sqlalchemy import text
+
+    page = request.args.get("page", 1, type=int)
+    page_size = request.args.get("page_size", 20, type=int)
+    page_size = min(page_size, 100)
+
+    count_sql = """
+        SELECT COUNT(*) FROM (
+            SELECT 1 FROM calculated_fields
+            GROUP BY formula_hash
+            HAVING COUNT(DISTINCT TRIM(name)) > 1
+        ) sub
+    """
+    total_count = session.execute(text(count_sql)).scalar() or 0
+    total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 0
+
+    offset = (page - 1) * page_size
 
     sql = """
         WITH formula_groups AS (
@@ -602,7 +606,6 @@ def get_metrics_catalog_duplicate_formula():
                 COALESCE(SUM(usage_count), 0) as total_usage,
                 MAX(role) as role,
                 MAX(data_type) as data_type,
-                MAX(description) as description,
                 MAX(complexity_score) as complexity,
                 MAX(formula) as formula
             FROM calculated_fields
@@ -617,7 +620,6 @@ def get_metrics_catalog_duplicate_formula():
             fg.total_usage,
             fg.role,
             fg.data_type,
-            fg.description,
             fg.complexity,
             fg.formula,
             (SELECT cf.id FROM calculated_fields cf 
@@ -627,205 +629,72 @@ def get_metrics_catalog_duplicate_formula():
             (SELECT cf.name FROM calculated_fields cf 
              WHERE cf.formula_hash = fg.formula_hash 
              ORDER BY cf.usage_count DESC, cf.reference_count DESC, cf.id 
-             LIMIT 1) as representative_name,
-            (SELECT GROUP_CONCAT(DISTINCT cfl.datasource_id || '|' || COALESCE(d.name, 'Unknown') || '|' || COALESCE(d.is_embedded, 0)) 
-             FROM calculated_fields cf2 
-             JOIN calc_field_full_lineage cfl ON cf2.id = cfl.field_id 
-             LEFT JOIN datasources d ON cfl.datasource_id = d.id 
-             WHERE cf2.formula_hash = fg.formula_hash) as datasource_info,
-            (SELECT GROUP_CONCAT(DISTINCT cfl.workbook_id || '|' || COALESCE(w.name, 'Unknown')) 
-             FROM calculated_fields cf2 
-             JOIN calc_field_full_lineage cfl ON cf2.id = cfl.field_id 
-             LEFT JOIN workbooks w ON cfl.workbook_id = w.id 
-             WHERE cf2.formula_hash = fg.formula_hash) as workbook_info,
-            (SELECT GROUP_CONCAT(DISTINCT cfl.table_id || '|' || COALESCE(t.name, 'Unknown'))
-             FROM calculated_fields cf2
-             JOIN calc_field_full_lineage cfl ON cf2.id = cfl.field_id
-             LEFT JOIN tables t ON cfl.table_id = t.id
-             WHERE cf2.formula_hash = fg.formula_hash) as table_info
+             LIMIT 1) as representative_name
         FROM formula_groups fg
         ORDER BY fg.instance_count DESC, representative_name
+        LIMIT :limit OFFSET :offset
     """
-    rows = session.execute(text(sql)).fetchall()
+    rows = session.execute(text(sql), {"limit": page_size, "offset": offset}).fetchall()
 
     items = []
     for row in rows:
-        datasources = []
-        has_embedded = False
-        has_published = False
-        if row.datasource_info:
-            for ds_pair in row.datasource_info.split(","):
-                parts = ds_pair.split("|")
-                if len(parts) >= 2:
-                    ds_id, ds_name = parts[0], parts[1]
-                    is_embedded = parts[2] == "1" if len(parts) > 2 else False
-                    if ds_id and ds_id != "None":
-                        datasources.append(
-                            {"id": ds_id, "name": ds_name, "is_embedded": is_embedded}
-                        )
-                        if is_embedded:
-                            has_embedded = True
-                        else:
-                            has_published = True
-
-        workbooks = []
-        if row.workbook_info:
-            for wb_pair in row.workbook_info.split(","):
-                if "|" in wb_pair:
-                    wb_id, wb_name = wb_pair.split("|", 1)
-                    if wb_id and wb_id != "None":
-                        workbooks.append({"id": wb_id, "name": wb_name})
-
-        if has_embedded and has_published:
-            dedup_method = "hash_mixed"
-        elif has_embedded:
-            dedup_method = "hash_embedded"
-        else:
-            dedup_method = "hash_published"
-
-        tables = []
-        if row.table_info:
-            for tb_pair in row.table_info.split(","):
-                if "|" in tb_pair:
-                    tb_id, tb_name = tb_pair.split("|", 1)
-                    if tb_id and tb_id != "None":
-                        tables.append({"id": tb_id, "name": tb_name})
+        formula_preview = (
+            row.formula[:200] + "..."
+            if row.formula and len(row.formula) > 200
+            else row.formula
+        )
 
         items.append(
             {
                 "representative_id": row.representative_id,
                 "name": row.representative_name or "-",
-                "formula": row.formula,
+                "formula": formula_preview,
                 "formula_hash": row.formula_hash,
                 "role": row.role,
                 "data_type": row.data_type,
-                "description": row.description or "",
                 "instance_count": row.instance_count,
                 "name_count": row.name_count,
                 "complexity": row.complexity or 0,
                 "total_references": row.total_references or 0,
                 "total_usage": row.total_usage or 0,
-                "datasources": datasources,
-                "datasource_count": len(datasources),
-                "workbooks": workbooks,
-                "workbook_count": len(workbooks),
-                "tables": tables,
-                "table_count": len(tables),
-                "dedup_method": dedup_method,
             }
         )
 
-    if items:
-        formula_hashes = [item["formula_hash"] for item in items]
-        name_variants_sql = text("""
-            WITH name_variants AS (
-                SELECT 
-                    TRIM(name) as name,
-                    formula_hash,
-                    MIN(id) as representative_id,
-                    COUNT(*) as instance_count,
-                    COALESCE(SUM(reference_count), 0) as total_references,
-                    COALESCE(SUM(usage_count), 0) as total_usage,
-                    MAX(complexity_score) as complexity
-                FROM calculated_fields
-                WHERE formula_hash IN :hashes
-                GROUP BY TRIM(name), formula_hash
-            )
-            SELECT 
-                nv.name,
-                nv.formula_hash,
-                nv.representative_id,
-                nv.instance_count,
-                nv.total_references,
-                nv.total_usage,
-                nv.complexity,
-                (SELECT GROUP_CONCAT(DISTINCT cfl.datasource_id || '|' || COALESCE(d.name, 'Unknown') || '|' || COALESCE(d.is_embedded, 0))
-                 FROM calc_field_full_lineage cfl 
-                 LEFT JOIN datasources d ON cfl.datasource_id = d.id 
-                 WHERE cfl.field_id = nv.representative_id) as datasource_info,
-                (SELECT GROUP_CONCAT(DISTINCT cfl.workbook_id || '|' || COALESCE(w.name, 'Unknown'))
-                 FROM calc_field_full_lineage cfl 
-                 LEFT JOIN workbooks w ON cfl.workbook_id = w.id 
-                 WHERE cfl.field_id = nv.representative_id) as workbook_info,
-                (SELECT GROUP_CONCAT(DISTINCT cfl.table_id || '|' || COALESCE(t.name, 'Unknown'))
-                 FROM calc_field_full_lineage cfl 
-                 LEFT JOIN tables t ON cfl.table_id = t.id 
-                 WHERE cfl.field_id = nv.representative_id) as table_info
-            FROM name_variants nv
-            ORDER BY nv.formula_hash, nv.total_references DESC, nv.instance_count DESC, nv.name
-        """).bindparams(bindparam("hashes", expanding=True))
-
-        variant_rows = session.execute(
-            name_variants_sql, {"hashes": formula_hashes}
-        ).fetchall()
-        variant_map = {}
-        for row in variant_rows:
-            datasources = []
-            if row.datasource_info:
-                for ds_pair in row.datasource_info.split(","):
-                    parts = ds_pair.split("|")
-                    if len(parts) >= 2:
-                        ds_id, ds_name = parts[0], parts[1]
-                        is_embedded = parts[2] == "1" if len(parts) > 2 else False
-                        if ds_id and ds_id != "None":
-                            datasources.append(
-                                {
-                                    "id": ds_id,
-                                    "name": ds_name,
-                                    "is_embedded": is_embedded,
-                                }
-                            )
-
-            workbooks = []
-            if row.workbook_info:
-                for wb_pair in row.workbook_info.split(","):
-                    if "|" in wb_pair:
-                        wb_id, wb_name = wb_pair.split("|", 1)
-                        if wb_id and wb_id != "None":
-                            workbooks.append({"id": wb_id, "name": wb_name})
-
-            tables = []
-            if row.table_info:
-                for tb_pair in row.table_info.split(","):
-                    if "|" in tb_pair:
-                        tb_id, tb_name = tb_pair.split("|", 1)
-                        if tb_id and tb_id != "None":
-                            tables.append({"id": tb_id, "name": tb_name})
-
-            variant = {
-                "name": row.name,
-                "representative_id": row.representative_id,
-                "instance_count": row.instance_count,
-                "total_references": row.total_references or 0,
-                "total_usage": row.total_usage or 0,
-                "complexity": row.complexity or 0,
-                "datasources": datasources,
-                "datasource_count": len(datasources),
-                "workbooks": workbooks,
-                "workbook_count": len(workbooks),
-                "tables": tables,
-                "table_count": len(tables),
-            }
-            variant_map.setdefault(row.formula_hash, []).append(variant)
-
-        for item in items:
-            item["name_variants"] = variant_map.get(item["formula_hash"], [])
-
-    return jsonify({"total_count": len(items), "items": items})
+    return jsonify(
+        {
+            "total_count": total_count,
+            "items": items,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+        }
+    )
 
 
 @api_bp.route("/metrics/catalog/complex")
 def get_metrics_catalog_complex():
     """
-    获取高复杂度指标分析 - 聚合视角
-
-    聚合规则：按 (name + formula_hash) 分组
-    筛选条件：公式长度 > 100 的指标
+    获取高复杂度指标分析 - 聚合视角（支持分页）
     """
     session = g.db_session
     from sqlalchemy import text
 
-    # 直接从 calculated_fields 表查询（新的四表架构）
+    page = request.args.get("page", 1, type=int)
+    page_size = request.args.get("page_size", 20, type=int)
+    page_size = min(page_size, 100)
+
+    count_sql = """
+        SELECT COUNT(*) FROM (
+            SELECT 1 FROM calculated_fields cf
+            WHERE cf.complexity_score > 10 OR LENGTH(cf.formula) > 300
+            GROUP BY cf.name, cf.formula_hash
+        ) sub
+    """
+    total_count = session.execute(text(count_sql)).scalar() or 0
+    total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 0
+
+    offset = (page - 1) * page_size
+
     sql = """
         SELECT 
             MIN(cf.id) as representative_id,
@@ -834,41 +703,20 @@ def get_metrics_catalog_complex():
             cf.formula_hash,
             MAX(cf.role) as role,
             MAX(cf.data_type) as data_type,
-            MAX(cf.description) as description,
             COUNT(*) as instance_count,
             MAX(cf.complexity_score) as complexity,
             LENGTH(cf.formula) as formula_length,
-            COALESCE(SUM(cf.reference_count), 0) as total_references,
-            GROUP_CONCAT(DISTINCT cf.datasource_id) as datasource_ids,
-            GROUP_CONCAT(DISTINCT d.name) as datasource_names,
-            GROUP_CONCAT(DISTINCT cf.workbook_id) as workbook_ids,
-            GROUP_CONCAT(DISTINCT w.name) as workbook_names
+            COALESCE(SUM(cf.reference_count), 0) as total_references
         FROM calculated_fields cf
-        LEFT JOIN datasources d ON cf.datasource_id = d.id
-        LEFT JOIN workbooks w ON cf.workbook_id = w.id
         WHERE cf.complexity_score > 10 OR LENGTH(cf.formula) > 300
         GROUP BY cf.name, cf.formula_hash
-        ORDER BY cf.complexity_score DESC, formula_length DESC
+        ORDER BY MAX(cf.complexity_score) DESC, formula_length DESC
+        LIMIT :limit OFFSET :offset
     """
-    rows = session.execute(text(sql)).fetchall()
+    rows = session.execute(text(sql), {"limit": page_size, "offset": offset}).fetchall()
 
     items = []
     for row in rows:
-        ds_ids = row.datasource_ids.split(",") if row.datasource_ids else []
-        ds_names = row.datasource_names.split(",") if row.datasource_names else []
-        datasources = [
-            {"id": ds_ids[i] if i < len(ds_ids) else None, "name": ds_names[i]}
-            for i in range(len(ds_names))
-        ]
-
-        wb_ids = row.workbook_ids.split(",") if row.workbook_ids else []
-        wb_names = row.workbook_names.split(",") if row.workbook_names else []
-        workbooks = [
-            {"id": wb_ids[i] if i < len(wb_ids) else None, "name": wb_names[i]}
-            for i in range(len(wb_names))
-        ]
-
-        # 计算复杂度等级 (基于评分)
         score = row.complexity or 0
         if score > 20:
             complexity_level = "超高"
@@ -879,28 +727,37 @@ def get_metrics_catalog_complex():
         else:
             complexity_level = "低"
 
+        formula_preview = (
+            row.formula[:200] + "..."
+            if row.formula and len(row.formula) > 200
+            else row.formula
+        )
+
         items.append(
             {
                 "representative_id": row.representative_id,
                 "name": row.name,
-                "formula": row.formula,
+                "formula": formula_preview,
                 "formula_hash": row.formula_hash,
                 "role": row.role,
                 "data_type": row.data_type,
-                "description": row.description or "",
                 "instance_count": row.instance_count,
                 "complexity": score,
                 "complexity_level": complexity_level,
                 "formula_length": row.formula_length or 0,
                 "total_references": row.total_references or 0,
-                "datasources": datasources,
-                "datasource_count": len(datasources),
-                "workbooks": workbooks,
-                "workbook_count": len(workbooks),
             }
         )
 
-    return jsonify({"total_count": len(items), "items": items})
+    return jsonify(
+        {
+            "total_count": total_count,
+            "items": items,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+        }
+    )
 
 
 @api_bp.route("/metrics/catalog/unused")

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "NEXT_USE_TURBOPACK=0 next dev -p ${PORT:-3200} --hostname 0.0.0.0",
-    "build": "NEXT_USE_TURBOPACK=0 next build",
+    "build": "NEXT_USE_TURBOPACK=0 next build && node scripts/generate-version.js",
     "start": "NEXT_USE_TURBOPACK=0 next start -p ${PORT:-3200} --hostname 0.0.0.0",
     "lint": "eslint"
   },

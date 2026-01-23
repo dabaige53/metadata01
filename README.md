@@ -20,11 +20,31 @@ cp .env.example .env
 # 编辑 .env 填入 Tableau PAT 凭据
 
 # 2. 启动服务
-docker-compose up -d
+docker-compose up -d --build
 
 # 3. 访问
-open http://localhost:3200
+# 本机访问
+open http://localhost:3201
+
+# 局域网访问 (其他设备)
+# http://<本机IP>:3201
 ```
+
+#### 局域网访问说明
+
+部署后，局域网内其他设备可通过 `http://<本机IP>:3201` 访问。
+
+**已优化配置**：
+- ✅ Next.js 监听 `0.0.0.0`（支持局域网访问）
+- ✅ 禁用 IPv6（避免 DNS 延迟）
+- ✅ MTU 优化（适配 VPN/虚拟化环境）
+- ✅ DNS 加速（使用 8.8.8.8/1.1.1.1）
+
+**端口说明**：
+| 服务 | 容器端口 | 宿主机端口 |
+|------|---------|-----------|
+| 前端 | 3200 | 3201 |
+| 后端 API | 8201 | 8202 |
 
 ### 方式二：本地开发
 
@@ -84,13 +104,29 @@ metadata/
 
 ```bash
 # Docker 部署
-docker-compose up -d        # 启动
-docker-compose down         # 停止
-docker-compose logs -f      # 查看日志
+docker-compose up -d --build  # 首次启动/重新构建
+docker-compose up -d          # 启动（已构建）
+docker-compose down           # 停止
+docker-compose logs -f        # 查看日志
+docker-compose ps             # 查看状态
 
 # 本地开发
-venv/bin/python dev.py      # 启动开发服务
+venv/bin/python dev.py                    # 启动开发服务
 venv/bin/python backend/tableau_sync.py  # 同步数据
+```
+
+## 故障排查
+
+```bash
+# 检查容器状态
+docker-compose ps
+
+# 查看容器日志
+docker-compose logs frontend
+docker-compose logs backend
+
+# 测试局域网连接
+curl -o /dev/null -s -w "连接: %{time_connect}s, 首字节: %{time_starttransfer}s\n" http://<IP>:3201
 ```
 
 ## 许可证
