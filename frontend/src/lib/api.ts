@@ -1,5 +1,17 @@
 // API 基础配置
-const API_BASE = '/api';
+// 在服务端(SSR)使用完整的后端 URL,在客户端使用相对路径
+const getApiBase = () => {
+    // 检查是否在服务端环境
+    if (typeof window === 'undefined') {
+        // 服务端: 使用环境变量中的完整后端 URL
+        const backendUrl = process.env.BACKEND_URL || 'http://backend:8201';
+        return `${backendUrl}/api`;
+    }
+    // 客户端: 使用相对路径,通过 Next.js rewrites 代理到后端
+    return '/api';
+};
+
+const API_BASE = getApiBase();
 
 // 通用请求函数
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {

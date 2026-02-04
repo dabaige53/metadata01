@@ -10,27 +10,27 @@
     "replace_plan": true
   },
   "agents": {
-    "sisyphus": {
+    "Sisyphus": {
       "model": "proxypal/gemini-claude-opus-4-5-thinking",
       "prompt_append": "你必须使用简体中文进行、思考、回复和交流。使用产品经理语言进行回复"
     },
-    "prometheus": {
+    "Prometheus (Planner)": {
       "model": "proxypal/gemini-claude-opus-4-5-thinking",
       "prompt_append": "你必须使用简体中文进行、思考、回复和交流。使用产品经理语言进行回复"
     },
-    "atlas": {
+    "Atlas": {
       "model": "proxypal/gemini-claude-opus-4-5-thinking",
       "prompt_append": "你必须使用简体中文进行、思考、回复和交流。使用产品经理语言进行回复"
     },
-    "sisyphus-junior": {
+    "Sisyphus-Junior": {
       "model": "proxypal/gemini-claude-sonnet-4-5",
       "prompt_append": "你必须使用简体中文进行、思考、回复和交流。"
     },
-    "metis": {
+    "Metis (Plan Consultant)": {
       "model": "openai/gpt-5.2",
       "prompt_append": "你必须使用简体中文进行、思考、回复和交流。"
     },
-    "momus": {
+    "Momus (Plan Reviewer)": {
       "model": "openai/gpt-5.2",
       "prompt_append": "你必须使用简体中文进行、思考、回复和交流。"
     },

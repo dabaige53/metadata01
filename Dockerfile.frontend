@@ -39,10 +39,12 @@ WORKDIR /app
 
 # 设置生产环境
 # HOSTNAME=0.0.0.0 解决局域网访问慢的问题 (Next.js 13.4.17+ 默认只监听127.0.0.1)
+# BACKEND_URL 用于 SSR 阶段访问后端 API
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3200 \
-    HOSTNAME=0.0.0.0
+    HOSTNAME=0.0.0.0 \
+    BACKEND_URL=http://backend:8201
 
 # 创建非 root 用户
 RUN addgroup --system --gid 1001 nodejs && \
