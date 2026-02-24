@@ -1,39 +1,77 @@
-# 系统生成文件
+# ===== 系统文件 =====
 .DS_Store
-__pycache__/
-*.pyc
-*.pyo
+Thumbs.db
+Desktop.ini
 
-# 数据文件 (位于 data/ 目录)
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+
+# ===== Python 虚拟环境 =====
+venv/
+.venv/
+env/
+
+# ===== Python 工具缓存 =====
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ===== Node.js =====
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# ===== 数据文件 =====
 data/*.db
 data/*.db-journal
 data/*.db-wal
 data/*.db-shm
 !data/.gitkeep
 
-# 日志文件
+# ===== 日志 =====
 logs/*.log
+*.log
 !logs/.gitkeep
 
-# 开发临时文件
+# ===== 开发临时文件 =====
 .dev/
-*.log
 
-# Node.js
-node_modules/
-.next/
-
-# IDE
-.vscode/
-.idea/
-
-# 环境变量
+# ===== 环境变量 =====
 .env
 .env.local
+.env.*.local
 
-# 备份文件
+# ===== IDE =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ===== 备份文件 =====
 *.bak
 *.bak.*
 *_backup_*
-metadata.db
-.DS_Store
+*.orig
+
+# ===== AI 工具 =====
+.sisyphus/
+.opencode/

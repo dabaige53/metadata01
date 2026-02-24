@@ -83,22 +83,34 @@ open http://localhost:3200
 
 ```
 metadata/
-├── frontend/           # Next.js 前端
-├── backend/            # Flask 后端 API
-│   ├── routes/         # API 路由
-│   ├── services/       # 业务逻辑
-│   └── models.py       # 数据模型
-├── data/               # SQLite 数据库
-├── docker-compose.yml  # Docker 编排
-├── Dockerfile.backend  # 后端镜像
-├── Dockerfile.frontend # 前端镜像
-└── .env.example        # 环境变量模板
+├── frontend/               # Next.js 前端
+│   ├── src/app/            # 页面路由 (App Router)
+│   ├── src/components/     # 可复用组件
+│   ├── src/hooks/          # 自定义 Hooks
+│   └── src/lib/            # 工具函数
+├── backend/                # Flask 后端 API
+│   ├── routes/             # API 路由
+│   ├── services/           # 业务逻辑（同步、Tableau 客户端）
+│   ├── migrations/         # 数据库迁移脚本
+│   └── models.py           # 数据模型
+├── scripts/                # 运维脚本
+│   ├── analysis/           # 数据分析脚本
+│   ├── generation/         # 报表生成脚本
+│   ├── maintenance/        # 维护脚本
+│   └── validation/         # 数据校验脚本
+├── tests/                  # 测试
+├── docs/                   # 项目文档
+├── data/                   # SQLite 数据库
+├── logs/                   # 运行日志
+├── docker-compose.yml      # Docker 编排
+├── Dockerfile.backend      # 后端镜像
+├── Dockerfile.frontend     # 前端镜像
+└── .env.example            # 环境变量模板
 ```
 
 ## 文档
 
-- [CLAUDE.md](CLAUDE.md) - 完整技术文档
-- [AGENTS.md](AGENTS.md) - AI 助手规范
+- [AGENTS.md](AGENTS.md) - AI 助手规范 & 项目技术文档
 
 ## 常用命令
 
