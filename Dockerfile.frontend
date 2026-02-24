@@ -6,11 +6,19 @@ FROM node:20-alpine AS deps
 
 WORKDIR /app
 
+# 可选：使用内网 npm registry / 代理
+ARG NPM_REGISTRY=
+ARG HTTP_PROXY=
+ARG HTTPS_PROXY=
+ARG NO_PROXY=
+
 # 复制依赖配置文件
 COPY frontend/package.json frontend/package-lock.json ./
 
 # 安装依赖
-RUN npm ci --only=production=false
+RUN if [ -n "${NPM_REGISTRY}" ]; then npm config set registry "${NPM_REGISTRY}"; fi && \
+    npm config set fund false && npm config set audit false && \
+    npm ci
 
 # ========== 阶段 2: 构建 ==========
 FROM node:20-alpine AS builder
@@ -19,6 +27,9 @@ WORKDIR /app
 
 # 接收构建参数
 ARG BACKEND_URL=http://backend:8201
+ARG HTTP_PROXY=
+ARG HTTPS_PROXY=
+ARG NO_PROXY=
 
 # 复制依赖
 COPY --from=deps /app/node_modules ./node_modules

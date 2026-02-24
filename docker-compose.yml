@@ -7,10 +7,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
+      args:
+        # 可选：在内网/代理环境下构建镜像
+        - HTTP_PROXY=${HTTP_PROXY}
+        - HTTPS_PROXY=${HTTPS_PROXY}
+        - NO_PROXY=${NO_PROXY}
     container_name: metadata-backend
     restart: unless-stopped
     ports:
-      - "8202:8201"
+      - "0.0.0.0:8202:8201"
     environment:
       - FLASK_ENV=production
       - DEBUG=false
@@ -20,9 +25,6 @@ services:
       - TABLEAU_BASE_URL=${TABLEAU_BASE_URL}
       - TABLEAU_PAT_NAME=${TABLEAU_PAT_NAME}
       - TABLEAU_PAT_SECRET=${TABLEAU_PAT_SECRET}
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
     volumes:
       # 数据持久化
       - ./data:/app/data
@@ -44,17 +46,20 @@ services:
       dockerfile: Dockerfile.frontend
       args:
         - BACKEND_URL=http://backend:8201
+        # 可选：在内网/代理环境下构建镜像
+        - NPM_REGISTRY=${NPM_REGISTRY}
+        - HTTP_PROXY=${HTTP_PROXY}
+        - HTTPS_PROXY=${HTTPS_PROXY}
+        - NO_PROXY=${NO_PROXY}
     container_name: metadata-frontend
     restart: unless-stopped
     ports:
-      - "3201:3200"
+      - "0.0.0.0:3201:3200"
     environment:
       - NODE_ENV=production
       - PORT=3200
+      - HOSTNAME=0.0.0.0
       - BACKEND_URL=http://backend:8201
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
     depends_on:
       backend:
         condition: service_healthy
